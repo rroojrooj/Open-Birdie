@@ -1,5 +1,5 @@
 'use strict';
-// Flight-model calibration against PGA Tour TrackMan averages.
+// Flight-model calibration against PGA Tour ball-flight averages.
 // Run: npm run calibrate
 const { simulateShot } = require('../lib/physics');
 

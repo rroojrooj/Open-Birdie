@@ -6,7 +6,7 @@ with any launch monitor that speaks the **GSPro Open Connect** protocol — incl
 
 - **Real courses** from OpenStreetMap (fairways, greens, bunkers, water, trees, hole routings)
 - **Real terrain** from AWS Terrain Tiles open elevation data — slopes affect flight, bounce, roll, and putts
-- **Real physics** — drag + Magnus lift flight model calibrated against tour TrackMan numbers,
+- **Real physics** — drag + Magnus lift flight model calibrated against tour launch-monitor numbers,
   spin-axis draws/fades, backspin zip-back on greens, gravity-fed breaks on slopes
 - **Full round play** — 18 holes, scorecard, water/OB penalties, gimmes, cup capture
 - Desktop app (Electron) — no browser needed; a tablet/phone on the same network can mirror via the built-in web server
@@ -88,7 +88,7 @@ node tools/test-load.js "Course name"   # test course download/parse
 
 ## Known limitations / roadmap
 
-- Visuals are "good indie sim" tier, not GSPro: flat-shaded splat terrain, low-poly trees.
+- Visuals are "good indie sim" tier, not premium-sim grade: flat-shaded splat terrain, low-poly trees.
   Next: grass textures, normal maps, better tree models, bunker depth.
 - Driver apex runs ~15% high vs tour averages (carries are calibrated within ~3%).
 - Pin positions come from OSM hole lines (one per green; double greens use the mapped point).

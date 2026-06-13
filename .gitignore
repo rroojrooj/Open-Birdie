@@ -4,8 +4,15 @@ node_modules/
 # downloaded course + terrain cache (regenerates on demand from open data)
 data/courses/*.json
 
+# throwaway render-capture sink + screenshots (dev verification only)
+.shots/
+# static HUD preview harness (WebGL-free, for screenshotting the HUD)
+public/_hudmock.html
+public/_bg.jpg
+
 # logs / OS cruft
 npm-debug.log*
 *.log
 .DS_Store
 Thumbs.db
+.gstack/

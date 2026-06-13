@@ -3,6 +3,8 @@
 // Three coords: x = east, y = up, z = -north.
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { PostFX } from './postfx.js';
+import { grassNormalTexture } from './textures.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -26,16 +28,19 @@ function pointInPoly(x, y, poly) {
   return inside;
 }
 
+// Surfaces are separated by VALUE (dark rough -> light fairway -> lighter
+// green) so the hole reads as a golf hole, not one flat green carpet — while
+// staying muted enough that the regraded lighting doesn't push them neon.
 const COLORS = {
-  base: '#3a6633',
-  rough: '#41703a',
-  wood: '#34532d',
-  range: '#4a7d3c',
-  fairwayA: '#4f9040', fairwayB: '#47823a',
-  greenA: '#55ab57', greenB: '#4da050',
-  tee: '#4d9148',
-  bunker: '#dbc995',
-  water: '#3d7ba6',
+  base: '#33502f',
+  rough: '#3c5a33',
+  wood: '#2b4124',
+  range: '#567a44',
+  fairwayA: '#6f9e54', fairwayB: '#62904a',
+  greenA: '#82b46c', greenB: '#76a760',
+  tee: '#6b9850',
+  bunker: '#cbb583',
+  water: '#2f6d97',
 };
 
 export class GolfScene {
@@ -47,11 +52,11 @@ export class GolfScene {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.55;
+    this.renderer.toneMappingExposure = 0.45;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xbcd2e8, 700, 5200);
+    this.scene.fog = new THREE.Fog(0xa6c2d6, 1600, 7000);
     this.camera = new THREE.PerspectiveCamera(58, container.clientWidth / container.clientHeight, 0.3, 12000);
     this.camera.position.set(0, 30, 60);
 
@@ -85,6 +90,12 @@ export class GolfScene {
     this.clock = new THREE.Clock();
 
     this._inputs();
+    // overlay layer for floating distance markers projected from world space
+    this.markerLayer = document.createElement('div');
+    this.markerLayer.className = 'dist-markers';
+    container.appendChild(this.markerLayer);
+    this.markers = [];
+    this.postfx = new PostFX(this.renderer, this.scene, this.camera);
     window.addEventListener('resize', () => this.resize());
     new ResizeObserver(() => this.resize()).observe(container);
     this.renderer.setAnimationLoop(() => this._frame());
@@ -95,36 +106,47 @@ export class GolfScene {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    this.postfx?.setSize(w, h);
   }
 
   _setupSkyAndLights() {
     const sky = new Sky();
     sky.scale.setScalar(45000);
     const u = sky.material.uniforms;
-    u.turbidity.value = 8;
-    u.rayleigh.value = 2.2;
-    u.mieCoefficient.value = 0.005;
-    u.mieDirectionalG.value = 0.8;
+    u.turbidity.value = 2.5;
+    u.rayleigh.value = 2.0;
+    u.mieCoefficient.value = 0.0022;
+    u.mieDirectionalG.value = 0.85;
+    // ~30° sun elevation: reads as midday but low enough to cast shadows that
+    // give the terrain and trees real shape (the flat look was a high, fill-
+    // dominated light with nothing to model the surface).
     this.sunDir = new THREE.Vector3().setFromSphericalCoords(
-      1, THREE.MathUtils.degToRad(90 - 34), THREE.MathUtils.degToRad(135)
+      1, THREE.MathUtils.degToRad(90 - 30), THREE.MathUtils.degToRad(135)
     );
     u.sunPosition.value.copy(this.sunDir);
 
-    // bake sky into an environment map for PBR ambient
+    // bake sky into an environment map for PBR ambient/specular
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const envScene = new THREE.Scene();
     envScene.add(sky);
     this.scene.environment = pmrem.fromScene(envScene, 0.02).texture;
+    this.scene.environmentIntensity = 0.5; // env was double-counting the fill
     this.scene.add(sky); // moves it from envScene into the visible scene
 
-    this.sun = new THREE.DirectionalLight(0xfff2dd, 2.6);
+    // Strong warm key light so lit turf pops and shadows read; the fill is
+    // pulled way down so the directional contrast survives. Previously the
+    // ambient was triple-counted (sun + hemisphere + full-strength env),
+    // which flattened everything.
+    this.sun = new THREE.DirectionalLight(0xfff4e0, 2.4);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    // 4096 halves the shadow texel size over the per-hole frustum, so tree
+    // shadows read as canopy shapes instead of soft ink-blots.
+    this.sun.shadow.mapSize.set(4096, 4096);
     this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.5;
+    this.sun.shadow.normalBias = 0.35;
     this.scene.add(this.sun, this.sun.target);
 
-    this.scene.add(new THREE.HemisphereLight(0xbcd8ff, 0x2e4a28, 0.45));
+    this.scene.add(new THREE.HemisphereLight(0xaeccff, 0x46603a, 0.25));
   }
 
   _makePin() {
@@ -234,7 +256,18 @@ export class GolfScene {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
-    const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0 }));
+    // World-scale detail relief: tile the procedural grass normal map ~every
+    // 2.5m across the course so the turf has per-meter surface for the sun to
+    // shade. It shares the terrain's 0..1 uv; its own repeat does the tiling.
+    const normal = grassNormalTexture();
+    const tileM = 2.5;
+    normal.repeat.set((b.maxX - b.minX) / tileM, (b.maxY - b.minY) / tileM);
+    normal.anisotropy = tex.anisotropy;
+
+    const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
+      map: tex, normalMap: normal, normalScale: new THREE.Vector2(0.5, 0.5),
+      roughness: 0.97, metalness: 0,
+    }));
     mesh.receiveShadow = true;
     return mesh;
   }
@@ -275,6 +308,27 @@ export class GolfScene {
     nctx.putImageData(img, 0, 0);
     ctx.fillStyle = ctx.createPattern(ncv, 'repeat');
     ctx.fillRect(0, 0, W, H);
+
+    // macro mottling: large soft patches of lighter/darker turf so the ground
+    // still reads as varied grass from an elevated camera (the per-meter normal
+    // map goes sub-pixel at that distance). Painted before the surface fills, so
+    // fairway/green/bunker/water cover it where they apply.
+    const mcv = document.createElement('canvas');
+    mcv.width = mcv.height = 24;
+    const mctx = mcv.getContext('2d');
+    const mrnd = mulberry32(53);
+    const mimg = mctx.createImageData(24, 24);
+    for (let i = 0; i < mimg.data.length; i += 4) {
+      const v = 100 + mrnd() * 90; // around mid-grey -> soft-light = subtle lift/dip
+      mimg.data[i] = mimg.data[i + 1] = mimg.data[i + 2] = v; mimg.data[i + 3] = 255;
+    }
+    mctx.putImageData(mimg, 0, 0);
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.globalCompositeOperation = 'soft-light';
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(mcv, 0, 0, W, H);
+    ctx.restore();
 
     const fillKind = (kinds, color, blur = 2) => {
       ctx.save();
@@ -375,17 +429,30 @@ export class GolfScene {
     if (!spots.length) return [];
 
     const n = spots.length;
-    const trunkGeom = new THREE.CylinderGeometry(0.18, 0.3, 2.6, 6);
-    trunkGeom.translate(0, 1.3, 0);
-    const crownGeom = new THREE.IcosahedronGeometry(2.3, 1);
-    crownGeom.scale(1, 1.25, 1);
-    crownGeom.translate(0, 4.3, 0);
+    const trunkGeom = new THREE.CylinderGeometry(0.16, 0.32, 2.8, 6);
+    trunkGeom.translate(0, 1.4, 0);
+    // Lumpy crown: a detail icosahedron displaced per-vertex so it reads as
+    // organic foliage instead of a perfect blob. The noise is baked once and
+    // shared; per-instance rotation + HSL keep the trees from looking cloned.
+    const crownGeom = new THREE.IcosahedronGeometry(2.4, 2);
+    const cpos = crownGeom.attributes.position;
+    const crnd = mulberry32(99);
+    const cv = new THREE.Vector3();
+    for (let i = 0; i < cpos.count; i++) {
+      cv.fromBufferAttribute(cpos, i).multiplyScalar(0.72 + crnd() * 0.5);
+      cpos.setXYZ(i, cv.x, cv.y, cv.z);
+    }
+    crownGeom.computeVertexNormals();
+    crownGeom.scale(1, 1.18, 1);
+    crownGeom.translate(0, 4.4, 0);
 
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.95 });
-    const crownMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3f28, roughness: 0.95 });
+    const crownMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
     const trunks = new THREE.InstancedMesh(trunkGeom, trunkMat, n);
     const crowns = new THREE.InstancedMesh(crownGeom, crownMat, n);
+    trunks.castShadow = true;
     crowns.castShadow = true;
+    crowns.receiveShadow = true;
 
     const m4 = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -426,6 +493,49 @@ export class GolfScene {
     this.ballSim = { x: p.x, y: p.y };
     const z = this.hAt(p.x, p.y);
     this.ball.position.copy(V(p.x, p.y, z + 0.06));
+    this._buildMarkers();
+  }
+
+  // Floating yardage markers every 50y down the ball->pin line, drawn as DOM
+  // pills positioned each frame by projecting their world point to the screen.
+  _buildMarkers() {
+    if (!this.markerLayer) return;
+    for (const m of this.markers) m.el.remove();
+    this.markers = [];
+    if (!this.geo) return;
+    const bx = this.ballSim.x, by = this.ballSim.y;
+    const dx = this.pinSim.x - bx, dy = this.pinSim.y - by;
+    const distM = Math.hypot(dx, dy);
+    if (distM < 55) return; // putt/short — no markers
+    const ux = dx / distM, uy = dy / distM;
+    const yd = 0.9144;
+    for (let d = 100; d * yd < distM - 11; d += 100) {
+      const x = bx + ux * d * yd, y = by + uy * d * yd;
+      const el = document.createElement('div');
+      el.className = 'dist-marker';
+      el.innerHTML = `${d}<span>y</span>`;
+      this.markerLayer.appendChild(el);
+      this.markers.push({ world: V(x, y, this.hAt(x, y) + 1.4), el });
+    }
+  }
+
+  _updateMarkers() {
+    if (!this.markers.length) return;
+    const hide = this.anim || this.camMode === 'static';
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    const v = new THREE.Vector3();
+    const shown = []; // screen positions already placed, for de-overlap
+    for (const m of this.markers) { // ordered nearest -> farthest
+      if (hide) { m.el.style.display = 'none'; continue; }
+      v.copy(m.world).project(this.camera);
+      const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
+      let ok = !(v.z > 1 || sx < 6 || sx > w - 6 || sy < 50 || sy > h - 6);
+      if (ok) for (const p of shown) if (Math.abs(sy - p.y) < 34 && Math.abs(sx - p.x) < 70) { ok = false; break; }
+      if (!ok) { m.el.style.display = 'none'; continue; }
+      shown.push({ x: sx, y: sy });
+      m.el.style.display = '';
+      m.el.style.transform = `translate(-50%,-100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+    }
   }
 
   setAim(aimDeg) {
@@ -437,7 +547,7 @@ export class GolfScene {
     const cx = (hole.tee[0] + hole.pin[0]) / 2, cy = (hole.tee[1] + hole.pin[1]) / 2;
     const cz = this.hAt(cx, cy);
     const center = V(cx, cy, cz);
-    const span = Math.hypot(hole.pin[0] - hole.tee[0], hole.pin[1] - hole.tee[1]) * 0.75 + 90;
+    const span = Math.hypot(hole.pin[0] - hole.tee[0], hole.pin[1] - hole.tee[1]) * 0.62 + 70;
     this.sun.position.copy(center).addScaledVector(this.sunDir, 700);
     this.sun.target.position.copy(center);
     const c = this.sun.shadow.camera;
@@ -528,7 +638,7 @@ export class GolfScene {
     if (a.trailPts.length > 2) {
       if (this.trail) { this.scene.remove(this.trail); this.trail.geometry.dispose(); }
       const g = new THREE.BufferGeometry().setFromPoints(a.trailPts);
-      this.trail = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.65 }));
+      this.trail = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.9 }));
       this.scene.add(this.trail);
     }
 
@@ -582,7 +692,8 @@ export class GolfScene {
     const pd = this.camera.position.distanceTo(this.pin.position);
     this.pin.scale.setScalar(THREE.MathUtils.clamp(pd * 0.013, 1, 6));
 
-    this.renderer.render(this.scene, this.camera);
+    this._updateMarkers();
+    this.postfx.render();
   }
 
   _inputs() {
