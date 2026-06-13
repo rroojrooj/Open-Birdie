@@ -481,9 +481,30 @@ export class GolfScene {
       dur,
       onDone,
       trailPts: [],
-      greenCamSet: false,
     };
-    this.camMode = 'flight';
+    // Fixed "golfer POV" tracer: park the camera behind the ball and let the
+    // shot fly away from a still vantage point — no chase, no greenside cut.
+    this._setTracerCam(points);
+    this.camMode = 'static';
+  }
+
+  // Place the camera behind the ball on the launch line, framed to hold the
+  // whole flight; playShot then leaves it untouched so it stays still.
+  _setTracerCam(points) {
+    const p0 = points[0];
+    const ph = points[Math.min(points.length - 1, 10)];
+    const hd = Math.atan2(ph.x - p0.x, ph.y - p0.y); // launch heading (sim frame)
+    const dist = Math.max(this.orbit.dist, 15);
+    const height = Math.max(this.orbit.height + 1.5, 6);
+    const cx = p0.x - Math.sin(hd) * dist, cy = p0.y - Math.cos(hd) * dist;
+    this.camPosT.copy(V(cx, cy, this.hAt(cx, cy) + height));
+    let apex = -Infinity;
+    const last = points[points.length - 1];
+    for (const p of points) if (p.z > apex) apex = p.z;
+    const carry = Math.hypot(last.x - p0.x, last.y - p0.y) || 60;
+    const ld = Math.min(carry * 0.55, 140);
+    const lx = p0.x + Math.sin(hd) * ld, ly = p0.y + Math.cos(hd) * ld;
+    this.lookT.copy(V(lx, ly, p0.z + Math.max((apex - p0.z) * 0.45, 5)));
   }
 
   _animStep(dt) {
@@ -509,19 +530,6 @@ export class GolfScene {
       const g = new THREE.BufferGeometry().setFromPoints(a.trailPts);
       this.trail = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.65 }));
       this.scene.add(this.trail);
-    }
-
-    // camera: chase during flight; greenside once descending near the pin
-    const distPin = Math.hypot(this.pinSim.x - p.x, this.pinSim.y - p.y);
-    if (!a.greenCamSet && distPin < 42 && a.t > a.flightTime * 0.55 && a.flightTime > 1.5) {
-      a.greenCamSet = true;
-      this.camMode = 'green';
-      const gx = this.pinSim.x, gy = this.pinSim.y;
-      const ddx = (p.x - gx), ddy = (p.y - gy);
-      const dd = Math.hypot(ddx, ddy) || 1;
-      const cx = gx + (ddx / dd) * 24 + (ddy / dd) * 9;
-      const cy = gy + (ddy / dd) * 24 - (ddx / dd) * 9;
-      this.camPosT.copy(V(cx, cy, this.hAt(cx, cy) + 7));
     }
 
     if (a.t >= a.dur) {
@@ -559,26 +567,13 @@ export class GolfScene {
 
     if (this.anim) this._animStep(dt);
 
-    if (this.camMode === 'idle') {
-      this._idleTargets();
-    } else if (this.camMode === 'flight' && this.anim) {
-      const bp = this.ball.position;
-      const a = this.anim;
-      // chase from behind the launch direction
-      const p0 = a.points[0];
-      const pl = a.points[Math.min(a.points.length - 1, 10)];
-      const hd = Math.atan2(pl.x - p0.x, pl.y - p0.y);
-      const cx = this.ballSim.x - Math.sin(hd) * 17, cy = this.ballSim.y - Math.cos(hd) * 17;
-      this.camPosT.copy(V(cx, cy, Math.max(bp.y + 5, this.hAt(cx, cy) + 2.5)));
-      this.lookT.copy(bp);
-    } else if (this.camMode === 'green') {
-      this.lookT.copy(this.ball.position);
-    }
-    if (this.camMode !== 'green') this.lookT.lerp(this.lookT, 1); // no-op, kept for clarity
+    // 'idle' tracks the ball at address; 'static' (shot tracer) holds the
+    // frozen camera that playShot parked behind the ball.
+    if (this.camMode === 'idle') this._idleTargets();
 
     const k = 1 - Math.exp(-4.2 * dt);
-    this.camera.position.lerp(this.camPosT, this.camMode === 'flight' ? 1 - Math.exp(-7 * dt) : k);
-    this.lookCur.lerp(this.lookT, this.camMode === 'flight' ? 1 - Math.exp(-9 * dt) : k);
+    this.camera.position.lerp(this.camPosT, k);
+    this.lookCur.lerp(this.lookT, k);
     this.camera.lookAt(this.lookCur);
 
     // keep ball & pin readable at distance

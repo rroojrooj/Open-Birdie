@@ -8,7 +8,8 @@
     "start": "electron .",
     "start:server": "node server.js",
     "calibrate": "node tools/calibrate.js",
-    "shot": "node tools/test-shot.js"
+    "shot": "node tools/test-shot.js",
+    "watch": "node tools/uneekor-watch.js --speed-scale 2.23694"
   },
   "engines": {
     "node": ">=18"
