@@ -90,6 +90,11 @@ export class GolfScene {
     this.clock = new THREE.Clock();
 
     this._inputs();
+    // overlay layer for floating distance markers projected from world space
+    this.markerLayer = document.createElement('div');
+    this.markerLayer.className = 'dist-markers';
+    container.appendChild(this.markerLayer);
+    this.markers = [];
     this.postfx = new PostFX(this.renderer, this.scene, this.camera);
     window.addEventListener('resize', () => this.resize());
     new ResizeObserver(() => this.resize()).observe(container);
@@ -488,6 +493,49 @@ export class GolfScene {
     this.ballSim = { x: p.x, y: p.y };
     const z = this.hAt(p.x, p.y);
     this.ball.position.copy(V(p.x, p.y, z + 0.06));
+    this._buildMarkers();
+  }
+
+  // Floating yardage markers every 50y down the ball->pin line, drawn as DOM
+  // pills positioned each frame by projecting their world point to the screen.
+  _buildMarkers() {
+    if (!this.markerLayer) return;
+    for (const m of this.markers) m.el.remove();
+    this.markers = [];
+    if (!this.geo) return;
+    const bx = this.ballSim.x, by = this.ballSim.y;
+    const dx = this.pinSim.x - bx, dy = this.pinSim.y - by;
+    const distM = Math.hypot(dx, dy);
+    if (distM < 55) return; // putt/short — no markers
+    const ux = dx / distM, uy = dy / distM;
+    const yd = 0.9144;
+    for (let d = 100; d * yd < distM - 11; d += 100) {
+      const x = bx + ux * d * yd, y = by + uy * d * yd;
+      const el = document.createElement('div');
+      el.className = 'dist-marker';
+      el.innerHTML = `${d}<span>y</span>`;
+      this.markerLayer.appendChild(el);
+      this.markers.push({ world: V(x, y, this.hAt(x, y) + 1.4), el });
+    }
+  }
+
+  _updateMarkers() {
+    if (!this.markers.length) return;
+    const hide = this.anim || this.camMode === 'static';
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    const v = new THREE.Vector3();
+    const shown = []; // screen positions already placed, for de-overlap
+    for (const m of this.markers) { // ordered nearest -> farthest
+      if (hide) { m.el.style.display = 'none'; continue; }
+      v.copy(m.world).project(this.camera);
+      const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
+      let ok = !(v.z > 1 || sx < 6 || sx > w - 6 || sy < 50 || sy > h - 6);
+      if (ok) for (const p of shown) if (Math.abs(sy - p.y) < 34 && Math.abs(sx - p.x) < 70) { ok = false; break; }
+      if (!ok) { m.el.style.display = 'none'; continue; }
+      shown.push({ x: sx, y: sy });
+      m.el.style.display = '';
+      m.el.style.transform = `translate(-50%,-100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+    }
   }
 
   setAim(aimDeg) {
@@ -590,7 +638,7 @@ export class GolfScene {
     if (a.trailPts.length > 2) {
       if (this.trail) { this.scene.remove(this.trail); this.trail.geometry.dispose(); }
       const g = new THREE.BufferGeometry().setFromPoints(a.trailPts);
-      this.trail = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.65 }));
+      this.trail = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.9 }));
       this.scene.add(this.trail);
     }
 
@@ -644,6 +692,7 @@ export class GolfScene {
     const pd = this.camera.position.distanceTo(this.pin.position);
     this.pin.scale.setScalar(THREE.MathUtils.clamp(pd * 0.013, 1, 6));
 
+    this._updateMarkers();
     this.postfx.render();
   }
 
