@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Open-Birdie</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+  { "imports": {
+    "three": "/vendor/three/build/three.module.js",
+    "three/addons/": "/vendor/three/examples/jsm/"
+  } }
+</script>
+</head>
+<body>
+<div id="scene"></div>
+
+<header id="topbar">
+  <div class="brand">⛳ Open-Birdie</div>
+  <div id="course-name" class="muted">no course loaded</div>
+  <div class="spacer"></div>
+  <div class="stat"><span class="muted">HOLE</span><b id="hud-hole">–</b></div>
+  <div class="stat"><span class="muted">PAR</span><b id="hud-par">–</b></div>
+  <div class="stat"><span class="muted">LENGTH</span><b id="hud-len">–</b></div>
+  <div class="stat"><span class="muted">TO PIN</span><b id="hud-pin">–</b></div>
+  <div class="stat"><span class="muted">STROKES</span><b id="hud-strokes">–</b></div>
+  <div class="stat"><span class="muted">LIE</span><b id="hud-lie">–</b></div>
+  <div id="lm-status" title="Launch monitor (GSPconnect) connection"><span class="dot"></span><span id="lm-text">LM: waiting</span></div>
+  <button id="btn-course" class="btn">Course</button>
+  <button id="btn-score" class="btn">Scorecard</button>
+</header>
+
+<aside id="shotpanel" class="hidden">
+  <h3>Last shot</h3>
+  <div class="grid">
+    <div><span class="muted">Ball speed</span><b id="sd-speed">–</b></div>
+    <div><span class="muted">Launch V/H</span><b id="sd-launch">–</b></div>
+    <div><span class="muted">Spin</span><b id="sd-spin">–</b></div>
+    <div><span class="muted">Spin axis</span><b id="sd-axis">–</b></div>
+    <div><span class="muted">Carry</span><b id="sd-carry">–</b></div>
+    <div><span class="muted">Total</span><b id="sd-total">–</b></div>
+    <div><span class="muted">Offline</span><b id="sd-offline">–</b></div>
+    <div><span class="muted">Apex</span><b id="sd-apex">–</b></div>
+  </div>
+</aside>
+
+<footer id="bottombar">
+  <div id="clubs"></div>
+  <div class="aim">
+    <span class="muted">AIM</span>
+    <input id="aim-slider" type="range" min="-30" max="30" step="0.5" value="0">
+    <span id="aim-val">0°</span>
+  </div>
+  <button id="btn-practice" class="btn">Practice shot</button>
+  <button id="btn-next" class="btn primary hidden">Next hole ▶</button>
+</footer>
+
+<div id="practice" class="panel hidden">
+  <h3>Practice shot <span class="muted">(no launch monitor needed)</span></h3>
+  <label>Ball speed <input id="ps-speed" type="range" min="5" max="200" value="152" step="1"><b id="ps-speed-v">152 mph</b></label>
+  <label>Launch angle <input id="ps-vla" type="range" min="0" max="45" value="13" step="0.5"><b id="ps-vla-v">13°</b></label>
+  <label>Direction (HLA) <input id="ps-hla" type="range" min="-15" max="15" value="0" step="0.5"><b id="ps-hla-v">0°</b></label>
+  <label>Total spin <input id="ps-spin" type="range" min="0" max="12000" value="2600" step="100"><b id="ps-spin-v">2600 rpm</b></label>
+  <label>Spin axis <input id="ps-axis" type="range" min="-30" max="30" value="0" step="1"><b id="ps-axis-v">0°</b></label>
+  <button id="ps-hit" class="btn primary big">HIT ⛳</button>
+</div>
+
+<div id="scorecard" class="panel hidden">
+  <h3>Scorecard</h3>
+  <div id="score-table"></div>
+  <button id="btn-restart" class="btn">Restart round</button>
+</div>
+
+<div id="course-modal" class="modal">
+  <div class="modal-box">
+    <h2>⛳ Pick a real course <span class="muted">(OpenStreetMap)</span></h2>
+    <p class="muted">Any course mapped with hole lines in OSM is playable. Famous links are usually best-mapped.</p>
+    <div class="row">
+      <input id="course-q" type="text" placeholder="Search: e.g. St Andrews Old Course" autofocus>
+      <button id="course-search" class="btn primary">Search</button>
+    </div>
+    <div class="chips">
+      <button class="chip" data-q="Old Course St Andrews">St Andrews (Old)</button>
+      <button class="chip" data-q="Pebble Beach Golf Links">Pebble Beach</button>
+      <button class="chip" data-q="Bandon Dunes Golf Course">Bandon Dunes</button>
+      <button class="chip" data-q="Whistling Straits golf">Whistling Straits</button>
+    </div>
+    <div id="course-results"></div>
+    <div id="course-cached"></div>
+    <div id="course-msg" class="muted"></div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

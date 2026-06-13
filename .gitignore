@@ -1,0 +1,11 @@
+# dependencies
+node_modules/
+
+# downloaded course + terrain cache (regenerates on demand from open data)
+data/courses/*.json
+
+# logs / OS cruft
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
