@@ -4,6 +4,9 @@ node_modules/
 # downloaded course + terrain cache (regenerates on demand from open data)
 data/courses/*.json
 
+# throwaway render-capture sink + screenshots (dev verification only)
+.shots/
+
 # logs / OS cruft
 npm-debug.log*
 *.log

@@ -1,8 +1,13 @@
 # Open-Birdie Visual Upgrade Plan
 
-> Status: **reviewed and rescoped**, ready to implement at Step 1.
+> Status: **Steps 1–2 + procedural part of Step 3 shipped (1.5/10 → 5/10).**
+> The lighting/grade/relief lanes are tapped out; the remaining 5 → 6-7 lever is the
+> turf **albedo material** (bundled CC0 PBR tiles + per-surface split), not more
+> post-processing.
 > Produced via research + an engineering plan review + an independent outside-voice red-team.
 > This doc is self-contained so a fresh coding session can pick it up cold.
+> See the **Progress log** at the bottom for what shipped, the tuned constants, and
+> the independent before/after critique arc.
 
 ## Goal
 
@@ -204,3 +209,92 @@ Format: `[severity] (confidence/10) file:line — finding`.
 Eng review CLEARED. Plan reviewed, red-teamed, rescoped. Start at Step 1 (small, reversible:
 a handful of constants + one bloom pass), screenshot it, then decide whether the heavy lane
 (Step 3) is worth building.
+
+---
+
+## Progress log
+
+### Steps 1–2 — DONE (lighting/grade + sky + surface contrast + better trees)
+New module `public/render/postfx.js` (`PostFX`): EffectComposer with
+RenderPass → UnrealBloomPass → OutputPass → SMAAPass, wired into `scene.js`
+(`_frame` → `postfx.render()`, `resize` → `postfx.setSize`). `preserveDrawingBuffer`
+is retained and the final pass renders to screen, so the screenshot/recording path
+still works.
+
+Key reversal vs the original diagnosis: the scene was **over-exposed, not crushed
+dark**. Raising exposure to 1.0 (as Step 1 first proposed) blew the sky and turf to
+white. Verified on-screen, so the grade went the other way.
+
+Tuned constants now in the source (arrived at by live tuning against rendered
+screenshots of Augusta + Bandon):
+- `toneMappingExposure`: 0.55 → **0.48**
+- Sky uniforms: turbidity 8→**2.5**, rayleigh 2.2→**2.0**, mie 0.005→**0.0022**
+  (clearer, bluer, less white haze). Sun elevation 34°→**30°** for raking shadows.
+- Sun `DirectionalLight`: 2.6 → **2.4**, warmer (`0xfff4e0`).
+- `HemisphereLight`: 0.45 → **0.25**; `scene.environmentIntensity` = **0.5**
+  (the ambient fill was triple-counted: sun + hemisphere + full-strength env).
+- `Fog`: `0xbcd2e8, 700, 5200` → `0xb8cfe0, 2200, 9000` (was washing the whole
+  midground; now only the far distance hazes).
+- `COLORS`: re-spread by **value** (dark rough → light fairway → lighter green)
+  so the hole reads as a hole, while staying muted enough not to go neon.
+- Terrain material roughness 0.95 → **0.97** (matte turf).
+- Trees: crown is now a per-vertex-displaced detail icosahedron (organic, not a
+  perfect blob); trunks cast shadows; crowns receive.
+- **Bloom dropped to near-zero (strength 0.05).** The Preetham sky is broadly
+  bright, so any real bloom strength haloes the entire sky into a wash — same
+  evidence-based call as dropping SAO. SMAA is the part of the post chain that
+  actually earns its place.
+
+### Independent before/after critique
+Same outside critic, blind: **1.5/10 → 4/10.** Verdict went from "first-week
+three.js tutorial" to "borderline yes, a layperson would say 'golf course' at a
+glance." Credited: color grade/contrast (biggest win), sky/atmosphere, trees for
+scale, water, terrain shadows.
+
+### Step 3 (partial) — DONE: procedural turf relief, sharper shadows, macro variation
+Chose **procedural over bundled textures** (keeps the zero-asset/offline ethos):
+- New `public/render/textures.js` (`grassNormalTexture`): a tileable, in-canvas
+  grass-relief **normal map**, applied to the terrain material and tiled at
+  **world scale** (~every 2.5m via `normalMap.repeat = extent / tileM`, sharing
+  the terrain's 0..1 uv). This is what broke the "carpet" look — but only at
+  **golfer eye-level**, where the grazing sun rakes the relief. From an elevated
+  camera the per-meter relief goes sub-pixel.
+- `_paintSplat` now lays down **macro mottling** (large soft soft-light patches)
+  before the surface fills, so the turf still reads as varied grass from above.
+- Shadows sharpened: shadow map 2048 → **4096**, frustum fit tightened
+  (`*0.62 + 70`), `normalBias` 0.5 → 0.35 — tree shadows read as canopies, not
+  ink-blots.
+- Grade richened: exposure 0.48 → **0.45**, fog `0xa6c2d6, 1600, 7000` (deeper,
+  closer — greens read richer, horizon recedes).
+
+Independent score after this pass: **5/10** ("a green hilly golf-ish landscape,
+not yet a real course"). The eye-level turf is no longer carpet; the lighting/grade
+lane is now tapped out (diminishing returns confirmed).
+
+### The remaining 5 → 6-7 lever is the turf MATERIAL (not more post-processing)
+Three critic rounds agree the #1 cap is now the grass **albedo**, not relief:
+1. **Grass albedo is uniform noise** — no real mowing stripes, no fairway/rough/
+   green texture split, no blade grain near camera. This is the largest surface
+   on screen and the flattest. Likely needs **bundled CC0 grass/sand albedo +
+   normal + roughness** (Poly Haven / ambientCG) and a per-surface material split
+   — i.e. the `_paintSplat` → region-mask + world-UV rewrite the plan describes,
+   now feeding real PBR tiles instead of a flat color. The procedural normal got
+   the relief; the albedo grain is what's left.
+2. **Trees** are flat uniformly-lit billboards with no AO grounding (they float);
+   need species/size/color variety + contact AO.
+3. **Bunkers** are soft tan smears (no lip/shadow); **water** is flat solid blue
+   (no shoreline/specular). Both increasingly conspicuous now that turf has detail.
+4. Soft fairway "spotlight" at the ball = the lighter fairway/tee polygon softened
+   by the `_paintSplat` blur; the region-mask rewrite (item 1) removes it.
+
+### Score arc
+1.5 (baseline) → 4 (lighting/grade + sky + surface contrast + trees) → 5 (turf
+detail-normal + macro variation + sharper shadows + grade). Verified on Augusta
+(parkland) and Bandon (links).
+
+### Verification method (no cached courses ship in the repo)
+Courses were downloaded live from OSM and cached to `data/courses/` (gitignored):
+Augusta National (831 trees — parkland showcase), Le Golf National, Bandon Dunes
+(treeless links). Rendering was captured headlessly via `canvas.toDataURL`
+(`preserveDrawingBuffer`) POSTed to a throwaway local sink, because the preview
+screenshot tool stalls on the continuous `setAnimationLoop`.
