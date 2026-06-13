@@ -111,5 +111,4 @@ from its use. **You** are responsible for your own safety and for complying with
 service / EULAs of your launch monitor, its first-party software, and every third-party data
 source the app contacts (OpenStreetMap/ODbL, Overpass, Nominatim, AWS Terrain Tiles).
 
-Read the full terms in **[DISCLAIMER.md](DISCLAIMER.md)**. *(That document is a good-faith
-template for a free project, not legal advice.)*
+Read the full terms in **[DISCLAIMER.md](DISCLAIMER.md)**
