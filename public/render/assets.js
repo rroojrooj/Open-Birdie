@@ -7,6 +7,9 @@ export const ASSETS = {
     foliageDiff: `${BASE}trees/foliage_diff.jpg`,
     foliageAlpha: `${BASE}trees/foliage_alpha.jpg`,
     bark: `${BASE}trees/bark_diff.jpg`,
+    broadleafDiff: `${BASE}trees/broadleaf_diff.jpg`,
+    broadleafAlpha: `${BASE}trees/broadleaf_alpha.jpg`,
+    broadleafBark: `${BASE}trees/broadleaf_bark.jpg`,
   },
   turf: {
     color: `${BASE}turf/grass_color.jpg`,
