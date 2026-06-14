@@ -138,19 +138,27 @@ export function buildCardTrees(spots, hAt, V) {
   });
 
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), sc = new THREE.Vector3();
+  const col = new THREE.Color();
   const base = RENDER_CONFIG.treeScale || 0.95;
   for (let i = 0; i < spots.length; i++) {
     const sp = spots[i];
     const h = hAt(sp.x, sp.y);
     q.setFromAxisAngle(up, rnd() * Math.PI * 2);
     const s = base * (sp.s || 1);
-    sc.set(s, s * (0.9 + rnd() * 0.25), s);
+    // vary width and height independently so the stand isn't cloned (stout vs tall)
+    const w = s * (0.82 + rnd() * 0.42), ht = s * (0.92 + rnd() * 0.5);
+    sc.set(w, ht, w);
     m4.compose(V(sp.x, sp.y, h), q, sc);
     foliage.setMatrixAt(i, m4);
     trunk.setMatrixAt(i, m4);
+    // per-tree tint (multiplies the atlas): varied brightness + slight olive/green shift
+    const b = 0.72 + rnd() * 0.5;
+    col.setRGB(b * (0.92 + rnd() * 0.12), b, b * (0.82 + rnd() * 0.12));
+    foliage.setColorAt(i, col);
   }
   foliage.instanceMatrix.needsUpdate = true;
   trunk.instanceMatrix.needsUpdate = true;
+  if (foliage.instanceColor) foliage.instanceColor.needsUpdate = true;
 
   return { meshes: [trunk, foliage], windUpdate: (t) => { for (const u of windRef) u.value = t; } };
 }
