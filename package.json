@@ -5,6 +5,7 @@
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
+    "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\"",
     "start": "electron .",
     "start:server": "node server.js",
     "calibrate": "node tools/calibrate.js",

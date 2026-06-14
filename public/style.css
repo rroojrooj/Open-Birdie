@@ -248,3 +248,50 @@ body {
   vertical-align: -2px; margin-right: 8px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- hole pills as buttons (review nav) ---------- */
+.hole-pills .pill { font-family: inherit; cursor: default; padding: 0; position: relative; }
+.hole-pills .pill.done { cursor: pointer; }
+.hole-pills .pill.done:hover { border-color: var(--accent); }
+.hole-pills .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hole-pills .pill.pickedup::after {
+  content: ''; position: absolute; top: 1px; right: 1px; width: 4px; height: 4px;
+  border-radius: 50%; background: var(--bad);
+}
+
+/* tappable HOLE badge — the phone handle into the scorecard */
+#stat-hole { cursor: pointer; }
+#stat-hole:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- round-complete summary (inside the scorecard panel) ---------- */
+#score-summary { margin-bottom: 14px; }
+.sum-eyebrow { font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 8px; }
+.sum-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 13px; }
+.sum-topar {
+  font-family: "Bahnschrift", "DIN Alternate", system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  font-size: 46px; font-weight: 600; line-height: 0.85;
+}
+.sum-topar.under { color: var(--green-deep); }
+.sum-topar.over { color: var(--bad); }
+.sum-meta { display: flex; flex-direction: column; }
+.sum-meta b { font-size: 16px; font-weight: 800; }
+.sum-meta span { font-size: 12px; color: var(--muted); }
+.sum-nines { display: flex; gap: 8px; margin-bottom: 13px; }
+.sum-tile { flex: 1; background: var(--accent-soft); border-radius: 9px; padding: 7px 12px; }
+.sum-tile span { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.sum-tile b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sum-tile em { font-size: 12px; font-style: normal; color: var(--muted); }
+.sum-hi { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.sum-chip { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 11px; background: rgba(20, 40, 25, 0.06); color: var(--muted); }
+.sum-chip.good { background: var(--accent-soft); color: var(--green-deep); }
+.score-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* picked-up dot + reviewed-hole highlight in the scorecard cells */
+#score-table .pu { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--bad); vertical-align: 3px; margin-left: 2px; }
+#score-table td.review, #score-table th.review { background: var(--accent-soft); }
+
+/* ---------- phone: collapse the pill strip; the scorecard is the hole nav ---------- */
+@media (max-width: 430px) {
+  #hole-pills { display: none; }
+  #scorecard { width: auto; left: 12px; right: 12px; max-width: none; }
+}

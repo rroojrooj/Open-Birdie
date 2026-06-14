@@ -1,5 +1,6 @@
 // Open-Birdie UI glue: SSE <-> HUD <-> 3D scene.
 import { GolfScene } from './render/scene.js';
+import { toPar, forwardLabel, verdict } from './scoring.mjs';
 
 const $ = (id) => document.getElementById(id);
 const scene = new GolfScene($('scene'));
@@ -10,6 +11,8 @@ let pendingState = null;
 let animating = false;
 let lastHoleKey = '';
 let clubPresets = {};
+let prevOver = false;   // round-over auto-open latch (open the card once, not every state event)
+let reviewHole = null;  // index of a played hole being reviewed on the scorecard
 
 const CLUBS = [
   ['DR', 'DR'], ['3W', 'W3'], ['3H', 'H3'], ['4i', 'I4'], ['5i', 'I5'], ['6i', 'I6'],
@@ -30,7 +33,7 @@ function applyState(s) {
   $('lie-pin').textContent = pinTxt;
   $('hud-strokes').textContent = s.strokes;
   $('hud-lie').textContent = s.holed ? '⛳' : s.lie;
-  $('btn-next').classList.toggle('hidden', !s.holed);
+  updateForward(s);
   $('aim-slider').value = s.aimOffset;
   $('aim-val').textContent = `${s.aimOffset > 0 ? '+' : ''}${s.aimOffset}°`;
   updateScoreChip(s);
@@ -48,6 +51,12 @@ function applyState(s) {
     }
   }
   buildScorecard(s);
+
+  // round-over: auto-open the card exactly once (latched on the false->true edge), and
+  // lock out further play. Lives here so the pendingState/animation path triggers it too.
+  if (s.over && !prevOver) { $('scorecard').classList.remove('hidden'); $('practice').classList.add('hidden'); }
+  prevOver = s.over;
+  $('btn-practice').classList.toggle('hidden', !!s.over);
 }
 
 async function loadGeometry() {
@@ -148,15 +157,24 @@ function shotToast(shot) {
 }
 
 // ---------- HUD chips ----------
+const FWD_ARIA = {
+  'Pick up': 'Pick up this hole and go to the next',
+  Skip: 'Skip this hole and go to the next',
+  'Next hole': 'Go to the next hole',
+  'Finish round': 'Finish the round and see the scorecard',
+};
+function updateForward(s) {
+  const f = forwardLabel(s);
+  const btn = $('btn-next');
+  btn.classList.toggle('hidden', !!f.hidden);
+  if (f.label) { btn.textContent = `${f.label} ▶`; btn.setAttribute('aria-label', FWD_ARIA[f.label] || f.label); }
+}
 function updateScoreChip(s) {
-  let toPar = 0;
-  for (let i = 0; i < s.scores.length; i++) {
-    if (s.scores[i] != null) toPar += s.scores[i] - s.pars[i];
-  }
+  const t = toPar(s.scores, s.pars);
   const chip = $('score-chip');
-  chip.textContent = toPar === 0 ? 'E' : toPar > 0 ? `+${toPar}` : `${toPar}`;
-  chip.classList.toggle('under', toPar < 0);
-  chip.classList.toggle('over', toPar > 0);
+  chip.textContent = t === 0 ? 'E' : t > 0 ? `+${t}` : `${t}`;
+  chip.classList.toggle('under', t < 0);
+  chip.classList.toggle('over', t > 0);
 }
 
 function updateHolePills(s) {
@@ -164,16 +182,31 @@ function updateHolePills(s) {
   if (el.children.length !== s.holeCount) {
     el.innerHTML = '';
     for (let i = 1; i <= s.holeCount; i++) {
-      const p = document.createElement('div');
-      p.className = 'pill'; p.textContent = i; p.dataset.h = i;
+      const p = document.createElement('button');
+      p.className = 'pill'; p.textContent = i; p.dataset.h = i; p.type = 'button';
+      p.onclick = () => reviewHoleOnCard(+p.dataset.h);
       el.appendChild(p);
     }
   }
   for (const p of el.children) {
     const h = +p.dataset.h;
+    const done = s.scores[h - 1] != null;
     p.classList.toggle('active', h === s.hole);
-    p.classList.toggle('done', s.scores[h - 1] != null);
+    p.classList.toggle('done', done);
+    p.classList.toggle('pickedup', !!(s.pickedUp && s.pickedUp[h - 1]));
+    p.disabled = !done && h !== s.hole; // only played holes (and the current one) are reachable
+    p.setAttribute('aria-label', done ? `Hole ${h}, score ${s.scores[h - 1]}` : `Hole ${h}`);
+    if (h === s.hole) p.setAttribute('aria-current', 'true'); else p.removeAttribute('aria-current');
   }
+}
+
+// Review a played hole: open the scorecard and highlight that hole's column.
+// (E1 — review is the scorecard, not a shot replay or a camera move.)
+function reviewHoleOnCard(h) {
+  if (!state || state.scores[h - 1] == null) return;
+  reviewHole = h - 1;
+  $('scorecard').classList.remove('hidden');
+  buildScorecard(state);
 }
 
 // ---------- hole minimap ----------
@@ -248,22 +281,86 @@ function buildScorecard(s) {
   const n = s.pars.length;
   let h1 = '<tr><th></th>', p1 = '<tr><th>Par</th>', s1 = '<tr><th>Score</th>';
   for (let i = 0; i < n; i++) {
-    h1 += `<th>${i + 1}</th>`;
-    p1 += `<td>${s.pars[i]}</td>`;
+    const hl = i === reviewHole ? ' review' : '';
+    h1 += `<th class="${hl.trim()}">${i + 1}</th>`;
+    p1 += `<td class="${hl.trim()}">${s.pars[i]}</td>`;
     const sc = s.scores[i];
     const cls = sc == null ? '' : sc < s.pars[i] ? 'under' : sc > s.pars[i] ? 'over' : '';
-    s1 += `<td class="${cls}">${sc ?? ''}</td>`;
+    const dot = (s.pickedUp && s.pickedUp[i]) ? '<i class="pu" title="picked up"></i>' : '';
+    s1 += `<td class="${(cls + hl).trim()}">${sc ?? ''}${dot}</td>`;
   }
   const totPar = s.pars.reduce((a, b) => a + b, 0);
   const totScore = s.scores.reduce((a, b) => a + (b || 0), 0);
   $('score-table').innerHTML =
     `<table>${h1}<th>Σ</th></tr>${p1}<td>${totPar}</td></tr>${s1}<td>${totScore || ''}</td></tr></table>`;
+  buildSummary(s);
+}
+
+function nineRel(s, a, b) {
+  let sc = 0, pr = 0;
+  for (let i = a; i < b; i++) { pr += s.pars[i]; if (s.scores[i] != null) sc += s.scores[i]; }
+  return { sc, rel: sc - pr };
+}
+function relTxt(rel) { return rel === 0 ? 'E' : rel > 0 ? `+${rel}` : `${rel}`; }
+
+function highlights(s) {
+  let eagles = 0, birdies = 0, best = null, bestRel = 99;
+  for (let i = 0; i < s.scores.length; i++) {
+    const sc = s.scores[i]; if (sc == null) continue;
+    const rel = sc - s.pars[i];
+    if (rel <= -2) eagles++; else if (rel === -1) birdies++;
+    if (rel < bestRel) { bestRel = rel; best = i + 1; }
+  }
+  const chips = [];
+  if (eagles) chips.push(`<span class="sum-chip good">${eagles} eagle${eagles > 1 ? 's' : ''}+</span>`);
+  if (birdies) chips.push(`<span class="sum-chip good">${birdies} birdie${birdies > 1 ? 's' : ''}</span>`);
+  if (!eagles && !birdies) chips.push('<span class="sum-chip">No birdies this round</span>');
+  if (best != null) chips.push(`<span class="sum-chip">Best: hole ${best}</span>`);
+  return `<div class="sum-hi">${chips.join('')}</div>`;
+}
+
+// Round-complete header (D4 calm payoff): hero to-par + verdict, nines (18 only),
+// highlights. Reuses the same #scorecard panel (D5), shown only when the round is over.
+function buildSummary(s) {
+  const el = $('score-summary');
+  $('btn-restart').textContent = s.over ? 'New round' : 'Restart round';
+  $('btn-changecourse').classList.toggle('hidden', !s.over);
+  $('score-title').classList.toggle('hidden', !!s.over);
+  if (!s.over) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const t = toPar(s.scores, s.pars);
+  const totPar = s.pars.reduce((a, b) => a + b, 0);
+  const totScore = s.scores.reduce((a, b) => a + (b || 0), 0);
+  const tTxt = t === 0 ? 'E' : t > 0 ? `+${t}` : `${t}`;
+  let nines = '';
+  if (s.pars.length === 18) {
+    const o = nineRel(s, 0, 9), i = nineRel(s, 9, 18);
+    nines = '<div class="sum-nines">'
+      + `<div class="sum-tile"><span>Out</span><b>${o.sc || '–'} <em>${relTxt(o.rel)}</em></b></div>`
+      + `<div class="sum-tile"><span>In</span><b>${i.sc || '–'} <em>${relTxt(i.rel)}</em></b></div>`
+      + '</div>';
+  }
+  el.innerHTML = '<div class="sum-eyebrow">⛳ Round complete</div>'
+    + '<div class="sum-hero">'
+    + `<div class="sum-topar ${t < 0 ? 'under' : t > 0 ? 'over' : ''}">${tTxt}</div>`
+    + `<div class="sum-meta"><b>${verdict(t)}</b><span>${totScore} strokes · par ${totPar}</span></div>`
+    + `</div>${nines}${highlights(s)}`;
 }
 
 // ---------- controls ----------
-$('btn-next').onclick = () => fetch('/api/next-hole', { method: 'POST' });
-$('btn-score').onclick = () => $('scorecard').classList.toggle('hidden');
-$('btn-restart').onclick = () => { fetch('/api/reset', { method: 'POST' }); $('scorecard').classList.add('hidden'); };
+let fwdBusy = false; // debounce the forward POST so a double-press can't skip a hole (F6)
+$('btn-next').onclick = async () => {
+  if (fwdBusy) return;
+  fwdBusy = true;
+  try { await fetch('/api/next-hole', { method: 'POST' }); }
+  finally { setTimeout(() => { fwdBusy = false; }, 250); }
+};
+function toggleScorecard() { reviewHole = null; $('scorecard').classList.toggle('hidden'); if (state) buildScorecard(state); }
+$('btn-score').onclick = toggleScorecard;
+$('stat-hole').onclick = toggleScorecard;   // the HOLE badge opens the scorecard (phone hole-nav)
+$('stat-hole').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleScorecard(); } };
+$('btn-restart').onclick = () => { reviewHole = null; fetch('/api/reset', { method: 'POST' }); $('scorecard').classList.add('hidden'); };
+$('btn-changecourse').onclick = () => { $('scorecard').classList.add('hidden'); openCourseModal(); };
 $('btn-practice').onclick = () => $('practice').classList.toggle('hidden');
 $('btn-course').onclick = () => openCourseModal();
 
@@ -308,7 +405,7 @@ function setPractice(speed, vla, spin) {
   $('ps-spin').value = spin; $('ps-spin-v').textContent = `${spin} rpm`;
 }
 $('ps-hit').onclick = () => {
-  if (animating) return;
+  if (animating || state?.over) return;
   fetch('/api/test-shot', {
     method: 'POST',
     body: JSON.stringify({
