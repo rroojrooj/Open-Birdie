@@ -2,7 +2,7 @@
 
 All notable changes to Open-Birdie are documented here.
 
-## [Unreleased]
+## [0.5.0] - 2026-06-15
 
 ### Changed
 - **Less uniform turf** — large-scale tonal variation (~50–120m patches) on the grass
