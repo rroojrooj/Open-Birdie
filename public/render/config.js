@@ -3,7 +3,7 @@
 export const RENDER_CONFIG = {
   // Tier 0 (foundation) — on by default
   hdriEnv: true,
-  groundedSky: true,
+  groundedSky: false, // off with a puresky HDRI (it has no ground detail to project — was a white band)
   aerialFog: true,
   // Tier 0 tunables (rebalanced empirically in Task 7)
   toneMappingExposure: 0.6,
@@ -15,7 +15,7 @@ export const RENDER_CONFIG = {
   // Set BOTH (degrees) to override when the estimate is wrong on a diffuse HDRI (D2).
   sunAzimuthDeg: null,
   sunAltitudeDeg: null,
-  hdriFile: 'meadow_4k.hdr',
+  hdriFile: 'puresky_4k.hdr',
   // Tier 1
   foliageTrees: true,
   windStrength: 0.5, // canopy sway amount
