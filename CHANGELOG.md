@@ -2,6 +2,16 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [0.4.0] - 2026-06-14
+
+### Added
+- **Animated water** — course water hazards now ripple and reflect the sky instead
+  of sitting as a flat blue plane. An analytic wave field (golden-angle directions,
+  non-harmonic frequencies) perturbs the surface normal in-shader to shimmer the HDRI
+  reflection, with a Fresnel deep/shallow gradient and a sun-specular term — no texture
+  asset, integrates with fog + post-FX (`public/render/water.js`). Gated by
+  `config.water` (falls back to the static plane when off).
+
 ## [0.3.0] - 2026-06-14
 
 Turf and atmosphere polish on top of the 0.2.0 renderer overhaul.
