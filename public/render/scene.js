@@ -201,7 +201,7 @@ export class GolfScene {
     this._placeSkybox();
     group.add(this._terrainMesh(b));
     this._waterMeshes(geo).forEach((m) => group.add(m));
-    this._treeMeshes(geo).forEach((m) => group.add(m));
+    this._addTrees(geo, group);
 
     this.courseGroup = group;
     this.scene.add(group);
@@ -411,26 +411,35 @@ export class GolfScene {
     return meshes;
   }
 
-  _treeMeshes(geo) {
+  _treeSpots(geo) {
     const spots = [];
     const rnd = mulberry32(1234);
-    for (const t of geo.trees || []) spots.push({ x: t[0], y: t[1], s: 0.85 + rnd() * 0.5 });
+    const CAP = RENDER_CONFIG.treeCap;
+    for (const t of geo.trees || []) { if (spots.length >= CAP) break; spots.push({ x: t[0], y: t[1], s: 0.85 + rnd() * 0.5 }); }
     for (const w of geo.woods || []) {
+      if (spots.length >= CAP) break;
       let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
       for (const [x, y] of w) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
-      for (let gx = minX; gx < maxX; gx += 11) {
-        for (let gy = minY; gy < maxY; gy += 11) {
-          if (spots.length > 4800) break;
-          const x = gx + (rnd() - 0.5) * 8, y = gy + (rnd() - 0.5) * 8;
+      for (let gx = minX; gx < maxX; gx += 18) {
+        if (spots.length >= CAP) break;
+        for (let gy = minY; gy < maxY; gy += 18) {
+          if (spots.length >= CAP) break;
+          const x = gx + (rnd() - 0.5) * 12, y = gy + (rnd() - 0.5) * 12;
           if (pointInPoly(x, y, w)) spots.push({ x, y, s: 0.7 + rnd() * 0.7 });
         }
       }
     }
-    if (!spots.length) return [];
+    return spots;
+  }
 
-    const built = buildTrees(spots, (x, y) => this.hAt(x, y), V, rnd);
-    this._treeWind = built.windUpdate; // ticked in _frame
-    return built.meshes;
+  // Trees load from a glTF model (async); added to the course group when ready.
+  _addTrees(geo, group) {
+    const spots = this._treeSpots(geo);
+    if (!spots.length) return;
+    buildTrees(spots, (x, y) => this.hAt(x, y), V).then(({ meshes, windUpdate }) => {
+      meshes.forEach((m) => group.add(m));
+      this._treeWind = windUpdate;
+    }).catch((e) => console.error('[trees] load failed', e));
   }
 
   // ---------- gameplay state ----------
