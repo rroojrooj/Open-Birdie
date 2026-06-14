@@ -2,7 +2,7 @@
 
 All notable changes to Open-Birdie are documented here.
 
-## [Unreleased]
+## [0.7.0] - 2026-06-15
 
 ### Changed
 - **Waving pin flag** — the flagstick's flag is now a subdivided cloth rippled in the
