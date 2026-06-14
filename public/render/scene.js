@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { PostFX } from './postfx.js';
 import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
 import { makeAerialFog } from './atmosphere.js';
-import { buildTrees } from './trees.js';
+import { buildCardTrees } from './tree-cards.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeTurfMaterial } from './turf.js';
@@ -422,12 +422,12 @@ export class GolfScene {
 
   // Trees load from a glTF model (async); added to the course group when ready.
   _addTrees(geo, group) {
+    if (!RENDER_CONFIG.foliageTrees) return;
     const spots = this._treeSpots(geo);
     if (!spots.length) return;
-    buildTrees(spots, (x, y) => this.hAt(x, y), V).then(({ meshes, windUpdate }) => {
-      meshes.forEach((m) => group.add(m));
-      this._treeWind = windUpdate;
-    }).catch((e) => console.error('[trees] load failed', e));
+    const { meshes, windUpdate } = buildCardTrees(spots, (x, y) => this.hAt(x, y), V);
+    meshes.forEach((m) => group.add(m));
+    this._treeWind = windUpdate;
   }
 
   // Clumped scatter across rough polygons. Real fescue grows in dense patches

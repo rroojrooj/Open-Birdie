@@ -11,10 +11,14 @@ required for CC0; recorded here for provenance.
   disabled with it (it has no ground detail to project).
 
 ## Trees (Tier 1)
-- `public/assets/trees/conifer.glb` — decimated from "Fir Tree 01" by Poly Haven (CC0).
-  Source: https://polyhaven.com/a/fir_tree_01
-  The original ~7M-triangle film model was decimated with gltf-transform to ~80k tris
-  (textures 1k) for GPU instancing. Used as the photoreal conifer model.
+- `public/assets/trees/foliage_diff.jpg`, `foliage_alpha.jpg`, `bark_diff.jpg` — from
+  "Fir Tree 01" by Poly Haven (CC0). Source: https://polyhaven.com/a/fir_tree_01
+  The original is a ~7M-triangle film model whose foliage is millions of geometric
+  needles — decimating that to an instanceable budget collapses the needles into bare
+  sticks. Instead we reuse the model's **needle-sprig atlas** (`twig_diff` color +
+  `twig_alpha` cutout) and **bark** (`bark_diff`) on procedurally-built foliage cards:
+  a tapered bark trunk + a conical canopy of cross-fan cards (`public/render/tree-cards.js`).
+  Lush and cheap to instance (~240 tris/tree vs ~80k for the decimated model).
 
 ## Turf textures (Tier 2)
 - `public/assets/turf/grass_{color,normal,rough}.jpg` — "Grass 004" by ambientCG (CC0).
