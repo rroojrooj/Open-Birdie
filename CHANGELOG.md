@@ -2,6 +2,15 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [Unreleased]
+
+### Added
+- **Tree grounding** — soft contact-shadow decal blobs under each tree so they sit on
+  the turf instead of looking pasted on. One instanced, unlit, depth-write-off,
+  non-shadowing draped quad per tree (`public/render/grounding.js`, `config.grounding`).
+  Chosen over GTAO, which can't run here (its normal pre-pass recompiles our custom
+  `onBeforeCompile` materials and fails to compile).
+
 ## [0.5.0] - 2026-06-15
 
 ### Changed

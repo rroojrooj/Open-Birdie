@@ -6,6 +6,7 @@ import { PostFX } from './postfx.js';
 import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
 import { makeAerialFog } from './atmosphere.js';
 import { buildCardTrees } from './tree-cards.js';
+import { buildGrounding } from './grounding.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeTurfMaterial } from './turf.js';
@@ -428,6 +429,9 @@ export class GolfScene {
     const { meshes, windUpdate } = buildCardTrees(spots, (x, y) => this.hAt(x, y), V);
     meshes.forEach((m) => group.add(m));
     this._treeWind = windUpdate;
+    if (RENDER_CONFIG.grounding) {
+      buildGrounding(spots, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
+    }
   }
 
   // Clumped scatter across rough polygons. Real fescue grows in dense patches
