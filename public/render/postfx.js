@@ -6,9 +6,11 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { RENDER_CONFIG } from './config.js';
 
 export class PostFX {
   constructor(renderer, scene, camera) {
@@ -19,6 +21,20 @@ export class PostFX {
     // so the scene stays HDR/linear until OutputPass tone-maps it.
     this.composer = new EffectComposer(renderer);
     this.composer.addPass(new RenderPass(scene, camera));
+
+    // GTAO for contact grounding (tree bases, terrain folds, bunker lips). Small
+    // WORLD-space radius + steep falloff so it darkens only nearby contacts and
+    // never haloes over the 12000m far plane (the reason plain SAO was omitted).
+    if (RENDER_CONFIG.gtao) {
+      const gtao = new GTAOPass(scene, camera, size.x, size.y);
+      gtao.output = GTAOPass.OUTPUT.Default;
+      gtao.updateGtaoMaterial({
+        radius: 1.6, distanceExponent: 2.0, thickness: 1.0,
+        scale: 1.4, samples: 16, distanceFallOff: 1.0, screenSpaceRadius: false,
+      });
+      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+      this.composer.addPass(gtao);
+    }
 
     // Bloom kept deliberately minimal: the Preetham sky is broadly bright, so
     // anything stronger blooms the whole sky into a haze (verified on-screen).

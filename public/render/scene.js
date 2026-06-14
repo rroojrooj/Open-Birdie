@@ -2,9 +2,12 @@
 // Sim coords: x = east, y = north, z = up (meters).
 // Three coords: x = east, y = up, z = -north.
 import * as THREE from 'three';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { PostFX } from './postfx.js';
-import { grassNormalTexture } from './textures.js';
+import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
+import { makeAerialFog } from './atmosphere.js';
+import { buildTrees } from './trees.js';
+import { makeTurfMaterial } from './turf.js';
+import { RENDER_CONFIG } from './config.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -36,8 +39,8 @@ const COLORS = {
   rough: '#3c5a33',
   wood: '#2b4124',
   range: '#567a44',
-  fairwayA: '#6f9e54', fairwayB: '#62904a',
-  greenA: '#82b46c', greenB: '#76a760',
+  fairwayA: '#5f8d49', fairwayB: '#588343', // base mown tone (mow stripes added in shader)
+  greenA: '#79ac63', greenB: '#6c9b56',
   tee: '#6b9850',
   bunker: '#cbb583',
   water: '#2f6d97',
@@ -52,11 +55,11 @@ export class GolfScene {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.45;
+    this.renderer.toneMappingExposure = RENDER_CONFIG.toneMappingExposure;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xa6c2d6, 1600, 7000);
+    // fog is set once the HDRI horizon color is known (see _setupSkyAndLights)
     this.camera = new THREE.PerspectiveCamera(58, container.clientWidth / container.clientHeight, 0.3, 12000);
     this.camera.position.set(0, 30, 60);
 
@@ -110,43 +113,39 @@ export class GolfScene {
   }
 
   _setupSkyAndLights() {
-    const sky = new Sky();
-    sky.scale.setScalar(45000);
-    const u = sky.material.uniforms;
-    u.turbidity.value = 2.5;
-    u.rayleigh.value = 2.0;
-    u.mieCoefficient.value = 0.0022;
-    u.mieDirectionalG.value = 0.85;
-    // ~30° sun elevation: reads as midday but low enough to cast shadows that
-    // give the terrain and trees real shape (the flat look was a high, fill-
-    // dominated light with nothing to model the surface).
+    // neutral hold until the HDRI resolves (avoids a black flash)
+    this.scene.background = new THREE.Color(0x9fb8cf);
+    // sun must exist before the first frame / first _fitShadows; aim refined on load
     this.sunDir = new THREE.Vector3().setFromSphericalCoords(
-      1, THREE.MathUtils.degToRad(90 - 30), THREE.MathUtils.degToRad(135)
-    );
-    u.sunPosition.value.copy(this.sunDir);
-
-    // bake sky into an environment map for PBR ambient/specular
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const envScene = new THREE.Scene();
-    envScene.add(sky);
-    this.scene.environment = pmrem.fromScene(envScene, 0.02).texture;
-    this.scene.environmentIntensity = 0.5; // env was double-counting the fill
-    this.scene.add(sky); // moves it from envScene into the visible scene
-
-    // Strong warm key light so lit turf pops and shadows read; the fill is
-    // pulled way down so the directional contrast survives. Previously the
-    // ambient was triple-counted (sun + hemisphere + full-strength env),
-    // which flattened everything.
-    this.sun = new THREE.DirectionalLight(0xfff4e0, 2.4);
-    this.sun.castShadow = true;
-    // 4096 halves the shadow texel size over the per-hole frustum, so tree
-    // shadows read as canopy shapes instead of soft ink-blots.
-    this.sun.shadow.mapSize.set(4096, 4096);
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.35;
+      1, THREE.MathUtils.degToRad(60), THREE.MathUtils.degToRad(135));
+    this.sun = makeSun(this.sunDir);
     this.scene.add(this.sun, this.sun.target);
 
-    this.scene.add(new THREE.HemisphereLight(0xaeccff, 0x46603a, 0.25));
+    // HDRI: image-based lighting + visible sky + ground horizon + sun direction.
+    // One source of truth for the sun (this.sunDir) drives the light + _fitShadows.
+    this.envReady = loadHDRIEnvironment(this.renderer).then(({ envTexture, equirect, sunDir, horizonColor }) => {
+      this.scene.environment = envTexture;
+      this.scene.environmentIntensity = RENDER_CONFIG.environmentIntensity;
+      this.scene.background = equirect;
+      this._equirect = equirect;
+      this.sunDir.copy(sunDir);
+      if (RENDER_CONFIG.aerialFog) this.scene.fog = makeAerialFog(horizonColor);
+      if (this.bounds) this._placeSkybox();                     // course already loaded
+      if (this._activeHole) this._fitShadows(this._activeHole); // re-aim shadows to HDRI sun
+    }).catch((e) => {
+      console.error('[env] HDRI load failed, using fallback env', e);
+      this.scene.environment = makeFallbackEnv(this.renderer);  // D1: keep scene lit
+      this.scene.environmentIntensity = RENDER_CONFIG.environmentIntensity;
+    });
+  }
+
+  // GroundedSkybox needs course bounds, so it's (re)placed on course load and on
+  // env-ready, whichever comes second.
+  _placeSkybox() {
+    if (!RENDER_CONFIG.groundedSky || !this._equirect || !this.bounds) return;
+    if (this._skybox) { this.scene.remove(this._skybox); this._skybox.geometry?.dispose(); }
+    this._skybox = makeGroundedSkybox(this._equirect, this.bounds);
+    this.scene.add(this._skybox);
   }
 
   _makePin() {
@@ -199,9 +198,10 @@ export class GolfScene {
 
     const b = this._bounds(geo);
     this.bounds = b;
+    this._placeSkybox();
     group.add(this._terrainMesh(b));
     this._waterMeshes(geo).forEach((m) => group.add(m));
-    this._treeMeshes(geo).forEach((m) => group.add(m));
+    this._addTrees(geo, group);
 
     this.courseGroup = group;
     this.scene.add(group);
@@ -255,19 +255,11 @@ export class GolfScene {
     const tex = new THREE.CanvasTexture(this._paintSplat(b));
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    const maskTex = new THREE.CanvasTexture(this._paintStripeMask(b));
+    maskTex.colorSpace = THREE.NoColorSpace;
+    maskTex.anisotropy = tex.anisotropy;
 
-    // World-scale detail relief: tile the procedural grass normal map ~every
-    // 2.5m across the course so the turf has per-meter surface for the sun to
-    // shade. It shares the terrain's 0..1 uv; its own repeat does the tiling.
-    const normal = grassNormalTexture();
-    const tileM = 2.5;
-    normal.repeat.set((b.maxX - b.minX) / tileM, (b.maxY - b.minY) / tileM);
-    normal.anisotropy = tex.anisotropy;
-
-    const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
-      map: tex, normalMap: normal, normalScale: new THREE.Vector2(0.5, 0.5),
-      roughness: 0.97, metalness: 0,
-    }));
+    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, maskTex, b, tex.anisotropy));
     mesh.receiveShadow = true;
     return mesh;
   }
@@ -309,26 +301,8 @@ export class GolfScene {
     ctx.fillStyle = ctx.createPattern(ncv, 'repeat');
     ctx.fillRect(0, 0, W, H);
 
-    // macro mottling: large soft patches of lighter/darker turf so the ground
-    // still reads as varied grass from an elevated camera (the per-meter normal
-    // map goes sub-pixel at that distance). Painted before the surface fills, so
-    // fairway/green/bunker/water cover it where they apply.
-    const mcv = document.createElement('canvas');
-    mcv.width = mcv.height = 24;
-    const mctx = mcv.getContext('2d');
-    const mrnd = mulberry32(53);
-    const mimg = mctx.createImageData(24, 24);
-    for (let i = 0; i < mimg.data.length; i += 4) {
-      const v = 100 + mrnd() * 90; // around mid-grey -> soft-light = subtle lift/dip
-      mimg.data[i] = mimg.data[i + 1] = mimg.data[i + 2] = v; mimg.data[i + 3] = 255;
-    }
-    mctx.putImageData(mimg, 0, 0);
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    ctx.globalCompositeOperation = 'soft-light';
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(mcv, 0, 0, W, H);
-    ctx.restore();
+    // (Macro-mottling removed in Tier 2: the tiled PBR grass detail now provides
+    // turf variation; the old large soft-light patches read as a blob/smudge.)
 
     const fillKind = (kinds, color, blur = 2) => {
       ctx.save();
@@ -349,46 +323,42 @@ export class GolfScene {
     for (const w of geo.woods || []) { tracePoly(w); ctx.fill(); }
     ctx.restore();
 
-    fillKind(['rough'], COLORS.rough, 3);
-    fillKind(['range'], COLORS.range, 3);
+    fillKind(['rough'], COLORS.rough, 1.5);
+    fillKind(['range'], COLORS.range, 1.5);
 
-    // fairways with mow stripes
-    this._stripedLayer(ctx, W, H, ppm, b, ['fairway'], COLORS.fairwayA, COLORS.fairwayB, 9);
+    // mown surfaces — uniform base color; mow stripes are added physically in the
+    // turf shader (mask-gated) so they survive the tiled grass detail.
+    fillKind(['fairway'], COLORS.fairwayA, 1.2);
     fillKind(['tee'], COLORS.tee, 1.5);
-    this._stripedLayer(ctx, W, H, ppm, b, ['green'], COLORS.greenA, COLORS.greenB, 3.2);
+    fillKind(['green'], COLORS.greenA, 1.0);
     fillKind(['bunker'], COLORS.bunker, 1.2);
     fillKind(['water'], COLORS.water, 1.5);
     return cv;
   }
 
-  _stripedLayer(ctx, W, H, ppm, b, kinds, colA, colB, stripeM) {
-    const layer = document.createElement('canvas');
-    layer.width = W; layer.height = H;
-    const lctx = layer.getContext('2d');
-    const px = (x) => (x - b.minX) * ppm;
-    const py = (y) => (b.maxY - y) * ppm;
-    lctx.filter = 'blur(1.5px)';
-    lctx.fillStyle = colA;
+  // Mask for shader mowing stripes: white on mown surfaces (fairway/green/tee),
+  // black elsewhere. Sampled in the turf shader so stripes only appear on mown turf.
+  _paintStripeMask(b) {
+    const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
+    const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
+    const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    const px = (x) => (x - b.minX) * ppm, py = (y) => (b.maxY - y) * ppm;
+    ctx.fillStyle = '#fff';
+    ctx.filter = 'blur(1px)';
     for (const s of this.geo.surfaces) {
-      if (!kinds.includes(s.kind)) continue;
-      lctx.beginPath();
-      lctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
-      for (let i = 1; i < s.poly.length; i++) lctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
-      lctx.closePath();
-      lctx.fill();
+      if (s.kind !== 'fairway' && s.kind !== 'green' && s.kind !== 'tee') continue;
+      ctx.beginPath();
+      ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
+      for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
+      ctx.closePath();
+      ctx.fill();
     }
-    lctx.filter = 'none';
-    // diagonal stripes clipped to what we just painted
-    lctx.globalCompositeOperation = 'source-atop';
-    lctx.fillStyle = colB;
-    const sw = stripeM * ppm;
-    const diag = Math.hypot(W, H);
-    lctx.save();
-    lctx.translate(W / 2, H / 2);
-    lctx.rotate(Math.PI / 5.2);
-    for (let x = -diag; x < diag; x += sw * 2) lctx.fillRect(x, -diag, sw, diag * 2);
-    lctx.restore();
-    ctx.drawImage(layer, 0, 0);
+    return cv;
   }
 
   _waterMeshes(geo) {
@@ -411,67 +381,35 @@ export class GolfScene {
     return meshes;
   }
 
-  _treeMeshes(geo) {
+  _treeSpots(geo) {
     const spots = [];
     const rnd = mulberry32(1234);
-    for (const t of geo.trees || []) spots.push({ x: t[0], y: t[1], s: 0.85 + rnd() * 0.5 });
+    const CAP = RENDER_CONFIG.treeCap;
+    for (const t of geo.trees || []) { if (spots.length >= CAP) break; spots.push({ x: t[0], y: t[1], s: 0.85 + rnd() * 0.5 }); }
     for (const w of geo.woods || []) {
+      if (spots.length >= CAP) break;
       let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
       for (const [x, y] of w) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
-      for (let gx = minX; gx < maxX; gx += 11) {
-        for (let gy = minY; gy < maxY; gy += 11) {
-          if (spots.length > 4800) break;
-          const x = gx + (rnd() - 0.5) * 8, y = gy + (rnd() - 0.5) * 8;
+      for (let gx = minX; gx < maxX; gx += 18) {
+        if (spots.length >= CAP) break;
+        for (let gy = minY; gy < maxY; gy += 18) {
+          if (spots.length >= CAP) break;
+          const x = gx + (rnd() - 0.5) * 12, y = gy + (rnd() - 0.5) * 12;
           if (pointInPoly(x, y, w)) spots.push({ x, y, s: 0.7 + rnd() * 0.7 });
         }
       }
     }
-    if (!spots.length) return [];
+    return spots;
+  }
 
-    const n = spots.length;
-    const trunkGeom = new THREE.CylinderGeometry(0.16, 0.32, 2.8, 6);
-    trunkGeom.translate(0, 1.4, 0);
-    // Lumpy crown: a detail icosahedron displaced per-vertex so it reads as
-    // organic foliage instead of a perfect blob. The noise is baked once and
-    // shared; per-instance rotation + HSL keep the trees from looking cloned.
-    const crownGeom = new THREE.IcosahedronGeometry(2.4, 2);
-    const cpos = crownGeom.attributes.position;
-    const crnd = mulberry32(99);
-    const cv = new THREE.Vector3();
-    for (let i = 0; i < cpos.count; i++) {
-      cv.fromBufferAttribute(cpos, i).multiplyScalar(0.72 + crnd() * 0.5);
-      cpos.setXYZ(i, cv.x, cv.y, cv.z);
-    }
-    crownGeom.computeVertexNormals();
-    crownGeom.scale(1, 1.18, 1);
-    crownGeom.translate(0, 4.4, 0);
-
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3f28, roughness: 0.95 });
-    const crownMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
-    const trunks = new THREE.InstancedMesh(trunkGeom, trunkMat, n);
-    const crowns = new THREE.InstancedMesh(crownGeom, crownMat, n);
-    trunks.castShadow = true;
-    crowns.castShadow = true;
-    crowns.receiveShadow = true;
-
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    const col = new THREE.Color();
-    for (let i = 0; i < n; i++) {
-      const sp = spots[i];
-      const h = this.hAt(sp.x, sp.y);
-      q.setFromAxisAngle(up, rnd() * Math.PI * 2);
-      m4.compose(V(sp.x, sp.y, h), q, new THREE.Vector3(sp.s, sp.s * (0.85 + rnd() * 0.4), sp.s));
-      trunks.setMatrixAt(i, m4);
-      crowns.setMatrixAt(i, m4);
-      col.setHSL(0.29 + rnd() * 0.06, 0.45 + rnd() * 0.2, 0.22 + rnd() * 0.1);
-      crowns.setColorAt(i, col);
-    }
-    trunks.instanceMatrix.needsUpdate = true;
-    crowns.instanceMatrix.needsUpdate = true;
-    if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
-    return [trunks, crowns];
+  // Trees load from a glTF model (async); added to the course group when ready.
+  _addTrees(geo, group) {
+    const spots = this._treeSpots(geo);
+    if (!spots.length) return;
+    buildTrees(spots, (x, y) => this.hAt(x, y), V).then(({ meshes, windUpdate }) => {
+      meshes.forEach((m) => group.add(m));
+      this._treeWind = windUpdate;
+    }).catch((e) => console.error('[trees] load failed', e));
   }
 
   // ---------- gameplay state ----------
@@ -484,6 +422,7 @@ export class GolfScene {
     this.orbit = { yaw: 0, dist: 14, height: 4.6 };
     this.camMode = 'idle';
     this._snapIdleCam();
+    this._activeHole = hole;
     this._fitShadows(hole);
     this._aimLineUpdate();
     this._clearTrail();
@@ -693,6 +632,7 @@ export class GolfScene {
     this.pin.scale.setScalar(THREE.MathUtils.clamp(pd * 0.013, 1, 6));
 
     this._updateMarkers();
+    if (this._treeWind) this._treeWind(this.clock.elapsedTime);
     this.postfx.render();
   }
 
