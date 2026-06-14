@@ -4,6 +4,15 @@ All notable changes to Open-Birdie are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **GPU memory leaks on hole reload** — `loadCourse` now disposes `alphaMap`/`normalMap`/
+  `roughnessMap`, the turf's shader-injected textures, and each foliage `customDepthMaterial`
+  (previously only `.map` was freed, leaking foliage/turf textures every reload).
+- **Per-frame trail material leak** — the shot tracer's `LineBasicMaterial` was reallocated
+  every frame (~840 leaked objects/shot); it's now created once and reused.
+- Stale per-course wind callbacks are reset on reload; hoisted a per-blade allocation out of
+  the fescue build loop.
+
 ### Added
 - **Tree grounding** — soft contact-shadow decal blobs under each tree so they sit on
   the turf instead of looking pasted on. One instanced, unlit, depth-write-off,

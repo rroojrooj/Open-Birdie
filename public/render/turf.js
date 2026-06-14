@@ -75,5 +75,8 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         #endif`);
   };
   mat.customProgramCacheKey = () => 'turf-stripe-sand';
+  // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
+  // the standard material slots, so register them for disposal on course reload.
+  mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
   return mat;
 }

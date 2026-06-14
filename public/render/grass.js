@@ -65,7 +65,7 @@ export function buildGrass(spots, hAt, V) {
   mesh.castShadow = false;   // blade shadows are expensive + low value at this density
   mesh.receiveShadow = true;
 
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), scaleVec = new THREE.Vector3();
   const rnd = mul32(8081);
   const H = RENDER_CONFIG.grassHeight;
   let bi = 0;
@@ -75,7 +75,8 @@ export function buildGrass(spots, hAt, V) {
       const h = hAt(x, y);
       q.setFromAxisAngle(up, rnd() * Math.PI * 2);
       const sc = H * (0.6 + rnd() * 0.9) * (sp.s || 1);
-      m4.compose(V(x, y, h), q, new THREE.Vector3(sc * (0.8 + rnd() * 0.5), sc, sc));
+      scaleVec.set(sc * (0.8 + rnd() * 0.5), sc, sc);
+      m4.compose(V(x, y, h), q, scaleVec);
       mesh.setMatrixAt(bi++, m4);
     }
   }
