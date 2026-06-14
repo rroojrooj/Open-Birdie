@@ -28,6 +28,7 @@ export const RENDER_CONFIG = {
   grassHeight: 0.7, // base blade height (m), jittered per instance
   gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
   colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
+  water: true, // animated water: analytic ripples + fresnel + sun glitter (else static plane)
   dof: false,
   volumetricClouds: false,
 };

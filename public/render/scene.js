@@ -7,6 +7,7 @@ import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } fro
 import { makeAerialFog } from './atmosphere.js';
 import { buildTrees } from './trees.js';
 import { buildGrass } from './grass.js';
+import { buildWater } from './water.js';
 import { makeTurfMaterial } from './turf.js';
 import { RENDER_CONFIG } from './config.js';
 
@@ -201,7 +202,7 @@ export class GolfScene {
     this.bounds = b;
     this._placeSkybox();
     group.add(this._terrainMesh(b));
-    this._waterMeshes(geo).forEach((m) => group.add(m));
+    this._addWater(geo, group);
     this._addTrees(geo, group);
     this._addGrass(geo, group);
 
@@ -365,6 +366,17 @@ export class GolfScene {
       ctx.fill();
     }
     return cv;
+  }
+
+  // Animated water (config.water) or the static fallback plane.
+  _addWater(geo, group) {
+    if (RENDER_CONFIG.water) {
+      const { meshes, waterUpdate } = buildWater(geo.surfaces, (x, y) => this.hAt(x, y), this.sunDir);
+      meshes.forEach((m) => group.add(m));
+      this._waterUpdate = waterUpdate;
+    } else {
+      this._waterMeshes(geo).forEach((m) => group.add(m));
+    }
   }
 
   _waterMeshes(geo) {
@@ -663,6 +675,7 @@ export class GolfScene {
     this._updateMarkers();
     if (this._treeWind) this._treeWind(this.clock.elapsedTime);
     if (this._grassWind) this._grassWind(this.clock.elapsedTime);
+    if (this._waterUpdate) this._waterUpdate(this.clock.elapsedTime);
     this.postfx.render();
   }
 
