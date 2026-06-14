@@ -121,14 +121,17 @@ function broadleafGeometry(H, rnd) {
   return finalize(acc);
 }
 
-function addWind(material, windRef) {
+function addFoliageShader(material, windRef, canopyTop) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
     windRef.push(shader.uniforms.uTime);
+    shader.uniforms.uCanopyTop = { value: canopyTop };
     const amp = (RENDER_CONFIG.windStrength || 0.5) * 0.03;
+    // vertex: wind sway + a normalized canopy-height varying for volume shading
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uCanopyTop;\nvarying float vCanopyT;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vCanopyT = clamp(transformed.y / uCanopyTop, 0.0, 1.0);
         {
           float ph = float(gl_InstanceID) * 0.7;
           float h = max(transformed.y - 2.0, 0.0);
@@ -136,8 +139,18 @@ function addWind(material, windRef) {
           transformed.x += s * h * ${amp.toFixed(4)};
           transformed.z += cos(uTime * 0.9 + ph) * h * ${(amp * 0.7).toFixed(4)};
         }`);
+    // fragment: fake canopy volume — dark/cool core+underside, bright/warm sunlit top.
+    // The single biggest "video-game tree" fix; no sun/normal math needed.
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vCanopyT;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        {
+          float ao = mix(0.5, 1.08, vCanopyT);
+          vec3 tone = mix(vec3(0.86, 0.95, 0.88), vec3(1.06, 1.05, 0.90), vCanopyT);
+          diffuseColor.rgb *= ao * tone;
+        }`);
   };
-  material.customProgramCacheKey = () => 'tree-foliage-wind';
+  material.customProgramCacheKey = () => 'tree-foliage-shaded';
 }
 
 const SPECIES = {
@@ -155,7 +168,7 @@ function buildSpecies(spots, hAt, V, sp, windRef) {
     map: diff, alphaMap: alpha, alphaTest: sp.alphaTest, side: THREE.DoubleSide,
     roughness: 0.92, metalness: 0, envMapIntensity: 0.5,
   });
-  addWind(foliageMat, windRef);
+  addFoliageShader(foliageMat, windRef, sp.H);
   const trunkMat = new THREE.MeshStandardMaterial({ map: bark, roughness: 0.95, metalness: 0 });
 
   const fGeo = sp.geom(sp.H, rnd);

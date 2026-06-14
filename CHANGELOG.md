@@ -4,6 +4,11 @@ All notable changes to Open-Birdie are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Foliage volume shading** — tree canopies now have a height gradient (dark, cool core
+  and underside → bright, warm sunlit top) instead of flat uniform lighting, the biggest
+  "video-game tree" fix (`public/render/tree-cards.js`).
+
 ### Added
 - **Distant horizon tree-line** — a jittered tree band around the course perimeter so the
   far horizon reads as a hazy distant forest edge (aerial fog supplies the atmospheric
