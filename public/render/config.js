@@ -24,7 +24,7 @@ export const RENDER_CONFIG = {
   // Later tiers / stretch — off until their tier lands
   pbrTurf: false,
   groundGrass: false,
-  gtao: false,
+  gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
   dof: false,
   volumetricClouds: false,
 };

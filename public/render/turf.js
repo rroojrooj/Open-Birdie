@@ -30,6 +30,7 @@ export function makeTurfMaterial(splatTex, maskTex, bounds, aniso) {
     map: splatTex,
     normalMap, normalScale: new THREE.Vector2(0.8, 0.8),
     roughnessMap, roughness: 1.0, metalness: 0,
+    envMapIntensity: 0.55, // cut the grazing-angle sky sheen that made turf read cool/wet
   });
 
   mat.onBeforeCompile = (shader) => {
@@ -43,6 +44,7 @@ export function makeTurfMaterial(splatTex, maskTex, bounds, aniso) {
         uniform sampler2D uDetail; uniform vec2 uDetailRepeat;
         uniform sampler2D uMask; uniform vec2 uExt; uniform float uStripeM;`)
       .replace('#include <map_fragment>', `#include <map_fragment>
+        #ifdef USE_MAP
         {
           // tiled grass blade detail (luminance only, preserves zone hue)
           vec3 gd = texture2D(uDetail, vMapUv * uDetailRepeat).rgb;
@@ -55,7 +57,8 @@ export function makeTurfMaterial(splatTex, maskTex, bounds, aniso) {
           float band = sin((wx * 0.82 + wy * 0.57) * (3.14159265 / uStripeM));
           float stripe = smoothstep(-0.15, 0.15, band) * 2.0 - 1.0; // ~square ±1
           diffuseColor.rgb *= 1.0 + 0.14 * stripe * m;
-        }`);
+        }
+        #endif`);
   };
   mat.customProgramCacheKey = () => 'turf-stripe';
   return mat;
