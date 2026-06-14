@@ -27,7 +27,7 @@
   <div id="hole-pills" class="hole-pills"></div>
   <div class="spacer"></div>
   <div class="stat-cluster">
-    <div class="stat"><span>HOLE</span><b id="hud-hole">–</b></div>
+    <div class="stat" id="stat-hole" role="button" tabindex="0" title="Open scorecard"><span>HOLE</span><b id="hud-hole">–</b></div>
     <div class="stat"><span>PAR</span><b id="hud-par">–</b></div>
     <div class="stat"><span>LENGTH</span><b id="hud-len">–</b></div>
     <div class="stat accent"><span>TO PIN</span><b id="hud-pin">–</b></div>
@@ -99,9 +99,13 @@
 </div>
 
 <div id="scorecard" class="panel hidden">
-  <h3>Scorecard</h3>
+  <div id="score-summary" class="hidden"></div>
+  <h3 id="score-title">Scorecard</h3>
   <div id="score-table"></div>
-  <button id="btn-restart" class="btn">Restart round</button>
+  <div class="score-actions">
+    <button id="btn-restart" class="btn">Restart round</button>
+    <button id="btn-changecourse" class="btn hidden">Change course</button>
+  </div>
 </div>
 
 <div id="course-modal" class="modal">

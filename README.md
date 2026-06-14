@@ -8,7 +8,7 @@ with any launch monitor that speaks the **GSPro Open Connect** protocol — incl
 - **Real terrain** from AWS Terrain Tiles open elevation data — slopes affect flight, bounce, roll, and putts
 - **Real physics** — drag + Magnus lift flight model calibrated against tour launch-monitor numbers,
   spin-axis draws/fades, backspin zip-back on greens, gravity-fed breaks on slopes
-- **Full round play** — 18 holes, scorecard, water/OB penalties, gimmes, cup capture
+- **Full round play** — 18 holes, scorecard with a round-complete summary, pick up to bail on a hole, water/OB penalties, gimmes, cup capture
 - Desktop app (Electron) — no browser needed; a tablet/phone on the same network can mirror via the built-in web server
 
 > **Independent open-source project — not affiliated with, endorsed by, or sponsored by
@@ -53,7 +53,9 @@ Everything runs on this PC; no firewall changes needed. (If GSPconnect ever runs
 | Club buttons | tells GSPconnect your club; also loads practice presets |
 | Practice shot | hit simulated shots without the launch monitor |
 | Course button | search and load any OSM-mapped course |
-| Scorecard | scores, restart round |
+| Next ▶ / Pick up | advance to the next hole; pick up to concede a hole you aren't finishing |
+| Hole pills / HOLE | tap a played hole to review it on the scorecard |
+| Scorecard | scores, round-complete summary, restart / new round |
 | F11 | toggle fullscreen |
 
 Putts are detected automatically when on the green (low speed + low launch).
