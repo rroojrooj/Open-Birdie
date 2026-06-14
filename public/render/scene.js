@@ -430,18 +430,30 @@ export class GolfScene {
     }).catch((e) => console.error('[trees] load failed', e));
   }
 
-  // Random scatter across rough polygons -> even fescue distribution.
+  // Clumped scatter across rough polygons. Real fescue grows in dense patches
+  // with bare gaps, not an even thin spread — so we drop clump centers on the
+  // rough, then cluster tufts around each (center-biased disc, trimmed at the
+  // rough edge so a clump never spills onto a mown surface). Same tuft budget as
+  // a uniform scatter, but it reads far fuller where the grass actually is.
   _grassSpots(geo) {
     if (!RENDER_CONFIG.groundGrass) return [];
     const rough = (geo.surfaces || []).filter((s) => s.kind === 'rough' && s.poly && s.poly.length >= 3);
     if (!rough.length) return [];
+    const onRough = (x, y) => { for (const s of rough) if (pointInPoly(x, y, s.poly)) return true; return false; };
     let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
     for (const s of rough) for (const [x, y] of s.poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
     const spots = [], rnd = mulberry32(8080), CAP = RENDER_CONFIG.grassCap;
     let att = 0;
-    while (spots.length < CAP && att++ < CAP * 4) {
-      const x = minX + rnd() * (maxX - minX), y = minY + rnd() * (maxY - minY);
-      for (const s of rough) { if (pointInPoly(x, y, s.poly)) { spots.push({ x, y, s: 0.8 + rnd() * 0.5 }); break; } }
+    while (spots.length < CAP && att++ < CAP * 6) {
+      const cx = minX + rnd() * (maxX - minX), cy = minY + rnd() * (maxY - minY);
+      if (!onRough(cx, cy)) continue;
+      const R = 1.0 + rnd() * 2.5;             // clump radius (m) — tight, bushy patches
+      const K = 10 + ((rnd() * rnd() * 26) | 0); // tufts/clump, skewed toward small patches
+      for (let k = 0; k < K && spots.length < CAP; k++) {
+        const ang = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.7) * R; // center-biased
+        const x = cx + Math.cos(ang) * rad, y = cy + Math.sin(ang) * rad;
+        if (onRough(x, y)) spots.push({ x, y, s: 0.7 + rnd() * 0.7 });
+      }
     }
     return spots;
   }

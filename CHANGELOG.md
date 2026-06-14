@@ -2,6 +2,14 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [Unreleased]
+
+### Changed
+- **Denser fescue** — rough grass now scatters in tight, bushy clumps (center-biased
+  discs trimmed at the rough edge) instead of an even thin spread, with more blades
+  per tuft and taller blades. Reads as real patchy fescue framing the holes rather
+  than sparse isolated spikes (`public/render/scene.js`, `grass.js`, `config.js`).
+
 ## [0.4.0] - 2026-06-14
 
 ### Added

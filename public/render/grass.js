@@ -60,7 +60,7 @@ export function buildGrass(spots, hAt, V) {
   });
   const windRef = [];
   addWind(mat, windRef);
-  const PER = 8; // blades per tuft — a dense clump reads, a lone blade doesn't
+  const PER = 12; // blades per tuft — a dense clump reads, a lone blade doesn't
   const mesh = new THREE.InstancedMesh(bladeGeometry(), mat, spots.length * PER);
   mesh.castShadow = false;   // blade shadows are expensive + low value at this density
   mesh.receiveShadow = true;
@@ -71,7 +71,7 @@ export function buildGrass(spots, hAt, V) {
   let bi = 0;
   for (const sp of spots) {
     for (let k = 0; k < PER; k++) {
-      const x = sp.x + (rnd() - 0.5) * 0.4, y = sp.y + (rnd() - 0.5) * 0.4;
+      const x = sp.x + (rnd() - 0.5) * 0.28, y = sp.y + (rnd() - 0.5) * 0.28;
       const h = hAt(x, y);
       q.setFromAxisAngle(up, rnd() * Math.PI * 2);
       const sc = H * (0.6 + rnd() * 0.9) * (sp.s || 1);
