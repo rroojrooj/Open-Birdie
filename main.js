@@ -3,8 +3,37 @@
 // game fullscreen. `npm start` launches this; `npm run start:server`
 // runs the same server headless for browser/tablet use.
 const { app, BrowserWindow, globalShortcut } = require('electron');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const HTTP_PORT = +(process.env.BIRDIE_PORT || 8222);
+
+// Auto-start the free Uneekor VIEW feed bridge so the launch monitor connects
+// on its own — no separate `npm run watch`, no paywalled GSPconnect. Only runs
+// when the VIEW ShotData folder is present, so non-Uneekor setups are untouched.
+// Set BIRDIE_NO_WATCH=1 to opt out (e.g. when using GSPconnect instead).
+let watcher = null;
+function startWatcher() {
+  if (process.env.BIRDIE_NO_WATCH) return;
+  const shotDir = process.env.UNEEKOR_SHOTDATA || (process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, '..', 'LocalLow', 'Uneekor', 'VIEW', 'ShotData')
+    : null);
+  if (!shotDir || !fs.existsSync(shotDir)) return;
+  const script = path.join(__dirname, 'tools', 'uneekor-watch.js');
+  // process.execPath is the Electron binary; ELECTRON_RUN_AS_NODE makes it run
+  // the bridge as a plain Node script (no separate Node install needed).
+  watcher = spawn(process.execPath, [script, '--speed-scale', '2.23694'], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: 'inherit',
+  });
+  watcher.on('exit', () => { watcher = null; });
+}
+function stopWatcher() {
+  if (!watcher) return;
+  try { watcher.kill(); } catch (_) { /* already gone */ }
+  watcher = null;
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -21,6 +50,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     await srv.ready;
+    startWatcher();
     win = new BrowserWindow({
       fullscreen: true,
       autoHideMenuBar: true,
@@ -36,8 +66,9 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  app.on('will-quit', () => globalShortcut.unregisterAll());
+  app.on('will-quit', () => { globalShortcut.unregisterAll(); stopWatcher(); });
   app.on('window-all-closed', () => {
+    stopWatcher();
     srv.close();
     app.quit();
   });

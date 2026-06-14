@@ -35,6 +35,12 @@ npm run start:server # headless server only (view at http://localhost:8222)
    GSPconnect will connect to `127.0.0.1:921` and find Open-Birdie answering.
 4. The **LM badge** (top right) turns green when GSPconnect connects. Hit balls.
 
+> **Using the free bridge (no GSPconnect)?** The desktop app auto-starts the bundled
+> Uneekor VIEW feed bridge ([`tools/uneekor-watch.js`](tools/uneekor-watch.js)) whenever it
+> finds your VIEW `ShotData` folder — the LM badge goes green by itself, just swing. No paid
+> GSPconnect needed. Set `BIRDIE_NO_WATCH=1` to turn it off. (Headless `npm run start:server`
+> users: run `npm run watch` alongside it.)
+
 Everything runs on this PC; no firewall changes needed. (If GSPconnect ever runs on a
 *different* PC, allow inbound TCP 921 in Windows Firewall.)
 
@@ -68,6 +74,7 @@ and works offline.
 | --- | --- | --- |
 | `BIRDIE_PORT` | 8222 | web UI / API port |
 | `BIRDIE_OC_PORT` | 921 | GSPro Open Connect listener |
+| `BIRDIE_NO_WATCH` | (unset) | set to `1` to skip auto-starting the Uneekor VIEW feed bridge |
 
 Gimme distance: `POST /api/settings {"gimmeYd": feet}` (UI toggle coming later).
 
