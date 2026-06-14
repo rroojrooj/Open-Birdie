@@ -2,7 +2,7 @@
 
 All notable changes to Open-Birdie are documented here.
 
-## [Unreleased]
+## [0.4.0] - 2026-06-14
 
 ### Added
 - **Animated water** — course water hazards now ripple and reflect the sky instead
