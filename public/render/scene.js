@@ -39,8 +39,8 @@ const COLORS = {
   rough: '#3c5a33',
   wood: '#2b4124',
   range: '#567a44',
-  fairwayA: '#6f9e54', fairwayB: '#62904a',
-  greenA: '#82b46c', greenB: '#76a760',
+  fairwayA: '#5f8d49', fairwayB: '#588343', // base mown tone (mow stripes added in shader)
+  greenA: '#79ac63', greenB: '#6c9b56',
   tee: '#6b9850',
   bunker: '#cbb583',
   water: '#2f6d97',
@@ -255,8 +255,11 @@ export class GolfScene {
     const tex = new THREE.CanvasTexture(this._paintSplat(b));
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    const maskTex = new THREE.CanvasTexture(this._paintStripeMask(b));
+    maskTex.colorSpace = THREE.NoColorSpace;
+    maskTex.anisotropy = tex.anisotropy;
 
-    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, b, tex.anisotropy));
+    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, maskTex, b, tex.anisotropy));
     mesh.receiveShadow = true;
     return mesh;
   }
@@ -320,46 +323,42 @@ export class GolfScene {
     for (const w of geo.woods || []) { tracePoly(w); ctx.fill(); }
     ctx.restore();
 
-    fillKind(['rough'], COLORS.rough, 3);
-    fillKind(['range'], COLORS.range, 3);
+    fillKind(['rough'], COLORS.rough, 1.5);
+    fillKind(['range'], COLORS.range, 1.5);
 
-    // fairways with mow stripes
-    this._stripedLayer(ctx, W, H, ppm, b, ['fairway'], COLORS.fairwayA, COLORS.fairwayB, 9);
+    // mown surfaces — uniform base color; mow stripes are added physically in the
+    // turf shader (mask-gated) so they survive the tiled grass detail.
+    fillKind(['fairway'], COLORS.fairwayA, 1.2);
     fillKind(['tee'], COLORS.tee, 1.5);
-    this._stripedLayer(ctx, W, H, ppm, b, ['green'], COLORS.greenA, COLORS.greenB, 3.2);
+    fillKind(['green'], COLORS.greenA, 1.0);
     fillKind(['bunker'], COLORS.bunker, 1.2);
     fillKind(['water'], COLORS.water, 1.5);
     return cv;
   }
 
-  _stripedLayer(ctx, W, H, ppm, b, kinds, colA, colB, stripeM) {
-    const layer = document.createElement('canvas');
-    layer.width = W; layer.height = H;
-    const lctx = layer.getContext('2d');
-    const px = (x) => (x - b.minX) * ppm;
-    const py = (y) => (b.maxY - y) * ppm;
-    lctx.filter = 'blur(1.5px)';
-    lctx.fillStyle = colA;
+  // Mask for shader mowing stripes: white on mown surfaces (fairway/green/tee),
+  // black elsewhere. Sampled in the turf shader so stripes only appear on mown turf.
+  _paintStripeMask(b) {
+    const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
+    const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
+    const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    const px = (x) => (x - b.minX) * ppm, py = (y) => (b.maxY - y) * ppm;
+    ctx.fillStyle = '#fff';
+    ctx.filter = 'blur(1px)';
     for (const s of this.geo.surfaces) {
-      if (!kinds.includes(s.kind)) continue;
-      lctx.beginPath();
-      lctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
-      for (let i = 1; i < s.poly.length; i++) lctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
-      lctx.closePath();
-      lctx.fill();
+      if (s.kind !== 'fairway' && s.kind !== 'green' && s.kind !== 'tee') continue;
+      ctx.beginPath();
+      ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
+      for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
+      ctx.closePath();
+      ctx.fill();
     }
-    lctx.filter = 'none';
-    // diagonal stripes clipped to what we just painted
-    lctx.globalCompositeOperation = 'source-atop';
-    lctx.fillStyle = colB;
-    const sw = stripeM * ppm;
-    const diag = Math.hypot(W, H);
-    lctx.save();
-    lctx.translate(W / 2, H / 2);
-    lctx.rotate(Math.PI / 5.2);
-    for (let x = -diag; x < diag; x += sw * 2) lctx.fillRect(x, -diag, sw, diag * 2);
-    lctx.restore();
-    ctx.drawImage(layer, 0, 0);
+    return cv;
   }
 
   _waterMeshes(geo) {
