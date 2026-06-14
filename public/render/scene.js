@@ -3,10 +3,10 @@
 // Three coords: x = east, y = up, z = -north.
 import * as THREE from 'three';
 import { PostFX } from './postfx.js';
-import { grassNormalTexture } from './textures.js';
 import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
 import { makeAerialFog } from './atmosphere.js';
 import { buildTrees } from './trees.js';
+import { makeTurfMaterial } from './turf.js';
 import { RENDER_CONFIG } from './config.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
@@ -256,18 +256,7 @@ export class GolfScene {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
-    // World-scale detail relief: tile the procedural grass normal map ~every
-    // 2.5m across the course so the turf has per-meter surface for the sun to
-    // shade. It shares the terrain's 0..1 uv; its own repeat does the tiling.
-    const normal = grassNormalTexture();
-    const tileM = 2.5;
-    normal.repeat.set((b.maxX - b.minX) / tileM, (b.maxY - b.minY) / tileM);
-    normal.anisotropy = tex.anisotropy;
-
-    const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
-      map: tex, normalMap: normal, normalScale: new THREE.Vector2(0.5, 0.5),
-      roughness: 0.97, metalness: 0,
-    }));
+    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, b, tex.anisotropy));
     mesh.receiveShadow = true;
     return mesh;
   }
@@ -309,26 +298,8 @@ export class GolfScene {
     ctx.fillStyle = ctx.createPattern(ncv, 'repeat');
     ctx.fillRect(0, 0, W, H);
 
-    // macro mottling: large soft patches of lighter/darker turf so the ground
-    // still reads as varied grass from an elevated camera (the per-meter normal
-    // map goes sub-pixel at that distance). Painted before the surface fills, so
-    // fairway/green/bunker/water cover it where they apply.
-    const mcv = document.createElement('canvas');
-    mcv.width = mcv.height = 24;
-    const mctx = mcv.getContext('2d');
-    const mrnd = mulberry32(53);
-    const mimg = mctx.createImageData(24, 24);
-    for (let i = 0; i < mimg.data.length; i += 4) {
-      const v = 100 + mrnd() * 90; // around mid-grey -> soft-light = subtle lift/dip
-      mimg.data[i] = mimg.data[i + 1] = mimg.data[i + 2] = v; mimg.data[i + 3] = 255;
-    }
-    mctx.putImageData(mimg, 0, 0);
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    ctx.globalCompositeOperation = 'soft-light';
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(mcv, 0, 0, W, H);
-    ctx.restore();
+    // (Macro-mottling removed in Tier 2: the tiled PBR grass detail now provides
+    // turf variation; the old large soft-light patches read as a blob/smudge.)
 
     const fillKind = (kinds, color, blur = 2) => {
       ctx.save();

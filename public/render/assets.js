@@ -6,4 +6,9 @@ export const ASSETS = {
   trees: {
     conifer: `${BASE}trees/conifer.glb`,
   },
+  turf: {
+    color: `${BASE}turf/grass_color.jpg`,
+    normal: `${BASE}turf/grass_normal.jpg`,
+    rough: `${BASE}turf/grass_rough.jpg`,
+  },
 };
