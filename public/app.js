@@ -95,12 +95,27 @@ function clubFromShot(speedMph, isPutt) {
   for (const [min, c] of t) if (speedMph >= min) return c;
   return 'LW';
 }
+// Map a launch-monitor club name (e.g. "DRIVER", "WOOD5", "IRON7") to a short HUD label.
+function prettyClub(name) {
+  const s = String(name).toUpperCase().replace(/[\s_]/g, '');
+  if (/DRIVER|^1W$/.test(s)) return 'DR';
+  if (/PUTTER|^PUTT$/.test(s)) return 'PT';
+  let m;
+  if ((m = s.match(/(?:WOOD|^W)(\d+)/))) return m[1] + 'W';
+  if ((m = s.match(/(?:HYBRID|UTILITY|^H|^U)(\d+)/))) return m[1] + 'H';
+  if ((m = s.match(/(?:IRON|^I)(\d+)/))) return m[1] + 'i';
+  if (/PITCH|^PW$|WEDGEP/.test(s)) return 'PW';
+  if (/SAND|^SW$|WEDGES/.test(s)) return 'SW';
+  if (/LOB|^LW$|WEDGEL/.test(s)) return 'LW';
+  if (/GAP|APPROACH|^GW$|^AW$|WEDGEA|WEDGEG/.test(s)) return 'GW';
+  return name;   // unknown — show the monitor's label as-is
+}
 function showShotData(shot) {
   $('shotpanel').classList.remove('hidden');
   const l = shot.launch, sim = shot.sim;
-  const club = clubFromShot(l.speedMph, sim.isPutt);
+  const club = shot.club ? prettyClub(shot.club) : clubFromShot(l.speedMph, sim.isPutt);
   $('lie-club').textContent = club;
-  document.querySelectorAll('#clubs .club').forEach((b) => b.classList.toggle('active', b.textContent.toUpperCase() === club));
+  document.querySelectorAll('#clubs .club').forEach((b) => b.classList.toggle('active', b.textContent.toUpperCase() === club.toUpperCase()));
   setVal('sd-speed', l.speedMph.toFixed(1), 'mph');
   setVal('sd-launch', `${l.vla.toFixed(1)}°/${l.hla > 0 ? 'R' : 'L'}${Math.abs(l.hla).toFixed(1)}°`, '');
   setVal('sd-spin', Math.round(l.totalSpin), 'rpm');
