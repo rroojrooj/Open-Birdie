@@ -9,6 +9,6 @@ export function speciesFor(i) {
 
 // Canopy card dimensions (meters) per species. Conifer = tall/narrow, deciduous = round.
 export function canopyDims(species) {
-  if (species === 'conifer') return { width: 3.4, height: 7.0, yCenter: 5.6, planes: 3 };
-  return { width: 5.0, height: 4.6, yCenter: 4.6, planes: 3 };
+  if (species === 'conifer') return { width: 4.4, height: 9.5, yCenter: 6.4, planes: 3 };
+  return { width: 5.6, height: 6.4, yCenter: 5.6, planes: 3 };
 }

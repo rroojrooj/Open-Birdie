@@ -12,18 +12,44 @@ function loadTex(url, srgb) {
   return t;
 }
 
-// Crossed vertical quads (a fixed card cluster, not a billboard) so the canopy
-// holds shape under the orbit camera. UV 0..1 per plane maps the whole card.
-function canopyGeometry({ width, height, yCenter, planes }) {
+// local deterministic PRNG so the scattered canopy is stable between loads
+function mul32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// A dense crown built by scattering many foliage cards through the canopy volume
+// (a single twig/leaf card alone reads as a sparse sprig). Cards are fixed (not
+// billboards) so the crown holds shape under the orbit camera. Cone-ish volume
+// for conifer, rounded blob for deciduous.
+function canopyGeometry(species) {
+  const d = canopyDims(species);
+  const conifer = species === 'conifer';
+  const rnd = mul32(conifer ? 11 : 22);
+  const cards = conifer ? 22 : 16;
   const geos = [];
-  for (let i = 0; i < planes; i++) {
-    const p = new THREE.PlaneGeometry(width, height, 1, 1);
-    p.rotateY((i / planes) * Math.PI);
+  for (let i = 0; i < cards; i++) {
+    const t = i / (cards - 1);                       // 0 = base, 1 = top
+    const cw = d.width * (conifer ? (0.85 - 0.5 * t) : (0.5 + rnd() * 0.3));
+    const ch = (conifer ? d.height * 0.32 : d.height * 0.5) * (0.8 + rnd() * 0.4);
+    const p = new THREE.PlaneGeometry(cw, ch);
+    p.rotateZ((rnd() - 0.5) * 0.5);
+    p.rotateX((rnd() - 0.5) * 0.5);
+    p.rotateY(rnd() * Math.PI * 2);
+    const maxR = conifer ? d.width * 0.5 * (1 - t) : d.width * 0.42;
+    const ang = rnd() * Math.PI * 2, rad = Math.sqrt(rnd()) * maxR;
+    const yy = conifer
+      ? (d.yCenter - d.height * 0.45) + t * d.height * 0.9
+      : d.yCenter + (rnd() - 0.5) * d.height * 0.7;
+    p.translate(Math.cos(ang) * rad, yy, Math.sin(ang) * rad);
     geos.push(p);
   }
-  const g = mergeGeometries(geos);
-  g.translate(0, yCenter, 0);
-  return g;
+  return mergeGeometries(geos);
 }
 
 // Vertex-shader wind: sway grows with height above the canopy base so the top
@@ -80,9 +106,9 @@ export function buildTrees(spots, hAt, V, rnd) {
   const meshes = [];
   const windRef = [];
 
-  // shared trunk for all trees
-  const trunkGeom = new THREE.CylinderGeometry(0.16, 0.32, 2.8, 6);
-  trunkGeom.translate(0, 1.4, 0);
+  // shared trunk for all trees (thin so the canopy dominates, not the pole)
+  const trunkGeom = new THREE.CylinderGeometry(0.11, 0.22, 3.2, 6);
+  trunkGeom.translate(0, 1.6, 0);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3f28, roughness: 0.95 });
   const trunks = new THREE.InstancedMesh(trunkGeom, trunkMat, spots.length);
   trunks.castShadow = true; trunks.receiveShadow = true;
@@ -94,7 +120,7 @@ export function buildTrees(spots, hAt, V, rnd) {
   for (const species of ['conifer', 'deciduous']) {
     const list = groups[species];
     if (!list.length) continue;
-    const geom = canopyGeometry(canopyDims(species));
+    const geom = canopyGeometry(species);
     const mat = addWind(speciesMaterial(species), windRef);
     const canopies = new THREE.InstancedMesh(geom, mat, list.length);
     canopies.castShadow = true; canopies.receiveShadow = true;
