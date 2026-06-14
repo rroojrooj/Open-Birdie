@@ -38,7 +38,7 @@ The current renderer (`public/render/scene.js` + `postfx.js` + `textures.js`, th
 1. **Fix the light before adding detail.** Wrong exposure/atmosphere makes good assets look bad. The lighting/atmosphere foundation lands first (Tier 0).
 2. **One source of truth for the sun.** A single `sunDir` drives the directional light, shadow camera, HDRI rotation, and any cloud/grass shader.
 3. **Physically-based, not painted.** Mowing stripes → anisotropic BRDF; bunkers → geometry; depth → aerial-perspective fog.
-4. **Reuse existing course data.** Masks and placement derive from existing surface polygons, `surfaceAt(x,y)`, `hAt()`, the elevation grid, and `mulberry32`. No new course pipeline.
+4. **Reuse existing course data.** Masks and placement derive from existing surface polygons, the surface-classification lookup, `hAt()`, the elevation grid, and `mulberry32`. No new course pipeline. *(Note: the classification lookup `makeSurfaceLookup`/`surfaceAt` currently lives in `lib/course.js` and is consumed only by `lib/physics.js`/`lib/game.js`; the renderer does not import it today — see §4 Tier 2 and §7.)*
 5. **Isolated single-purpose modules.** Each system (`sky/env`, `trees`, `turf`, `grass`, `water`, `bunkers`, `postfx`) is an ownable, testable, individually-revertable unit. `scene.js` orchestrates; it does not balloon.
 6. **Budgeted & flag-gated.** Every heavy system (grass density, AO, DoF, clouds) has an on/off + quality knob, so we can profile, dial, and isolate regressions.
 
@@ -82,7 +82,7 @@ Each tier is an independent plan → eng/design review → execute → verify cy
 - Remove the `toneMappingExposure 0.45` and `environmentIntensity 0.5` band-aids; re-balance once against the real HDRI.
 - Establish single `sunDir` (read from HDRI sun azimuth/elevation), drive directional light + shadow frustum + HDRI rotation from it.
 
-**Acceptance:** horizon is full and believable; midground no longer washes to white; turf/foliage color reads correct under consistent light; sun direction and shadows agree with the HDRI.
+**Acceptance:** horizon is full and believable; midground no longer washes to white; turf/foliage color reads correct under consistent light; sun direction and shadows agree with the HDRI. **Concrete check:** on the two fixed Augusta capture frames, the midground/horizon turf must no longer clip toward white — verify via a luminance histogram on the captured frames (no large near-1.0 luminance spike in the turf region) and a target neutral mid-gray turf value, so "balanced exposure" is measured, not eyeballed.
 
 ### Tier 1 — Trees & vegetation
 
@@ -104,7 +104,8 @@ Each tier is an independent plan → eng/design review → execute → verify cy
   - Slope-masked **triplanar** (whiteout normal blend) on steep faces; **anti-tiling** (IQ technique-3 or stochastic/`gridless`) + macro×detail blend + distance detail fade.
 - **Mowing stripes, physical:** switch terrain to `MeshPhysicalMaterial`; bake an **`anisotropyMap`** (RG = grass-comb direction bands, B = strength) from the existing stripe geometry so bands brighten/darken with view angle. Optional normal/roughness modulation as augment.
 - **Instanced ground-cover grass:** GPU-instanced Bézier-blade grass (fork of `CK42BB/procedural-grass-threejs`, WebGL2 path) — vertex-shader layered wind, per-clump color/height, fake translucency.
-  - Placement: candidate points (jittered grid / `MeshSurfaceSampler`) kept only where `surfaceAt(x,y) === 'rough'`; **tall golden fescue** banded just outside fairway/green polygons; height via `hAt`, orientation via grid normal, deterministic via `mulberry32`.
+  - Placement: candidate points (jittered grid / `MeshSurfaceSampler`) kept only where the surface is rough; **tall golden fescue** banded just outside fairway/green polygons; height via `hAt`, orientation via grid normal, deterministic via `mulberry32`.
+  - **Plumbing dependency:** the surface lookup (`makeSurfaceLookup`/`surfaceAt`) lives in `lib/course.js` and is not currently imported by the renderer. The Tier 2 plan must either (a) wire `makeSurfaceLookup(course)` into the render layer, or (b) derive the rough mask directly from the surface polygons via the same rasterization `_paintSplat` already does. Pick one explicitly at plan start; do not assume `surfaceAt` is callable from `scene.js`.
   - LOD: real blades near camera + per-hole frustum; alpha-card clumps at distance; aggressive frustum/distance culling (reuse per-hole shadow bounds). Blades receive terrain shadow; only nearest LOD casts (or skip cast) to protect the 4096 shadow budget.
 
 **Assets:** ambientCG `Grass004` (+ darker/tighter variant for greens, coarser for rough) and a CC0 fine sand, 4K, maps = Color(sRGB)/NormalGL/Roughness/AO/(Displacement); Poly Haven `grass_medium_01` dry variant for fescue cards.
@@ -127,7 +128,7 @@ Each tier is an independent plan → eng/design review → execute → verify cy
 
 ## 5. Performance budget & flags
 
-- Target: stable 60 fps on the sim PC's desktop GPU at the capped pixel ratio (≤2), with all default-on systems enabled.
+- Target: stable 60 fps on the sim PC's desktop GPU at the capped pixel ratio (≤2), with all default-on systems enabled. **Measured as:** sustained average ≥60 fps AND 1%-low ≥45 fps over a scripted ~10 s flythrough of a representative hole, plus no stutter on the static idle/address frame. The first tier that adds a heavy system (Tier 1) pins the exact measurement script.
 - `config.js` flags (default state in parens): `hdriEnv(on)`, `groundedSky(on)`, `foliageTrees(on)`, `pbrTurf(on)`, `anisoStripes(on)`, `groundGrass(on)`, `gtao(on)`, `bunkerGeo(on)`, `waterShader(on)`, `lut(on)`, `vignette(on)`, `dof(off)`, `volumetricClouds(off)`.
 - Quality knobs: grass density + draw radius, shadow map size, GTAO radius/samples, HDRI background resolution (separate small env-bake vs large background).
 - Profiling gate per tier: capture frame time before/after; any system that can't hit budget ships off-by-default with a documented reason.
@@ -173,7 +174,7 @@ Each tier is independently shippable and revertable. Asset processing for a tier
 ## 9. Open questions (non-blocking; resolve in tier plans)
 
 - HDRI selection per course/biome (single default vs a small set keyed by course terrain type).
-- Whether to introduce an MSAA composer target for `alphaToCoverage` soft foliage edges, or stay alphaTest + SMAA.
-- Turf material: hand-rolled `onBeforeCompile` vs adopting `three-landscape`'s `TerrainMaterial` wholesale.
+- **(Resolve at START of the Tier 1 plan — architectural fork, costly to reverse later):** introduce an MSAA composer target for `alphaToCoverage` soft foliage edges, or stay alphaTest + SMAA.
+- **(Resolve at START of the Tier 2 plan — architectural fork, costly to reverse later):** turf material hand-rolled `onBeforeCompile` vs adopting `three-landscape`'s `TerrainMaterial` wholesale.
 - Grass: fork vs vendor `CK42BB/procedural-grass-threejs`.
 - Exact split of Tier 2/Tier 3 into sub-plans.
