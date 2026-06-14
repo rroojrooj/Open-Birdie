@@ -1,0 +1,4 @@
+{
+  "comment": "Marks the browser renderer modules as ESM for Node tooling (node --test). Inert for the running app: these files are only loaded by the browser via the importmap; the CommonJS server/electron code never requires them.",
+  "type": "module"
+}

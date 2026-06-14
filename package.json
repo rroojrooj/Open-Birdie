@@ -9,7 +9,8 @@
     "start:server": "node server.js",
     "calibrate": "node tools/calibrate.js",
     "shot": "node tools/test-shot.js",
-    "watch": "node tools/uneekor-watch.js --speed-scale 2.23694"
+    "watch": "node tools/uneekor-watch.js --speed-scale 2.23694",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "engines": {
     "node": ">=18"
