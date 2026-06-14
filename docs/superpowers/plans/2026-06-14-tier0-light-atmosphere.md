@@ -6,7 +6,7 @@
 
 **Architecture:** Extract sky/light/atmosphere out of `scene.js` into three focused modules — `env.js` (HDRI load → PMREM env + background + sun direction), `atmosphere.js` (horizon-matched fog), and supporting `config.js` (feature flags) + `hdri-analyze.js` (pure, node-testable HDRI sun/horizon math) + `assets.js` (offline asset paths). `scene.js` becomes the orchestrator: it kicks off the async env load in the constructor, exposes `envReady`, and places the `GroundedSkybox` in `loadCourse` once course bounds exist. A single `this.sunDir` remains the source of truth for the directional light + shadow camera.
 
-**Tech Stack:** three.js r0.184 (`RGBELoader`, `PMREMGenerator`, `GroundedSkybox`, `FogExp2`), vanilla ES modules served via the existing `/vendor/three/` importmap, Node's built-in `node --test` + `node:assert` for pure-helper unit tests, and the project's headless WebGL capture harness (preview_eval → canvas → local sink → image) for visual verification.
+**Tech Stack:** three.js r0.184 (`HDRLoader`, `PMREMGenerator`, `GroundedSkybox`, `FogExp2`), vanilla ES modules served via the existing `/vendor/three/` importmap, Node's built-in `node --test` + `node:assert` for pure-helper unit tests, and the project's headless WebGL capture harness (preview_eval → canvas → local sink → image) for visual verification.
 
 ---
 
