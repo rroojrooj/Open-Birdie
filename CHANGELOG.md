@@ -2,7 +2,7 @@
 
 All notable changes to Open-Birdie are documented here.
 
-## [Unreleased]
+## [0.6.0] - 2026-06-15
 
 ### Fixed
 - **GPU memory leaks on hole reload** — `loadCourse` now disposes `alphaMap`/`normalMap`/
