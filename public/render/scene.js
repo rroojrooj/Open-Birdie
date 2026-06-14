@@ -2,9 +2,11 @@
 // Sim coords: x = east, y = north, z = up (meters).
 // Three coords: x = east, y = up, z = -north.
 import * as THREE from 'three';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { PostFX } from './postfx.js';
 import { grassNormalTexture } from './textures.js';
+import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
+import { makeAerialFog } from './atmosphere.js';
+import { RENDER_CONFIG } from './config.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -52,11 +54,11 @@ export class GolfScene {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.45;
+    this.renderer.toneMappingExposure = RENDER_CONFIG.toneMappingExposure;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xa6c2d6, 1600, 7000);
+    // fog is set once the HDRI horizon color is known (see _setupSkyAndLights)
     this.camera = new THREE.PerspectiveCamera(58, container.clientWidth / container.clientHeight, 0.3, 12000);
     this.camera.position.set(0, 30, 60);
 
@@ -110,43 +112,39 @@ export class GolfScene {
   }
 
   _setupSkyAndLights() {
-    const sky = new Sky();
-    sky.scale.setScalar(45000);
-    const u = sky.material.uniforms;
-    u.turbidity.value = 2.5;
-    u.rayleigh.value = 2.0;
-    u.mieCoefficient.value = 0.0022;
-    u.mieDirectionalG.value = 0.85;
-    // ~30° sun elevation: reads as midday but low enough to cast shadows that
-    // give the terrain and trees real shape (the flat look was a high, fill-
-    // dominated light with nothing to model the surface).
+    // neutral hold until the HDRI resolves (avoids a black flash)
+    this.scene.background = new THREE.Color(0x9fb8cf);
+    // sun must exist before the first frame / first _fitShadows; aim refined on load
     this.sunDir = new THREE.Vector3().setFromSphericalCoords(
-      1, THREE.MathUtils.degToRad(90 - 30), THREE.MathUtils.degToRad(135)
-    );
-    u.sunPosition.value.copy(this.sunDir);
-
-    // bake sky into an environment map for PBR ambient/specular
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const envScene = new THREE.Scene();
-    envScene.add(sky);
-    this.scene.environment = pmrem.fromScene(envScene, 0.02).texture;
-    this.scene.environmentIntensity = 0.5; // env was double-counting the fill
-    this.scene.add(sky); // moves it from envScene into the visible scene
-
-    // Strong warm key light so lit turf pops and shadows read; the fill is
-    // pulled way down so the directional contrast survives. Previously the
-    // ambient was triple-counted (sun + hemisphere + full-strength env),
-    // which flattened everything.
-    this.sun = new THREE.DirectionalLight(0xfff4e0, 2.4);
-    this.sun.castShadow = true;
-    // 4096 halves the shadow texel size over the per-hole frustum, so tree
-    // shadows read as canopy shapes instead of soft ink-blots.
-    this.sun.shadow.mapSize.set(4096, 4096);
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.35;
+      1, THREE.MathUtils.degToRad(60), THREE.MathUtils.degToRad(135));
+    this.sun = makeSun(this.sunDir);
     this.scene.add(this.sun, this.sun.target);
 
-    this.scene.add(new THREE.HemisphereLight(0xaeccff, 0x46603a, 0.25));
+    // HDRI: image-based lighting + visible sky + ground horizon + sun direction.
+    // One source of truth for the sun (this.sunDir) drives the light + _fitShadows.
+    this.envReady = loadHDRIEnvironment(this.renderer).then(({ envTexture, equirect, sunDir, horizonColor }) => {
+      this.scene.environment = envTexture;
+      this.scene.environmentIntensity = RENDER_CONFIG.environmentIntensity;
+      this.scene.background = equirect;
+      this._equirect = equirect;
+      this.sunDir.copy(sunDir);
+      if (RENDER_CONFIG.aerialFog) this.scene.fog = makeAerialFog(horizonColor);
+      if (this.bounds) this._placeSkybox();                     // course already loaded
+      if (this._activeHole) this._fitShadows(this._activeHole); // re-aim shadows to HDRI sun
+    }).catch((e) => {
+      console.error('[env] HDRI load failed, using fallback env', e);
+      this.scene.environment = makeFallbackEnv(this.renderer);  // D1: keep scene lit
+      this.scene.environmentIntensity = RENDER_CONFIG.environmentIntensity;
+    });
+  }
+
+  // GroundedSkybox needs course bounds, so it's (re)placed on course load and on
+  // env-ready, whichever comes second.
+  _placeSkybox() {
+    if (!RENDER_CONFIG.groundedSky || !this._equirect || !this.bounds) return;
+    if (this._skybox) { this.scene.remove(this._skybox); this._skybox.geometry?.dispose(); }
+    this._skybox = makeGroundedSkybox(this._equirect, this.bounds);
+    this.scene.add(this._skybox);
   }
 
   _makePin() {
@@ -199,6 +197,7 @@ export class GolfScene {
 
     const b = this._bounds(geo);
     this.bounds = b;
+    this._placeSkybox();
     group.add(this._terrainMesh(b));
     this._waterMeshes(geo).forEach((m) => group.add(m));
     this._treeMeshes(geo).forEach((m) => group.add(m));
@@ -484,6 +483,7 @@ export class GolfScene {
     this.orbit = { yaw: 0, dist: 14, height: 4.6 };
     this.camMode = 'idle';
     this._snapIdleCam();
+    this._activeHole = hole;
     this._fitShadows(hole);
     this._aimLineUpdate();
     this._clearTrail();
