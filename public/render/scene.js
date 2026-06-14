@@ -162,12 +162,27 @@ export class GolfScene {
     );
     pole.position.y = 1.15;
     pole.castShadow = true;
-    const flag = new THREE.Mesh(
-      new THREE.ConeGeometry(0.32, 0.62, 4, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0xd83a3a, roughness: 0.7, side: THREE.DoubleSide })
-    );
-    flag.rotation.z = -Math.PI / 2;
-    flag.position.set(0.3, 2.05, 0);
+    // Waving cloth flag: a subdivided plane anchored at the pole, rippled in the
+    // vertex shader (amplitude grows toward the free edge). The focal point of
+    // every shot, so it shouldn't be a frozen faceted cone.
+    const flagGeo = new THREE.PlaneGeometry(0.7, 0.42, 14, 5);
+    flagGeo.translate(0.35, 0, 0); // left edge at the pole
+    const flagU = { value: 0 };
+    this._flagU = flagU;
+    const flagMat = new THREE.MeshStandardMaterial({ color: 0xd83a3a, roughness: 0.7, side: THREE.DoubleSide });
+    flagMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = flagU;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          float fx = clamp(transformed.x / 0.7, 0.0, 1.0);
+          transformed.z += (sin(fx * 6.0 - uTime * 7.0) * 0.06 + sin(fx * 3.0 - uTime * 4.3) * 0.035) * fx;
+          transformed.y += sin(fx * 5.0 - uTime * 6.0) * 0.02 * fx;`);
+    };
+    flagMat.customProgramCacheKey = () => 'pin-flag';
+    const flag = new THREE.Mesh(flagGeo, flagMat);
+    flag.position.set(0, 2.08, 0);
+    flag.castShadow = true;
     const cup = new THREE.Mesh(
       new THREE.CircleGeometry(0.12, 16),
       new THREE.MeshBasicMaterial({ color: 0x111111 })
@@ -736,6 +751,7 @@ export class GolfScene {
     this._updateMarkers();
     if (this._treeWind) this._treeWind(this.clock.elapsedTime);
     if (this._grassWind) this._grassWind(this.clock.elapsedTime);
+    if (this._flagU) this._flagU.value = this.clock.elapsedTime;
     if (this._waterUpdate) this._waterUpdate(this.clock.elapsedTime);
     if (this.waterDepth && this._terrain) this.waterDepth.prepass(this._terrain, this.camera);
     this.postfx.render();
