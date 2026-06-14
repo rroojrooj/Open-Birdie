@@ -4,7 +4,7 @@ import { RENDER_CONFIG } from '../public/render/config.js';
 
 test('tier-0 systems default on, heavy/stretch systems default off', () => {
   assert.equal(RENDER_CONFIG.hdriEnv, true);
-  assert.equal(RENDER_CONFIG.groundedSky, true);
+  assert.equal(RENDER_CONFIG.groundedSky, false); // disabled with the puresky HDRI (no ground to project)
   assert.equal(RENDER_CONFIG.aerialFog, true);
   assert.equal(RENDER_CONFIG.volumetricClouds, false);
   assert.equal(RENDER_CONFIG.dof, false);
