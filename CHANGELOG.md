@@ -10,6 +10,10 @@ All notable changes to Open-Birdie are documented here.
   "video-game tree" fix (`public/render/tree-cards.js`).
 
 ### Added
+- **Water shoreline foam** — a bright wet/shallows band hugs the waterline where terrain
+  sits just under the surface. A one-draw terrain depth pre-pass (`public/render/water-depth.js`)
+  feeds the water shader, which compares scene vs water eye-depth and whitens the shallow
+  band (animated for a living edge). `config.waterFoam` (`public/render/water.js`, `scene.js`).
 - **Distant horizon tree-line** — a jittered tree band around the course perimeter so the
   far horizon reads as a hazy distant forest edge (aerial fog supplies the atmospheric
   falloff) instead of bare turf meeting sky (`public/render/scene.js`, `config.horizonTrees`).

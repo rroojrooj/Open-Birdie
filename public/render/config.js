@@ -31,6 +31,7 @@ export const RENDER_CONFIG = {
   gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
   colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   water: true, // animated water: analytic ripples + fresnel + sun glitter (else static plane)
+  waterFoam: true, // shoreline foam via a depth pre-pass (wet line where water meets terrain)
   dof: false,
   volumetricClouds: false,
 };
