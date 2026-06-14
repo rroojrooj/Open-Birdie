@@ -2,6 +2,29 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [0.7.0] - 2026-06-15
+
+### Changed
+- **Waving pin flag** — the flagstick's flag is now a subdivided cloth rippled in the
+  vertex shader (amplitude grows toward the free edge) instead of a rigid faceted cone —
+  the shot's focal point now moves with the wind like the grass/trees/water
+  (`public/render/scene.js`).
+- **Calibrated color grade** — dropped the global blue shadow lift (it tinted turf shadows
+  cyan and fought the grass palette) for a warm, slightly-desaturated shadow tone
+  (`public/render/postfx.js`).
+- **Foliage volume shading** — tree canopies now have a height gradient (dark, cool core
+  and underside → bright, warm sunlit top) instead of flat uniform lighting, the biggest
+  "video-game tree" fix (`public/render/tree-cards.js`).
+
+### Added
+- **Water shoreline foam** — a bright wet/shallows band hugs the waterline where terrain
+  sits just under the surface. A one-draw terrain depth pre-pass (`public/render/water-depth.js`)
+  feeds the water shader, which compares scene vs water eye-depth and whitens the shallow
+  band (animated for a living edge). `config.waterFoam` (`public/render/water.js`, `scene.js`).
+- **Distant horizon tree-line** — a jittered tree band around the course perimeter so the
+  far horizon reads as a hazy distant forest edge (aerial fog supplies the atmospheric
+  falloff) instead of bare turf meeting sky (`public/render/scene.js`, `config.horizonTrees`).
+
 ## [0.6.0] - 2026-06-15
 
 ### Fixed

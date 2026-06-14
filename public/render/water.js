@@ -43,7 +43,15 @@ const WATER_COMMON = `
   }
 `;
 
-function addWaterShader(material, windRef, sunDir) {
+// Foam uniform declarations (only injected when the depth pre-pass is enabled).
+const FOAM_COMMON = `
+  uniform sampler2D uDepthTex; uniform vec2 uResolution;
+  uniform float uCamNear, uCamFar, uFoamDepth; uniform vec3 uFoamColor;
+  // perspectiveDepthToViewZ lives in three's <packing> chunk, which the standard
+  // fragment shader does NOT include — so define it here. Returns negative view Z.
+  float foamViewZ(float d, float n, float f) { return (n * f) / (d * (f - n) - f); }`;
+
+function addWaterShader(material, windRef, sunDir, foam) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
     shader.uniforms.uSunDir = { value: sunDir.clone().normalize() };
@@ -51,6 +59,15 @@ function addWaterShader(material, windRef, sunDir) {
     shader.uniforms.uShallow = { value: new THREE.Color(0x7fb0cc) };
     shader.uniforms.uChop = { value: 0.8 };
     windRef.push(shader.uniforms.uTime);
+    if (foam) {
+      shader.uniforms.uDepthTex = { value: foam.depthTex };
+      shader.uniforms.uResolution = { value: foam.resolution || new THREE.Vector2(1, 1) };
+      shader.uniforms.uCamNear = { value: foam.near };
+      shader.uniforms.uCamFar = { value: foam.far };
+      shader.uniforms.uFoamColor = { value: new THREE.Color(0xeaf4f7) };
+      shader.uniforms.uFoamDepth = { value: 10.0 }; // nearshore shallow band (m) — wide so it reads
+      foam.u.push(shader.uniforms);
+    }
 
     // --- vertex: carry world position for the wave field ---
     shader.vertexShader = shader.vertexShader
@@ -58,47 +75,53 @@ function addWaterShader(material, windRef, sunDir) {
       .replace('#include <begin_vertex>',
         '#include <begin_vertex>\n vWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
 
-    // --- fragment: ripple the normal, then add Fresnel rim + sun specular ---
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + WATER_COMMON)
-      // Override the geometric normal with the rippled one (view space) so the
-      // envMap reflection + lighting shimmer. Plane is axis-aligned flat, so the
-      // world ripple normal converts to view space with just the view rotation.
-      // Override the view-space normal with the rippled one. Downstream,
-      // <lights_fragment_begin> sets geometryNormal = normal (this material has
-      // no normalMap chunk to clobber it), so the envMap reflection + lighting
-      // pick up the ripples. Plane is axis-aligned flat, so the world ripple
-      // normal converts to view space with just the view rotation.
-      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
-        gWaterWN = rippleNormal(vWorldPos.xz, uTime);
-        normal = normalize((viewMatrix * vec4(gWaterWN, 0.0)).xyz);`)
-      .replace('#include <opaque_fragment>', `
+    // body color (deep looking down -> sky-tinted at grazing) + moving sun glitter
+    const specBlock = `
         {
           vec3 V = normalize(cameraPosition - vWorldPos);
           float fres = pow(clamp(1.0 - max(dot(V, gWaterWN), 0.0), 0.0, 1.0), 3.0);
-          // body color: deep + less reflective looking straight down, sky-tinted
-          // and fully reflective at grazing
           outgoingLight = mix(outgoingLight * 0.7 + uDeep * 0.4, outgoingLight + uShallow * 0.5, fres);
-          // moving sun glitter (Blinn-Phong toward the sun)
           vec3 H = normalize(uSunDir + V);
-          float s = pow(max(dot(gWaterWN, H), 0.0), 220.0);
-          outgoingLight += vec3(1.0, 0.96, 0.86) * s * 1.6;
-        }
-        #include <opaque_fragment>`);
+          float spc = pow(max(dot(gWaterWN, H), 0.0), 220.0);
+          outgoingLight += vec3(1.0, 0.96, 0.86) * spc * 1.6;
+        }`;
+    // shoreline foam: whiten where terrain sits just under the surface. vViewPosition.z
+    // is this fragment's positive eye depth (meshphysical sets vViewPosition=-mvPosition);
+    // perspectiveDepthToViewZ (via <common>) linearizes the sampled scene depth.
+    const foamBlock = foam ? `
+        {
+          vec2 sUv = gl_FragCoord.xy / uResolution;
+          float sceneEye = -foamViewZ(texture2D(uDepthTex, sUv).x, uCamNear, uCamFar);
+          float diff = sceneEye - vViewPosition.z;               // terrain depth below surface
+          float foam = (1.0 - smoothstep(0.0, uFoamDepth, diff)) * step(0.0, diff);
+          foam *= mix(0.65, 1.0, 0.5 + 0.5 * sin(vWorldPos.x * 1.7 + vWorldPos.z * 1.3 - uTime * 1.5));
+          foam = clamp(foam, 0.0, 1.0);
+          outgoingLight = mix(outgoingLight, uFoamColor, foam);
+          diffuseColor.a = mix(diffuseColor.a, 1.0, foam * 0.6);
+        }` : '';
+
+    // --- fragment: ripple the normal (view space), then body + glitter + foam ---
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + WATER_COMMON + (foam ? FOAM_COMMON : ''))
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+        gWaterWN = rippleNormal(vWorldPos.xz, uTime);
+        normal = normalize((viewMatrix * vec4(gWaterWN, 0.0)).xyz);`)
+      .replace('#include <opaque_fragment>', specBlock + foamBlock + '\n        #include <opaque_fragment>');
   };
-  material.customProgramCacheKey = () => 'water-anim';
+  material.customProgramCacheKey = () => (foam ? 'water-anim-foam' : 'water-anim');
 }
 
-// surfaces: geo.surfaces; hAt(x,y)->z; V(x,y,z)->Vector3; sunDir: world Vector3.
-// Returns { meshes, waterUpdate }. waterUpdate(t) scrolls the ripples.
-export function buildWater(surfaces, hAt, sunDir) {
+// surfaces: geo.surfaces; hAt(x,y)->z; sunDir: world Vector3; foamEnabled: bool.
+// Returns { meshes, waterMeshes, waterUpdate, setFoamDepth }.
+export function buildWater(surfaces, hAt, sunDir, foamEnabled) {
   const meshes = [];
   const windRef = [];
+  const foam = foamEnabled ? { depthTex: null, resolution: null, near: 0.3, far: 12000, u: [] } : null;
   const mat = new THREE.MeshStandardMaterial({
     color: 0x21566e, roughness: 0.12, metalness: 0.0,
     envMapIntensity: 1.25, transparent: true, opacity: 0.9,
   });
-  addWaterShader(mat, windRef, sunDir);
+  addWaterShader(mat, windRef, sunDir, foam);
 
   for (const s of surfaces) {
     if (s.kind !== 'water' || !s.poly || s.poly.length < 3) continue;
@@ -112,5 +135,14 @@ export function buildWater(surfaces, hAt, sunDir) {
     m.receiveShadow = true;
     meshes.push(m);
   }
-  return { meshes, waterUpdate: (t) => { for (const u of windRef) u.value = t; } };
+
+  // Wire the depth texture/resolution after the helper exists. Called before the
+  // first render, so onBeforeCompile reads these; the texture/Vector2 are shared
+  // refs whose size/content the helper updates on resize, so this is set once.
+  const setFoamDepth = (depthTex, resolution, near, far) => {
+    if (!foam) return;
+    foam.depthTex = depthTex; foam.resolution = resolution; foam.near = near; foam.far = far;
+    for (const u of foam.u) { u.uDepthTex.value = depthTex; u.uResolution.value = resolution; u.uCamNear.value = near; u.uCamFar.value = far; }
+  };
+  return { meshes, waterMeshes: meshes, waterUpdate: (t) => { for (const u of windRef) u.value = t; }, setFoamDepth };
 }

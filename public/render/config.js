@@ -22,6 +22,7 @@ export const RENDER_CONFIG = {
   windStrength: 0.5,  // canopy sway amount
   treeScale: 1.0,     // base scale on the 12m reference card-tree (~12m trees)
   treeCap: 450,      // max instanced trees (perf); explicit trees prioritized
+  horizonTrees: true, // jittered tree band around the course perimeter (distant tree-line)
   // Later tiers / stretch — off until their tier lands
   pbrTurf: false,
   groundGrass: true,
@@ -30,6 +31,7 @@ export const RENDER_CONFIG = {
   gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
   colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   water: true, // animated water: analytic ripples + fresnel + sun glitter (else static plane)
+  waterFoam: true, // shoreline foam via a depth pre-pass (wet line where water meets terrain)
   dof: false,
   volumetricClouds: false,
 };

@@ -9,6 +9,7 @@ import { buildCardTrees } from './tree-cards.js';
 import { buildGrounding } from './grounding.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
+import { makeWaterDepth } from './water-depth.js';
 import { makeTurfMaterial } from './turf.js';
 import { RENDER_CONFIG } from './config.js';
 
@@ -102,6 +103,7 @@ export class GolfScene {
     container.appendChild(this.markerLayer);
     this.markers = [];
     this.postfx = new PostFX(this.renderer, this.scene, this.camera);
+    this.waterDepth = RENDER_CONFIG.waterFoam ? makeWaterDepth(this.renderer) : null;
     window.addEventListener('resize', () => this.resize());
     new ResizeObserver(() => this.resize()).observe(container);
     this.renderer.setAnimationLoop(() => this._frame());
@@ -113,6 +115,7 @@ export class GolfScene {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
     this.postfx?.setSize(w, h);
+    this.waterDepth?.setSize(w, h);
   }
 
   _setupSkyAndLights() {
@@ -159,12 +162,27 @@ export class GolfScene {
     );
     pole.position.y = 1.15;
     pole.castShadow = true;
-    const flag = new THREE.Mesh(
-      new THREE.ConeGeometry(0.32, 0.62, 4, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0xd83a3a, roughness: 0.7, side: THREE.DoubleSide })
-    );
-    flag.rotation.z = -Math.PI / 2;
-    flag.position.set(0.3, 2.05, 0);
+    // Waving cloth flag: a subdivided plane anchored at the pole, rippled in the
+    // vertex shader (amplitude grows toward the free edge). The focal point of
+    // every shot, so it shouldn't be a frozen faceted cone.
+    const flagGeo = new THREE.PlaneGeometry(0.7, 0.42, 14, 5);
+    flagGeo.translate(0.35, 0, 0); // left edge at the pole
+    const flagU = { value: 0 };
+    this._flagU = flagU;
+    const flagMat = new THREE.MeshStandardMaterial({ color: 0xd83a3a, roughness: 0.7, side: THREE.DoubleSide });
+    flagMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = flagU;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          float fx = clamp(transformed.x / 0.7, 0.0, 1.0);
+          transformed.z += (sin(fx * 6.0 - uTime * 7.0) * 0.06 + sin(fx * 3.0 - uTime * 4.3) * 0.035) * fx;
+          transformed.y += sin(fx * 5.0 - uTime * 6.0) * 0.02 * fx;`);
+    };
+    flagMat.customProgramCacheKey = () => 'pin-flag';
+    const flag = new THREE.Mesh(flagGeo, flagMat);
+    flag.position.set(0, 2.08, 0);
+    flag.castShadow = true;
     const cup = new THREE.Mesh(
       new THREE.CircleGeometry(0.12, 16),
       new THREE.MeshBasicMaterial({ color: 0x111111 })
@@ -191,7 +209,7 @@ export class GolfScene {
 
   // ---------- course construction ----------
   loadCourse(geo) {
-    this._treeWind = this._grassWind = this._waterUpdate = null; // drop stale per-course callbacks
+    this._treeWind = this._grassWind = this._waterUpdate = this._waterMeshList = this._terrain = null; // drop stale per-course refs
     if (this.courseGroup) {
       this.scene.remove(this.courseGroup);
       this.courseGroup.traverse((o) => {
@@ -212,7 +230,9 @@ export class GolfScene {
     const b = this._bounds(geo);
     this.bounds = b;
     this._placeSkybox();
-    group.add(this._terrainMesh(b));
+    const terrain = this._terrainMesh(b);
+    group.add(terrain);
+    this._terrain = terrain; // referenced by the water-foam depth pre-pass
     this._addWater(geo, group);
     this._addTrees(geo, group);
     this._addGrass(geo, group);
@@ -382,9 +402,12 @@ export class GolfScene {
   // Animated water (config.water) or the static fallback plane.
   _addWater(geo, group) {
     if (RENDER_CONFIG.water) {
-      const { meshes, waterUpdate } = buildWater(geo.surfaces, (x, y) => this.hAt(x, y), this.sunDir);
+      const foamEnabled = !!this.waterDepth;
+      const { meshes, waterMeshes, waterUpdate, setFoamDepth } = buildWater(geo.surfaces, (x, y) => this.hAt(x, y), this.sunDir, foamEnabled);
       meshes.forEach((m) => group.add(m));
       this._waterUpdate = waterUpdate;
+      this._waterMeshList = waterMeshes;
+      if (foamEnabled) setFoamDepth(this.waterDepth.depthTexture, this.waterDepth.resolution, this.camera.near, this.camera.far);
     } else {
       this._waterMeshes(geo).forEach((m) => group.add(m));
     }
@@ -431,10 +454,36 @@ export class GolfScene {
     return spots;
   }
 
-  // Trees load from a glTF model (async); added to the course group when ready.
+  // A jittered band of trees around the course perimeter -> a hazy distant tree-line
+  // on the horizon (aerial fog gives the atmospheric falloff). Skips water surfaces.
+  _horizonSpots(geo, b) {
+    const water = (geo.surfaces || []).filter((s) => s.kind === 'water' && s.poly && s.poly.length >= 3);
+    const inWater = (x, y) => { for (const w of water) if (pointInPoly(x, y, w.poly)) return true; return false; };
+    const rnd = mulberry32(424242);
+    const spots = [];
+    const step = 42, rows = 2, rowGap = 30, inset = 45;
+    const place = (x, y) => {
+      if (x < b.minX || x > b.maxX || y < b.minY || y > b.maxY || inWater(x, y)) return;
+      spots.push({ x, y, s: 1.1 + rnd() * 0.7 }); // larger so they read at distance
+    };
+    for (let r = 0; r < rows; r++) {
+      const d = inset + r * rowGap;
+      for (let x = b.minX + d; x <= b.maxX - d; x += step) {
+        place(x + (rnd() - 0.5) * step, b.minY + d + (rnd() - 0.5) * rowGap);
+        place(x + (rnd() - 0.5) * step, b.maxY - d + (rnd() - 0.5) * rowGap);
+      }
+      for (let y = b.minY + d; y <= b.maxY - d; y += step) {
+        place(b.minX + d + (rnd() - 0.5) * rowGap, y + (rnd() - 0.5) * step);
+        place(b.maxX - d + (rnd() - 0.5) * rowGap, y + (rnd() - 0.5) * step);
+      }
+    }
+    return spots;
+  }
+
   _addTrees(geo, group) {
     if (!RENDER_CONFIG.foliageTrees) return;
     const spots = this._treeSpots(geo);
+    if (RENDER_CONFIG.horizonTrees) spots.push(...this._horizonSpots(geo, this.bounds));
     if (!spots.length) return;
     const { meshes, windUpdate } = buildCardTrees(spots, (x, y) => this.hAt(x, y), V);
     meshes.forEach((m) => group.add(m));
@@ -702,7 +751,9 @@ export class GolfScene {
     this._updateMarkers();
     if (this._treeWind) this._treeWind(this.clock.elapsedTime);
     if (this._grassWind) this._grassWind(this.clock.elapsedTime);
+    if (this._flagU) this._flagU.value = this.clock.elapsedTime;
     if (this._waterUpdate) this._waterUpdate(this.clock.elapsedTime);
+    if (this.waterDepth && this._terrain) this.waterDepth.prepass(this._terrain, this.camera);
     this.postfx.render();
   }
 
