@@ -6,6 +6,7 @@ import { PostFX } from './postfx.js';
 import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
 import { makeAerialFog } from './atmosphere.js';
 import { buildCardTrees } from './tree-cards.js';
+import { buildGrounding } from './grounding.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeTurfMaterial } from './turf.js';
@@ -190,9 +191,19 @@ export class GolfScene {
 
   // ---------- course construction ----------
   loadCourse(geo) {
+    this._treeWind = this._grassWind = this._waterUpdate = null; // drop stale per-course callbacks
     if (this.courseGroup) {
       this.scene.remove(this.courseGroup);
-      this.courseGroup.traverse((o) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose?.(); });
+      this.courseGroup.traverse((o) => {
+        o.geometry?.dispose();
+        const m = o.material;
+        if (m) {
+          m.map?.dispose(); m.alphaMap?.dispose(); m.normalMap?.dispose(); m.roughnessMap?.dispose();
+          (m.userData?.disposeTextures || []).forEach((t) => t?.dispose?.());
+          m.dispose?.();
+        }
+        o.customDepthMaterial?.dispose?.(); // foliage cutout-shadow material isn't a child
+      });
     }
     this.geo = geo;
     this.elev = geo.elevation || null;
@@ -428,6 +439,9 @@ export class GolfScene {
     const { meshes, windUpdate } = buildCardTrees(spots, (x, y) => this.hAt(x, y), V);
     meshes.forEach((m) => group.add(m));
     this._treeWind = windUpdate;
+    if (RENDER_CONFIG.grounding) {
+      buildGrounding(spots, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
+    }
   }
 
   // Clumped scatter across rough polygons. Real fescue grows in dense patches
@@ -629,8 +643,9 @@ export class GolfScene {
     a.trailPts.push(this.ball.position.clone());
     if (a.trailPts.length > 2) {
       if (this.trail) { this.scene.remove(this.trail); this.trail.geometry.dispose(); }
+      if (!this._trailMat) this._trailMat = new THREE.LineBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.9 });
       const g = new THREE.BufferGeometry().setFromPoints(a.trailPts);
-      this.trail = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.9 }));
+      this.trail = new THREE.Line(g, this._trailMat); // reuse one material (was allocated per frame)
       this.scene.add(this.trail);
     }
 

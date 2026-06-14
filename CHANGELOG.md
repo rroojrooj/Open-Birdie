@@ -2,6 +2,28 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [0.6.0] - 2026-06-15
+
+### Fixed
+- **GPU memory leaks on hole reload** — `loadCourse` now disposes `alphaMap`/`normalMap`/
+  `roughnessMap`, the turf's shader-injected textures, and each foliage `customDepthMaterial`
+  (previously only `.map` was freed, leaking foliage/turf textures every reload).
+- **Per-frame trail material leak** — the shot tracer's `LineBasicMaterial` was reallocated
+  every frame (~840 leaked objects/shot); it's now created once and reused.
+- Stale per-course wind callbacks are reset on reload; hoisted a per-blade allocation out of
+  the fescue build loop.
+
+### Added
+- **Deciduous tree variety** — added a broadleaf species (CC0 Jacaranda cluster atlas)
+  with a rounded, feathery card canopy, mixed ~30% into the conifer stand for an
+  Augusta-style mixed tree line. The tree builder is now species-parameterized
+  (`public/render/tree-cards.js`).
+- **Tree grounding** — soft contact-shadow decal blobs under each tree so they sit on
+  the turf instead of looking pasted on. One instanced, unlit, depth-write-off,
+  non-shadowing draped quad per tree (`public/render/grounding.js`, `config.grounding`).
+  Chosen over GTAO, which can't run here (its normal pre-pass recompiles our custom
+  `onBeforeCompile` materials and fails to compile).
+
 ## [0.5.0] - 2026-06-15
 
 ### Changed

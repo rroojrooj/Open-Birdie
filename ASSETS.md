@@ -19,6 +19,11 @@ required for CC0; recorded here for provenance.
   `twig_alpha` cutout) and **bark** (`bark_diff`) on procedurally-built foliage cards:
   a tapered bark trunk + a conical canopy of cross-fan cards (`public/render/tree-cards.js`).
   Lush and cheap to instance (~800 tris/tree vs ~80k for the decimated model).
+- `public/assets/trees/broadleaf_{diff,alpha,bark}.jpg` — from "Jacaranda Tree" by Poly
+  Haven (CC0). Source: https://polyhaven.com/a/jacaranda_tree
+  Its `leaves_diff`/`leaves_alpha` is a true leaf-CLUSTER atlas (3 bipinnate fronds) and
+  `branches_diff` is the bark. Used the same card technique for a feathery deciduous
+  canopy (rounded), mixed ~30% into the conifer stand for an Augusta-style mixed tree line.
 
 ## Turf textures (Tier 2)
 - `public/assets/turf/grass_{color,normal,rough}.jpg` — "Grass 004" by ambientCG (CC0).
