@@ -23,8 +23,11 @@ export const RENDER_CONFIG = {
   treeCap: 450,      // max instanced trees (perf); explicit trees prioritized
   // Later tiers / stretch — off until their tier lands
   pbrTurf: false,
-  groundGrass: false,
+  groundGrass: true,
+  grassCap: 55000,  // max fescue tufts on the rough (× blades-per-tuft; perf)
+  grassHeight: 0.7, // base blade height (m), jittered per instance
   gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
+  colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   dof: false,
   volumetricClouds: false,
 };

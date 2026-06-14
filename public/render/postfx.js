@@ -10,7 +10,33 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RENDER_CONFIG } from './config.js';
+
+// Cinematic grade in display space (after tone-map/sRGB): gentle contrast +
+// saturation, a warm-highlight / cool-shadow split-tone, and a soft vignette.
+const GRADE_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uContrast: { value: 1.08 },
+    uSaturation: { value: 1.12 },
+    uVignette: { value: 0.32 },
+  },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uContrast, uSaturation, uVignette; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec3 col = (c.rgb - 0.5) * uContrast + 0.5;            // contrast
+      float l = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(vec3(l), col, uSaturation);                 // saturation
+      col += vec3(-0.012, 0.0, 0.022) * (1.0 - l);          // cool shadows
+      col += vec3(0.028, 0.018, -0.012) * l;                // warm highlights
+      float v = smoothstep(0.85, 0.42, length(vUv - 0.5));  // vignette
+      col *= mix(1.0, v, uVignette);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
+    }`,
+};
 
 export class PostFX {
   constructor(renderer, scene, camera) {
@@ -46,6 +72,9 @@ export class PostFX {
     // OutputPass applies renderer.toneMapping + toneMappingExposure and converts
     // to the renderer's output color space (composer render targets are linear).
     this.composer.addPass(new OutputPass());
+
+    // Cinematic grade — after tone-map/sRGB (display space), before SMAA.
+    if (RENDER_CONFIG.colorGrade) this.composer.addPass(new ShaderPass(GRADE_SHADER));
 
     // Composer render targets carry no MSAA; SMAA antialiases the final image.
     // (The last pass renders to the default framebuffer, so preserveDrawingBuffer

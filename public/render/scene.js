@@ -6,6 +6,7 @@ import { PostFX } from './postfx.js';
 import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
 import { makeAerialFog } from './atmosphere.js';
 import { buildTrees } from './trees.js';
+import { buildGrass } from './grass.js';
 import { makeTurfMaterial } from './turf.js';
 import { RENDER_CONFIG } from './config.js';
 
@@ -202,6 +203,7 @@ export class GolfScene {
     group.add(this._terrainMesh(b));
     this._waterMeshes(geo).forEach((m) => group.add(m));
     this._addTrees(geo, group);
+    this._addGrass(geo, group);
 
     this.courseGroup = group;
     this.scene.add(group);
@@ -255,11 +257,14 @@ export class GolfScene {
     const tex = new THREE.CanvasTexture(this._paintSplat(b));
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    const maskTex = new THREE.CanvasTexture(this._paintStripeMask(b));
+    const maskTex = new THREE.CanvasTexture(this._paintMask(b, ['fairway', 'green', 'tee']));
     maskTex.colorSpace = THREE.NoColorSpace;
     maskTex.anisotropy = tex.anisotropy;
+    const bunkerMaskTex = new THREE.CanvasTexture(this._paintMask(b, ['bunker']));
+    bunkerMaskTex.colorSpace = THREE.NoColorSpace;
+    bunkerMaskTex.anisotropy = tex.anisotropy;
 
-    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, maskTex, b, tex.anisotropy));
+    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, maskTex, bunkerMaskTex, b, tex.anisotropy));
     mesh.receiveShadow = true;
     return mesh;
   }
@@ -336,9 +341,10 @@ export class GolfScene {
     return cv;
   }
 
-  // Mask for shader mowing stripes: white on mown surfaces (fairway/green/tee),
-  // black elsewhere. Sampled in the turf shader so stripes only appear on mown turf.
-  _paintStripeMask(b) {
+  // Black/white mask over the terrain for the given surface kinds — white inside
+  // those polygons, black elsewhere. Sampled in the turf shader to gate per-zone
+  // effects (mow stripes on mown surfaces, sand on bunkers).
+  _paintMask(b, kinds) {
     const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
     const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
     const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
@@ -351,7 +357,7 @@ export class GolfScene {
     ctx.fillStyle = '#fff';
     ctx.filter = 'blur(1px)';
     for (const s of this.geo.surfaces) {
-      if (s.kind !== 'fairway' && s.kind !== 'green' && s.kind !== 'tee') continue;
+      if (!kinds.includes(s.kind)) continue;
       ctx.beginPath();
       ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
       for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
@@ -410,6 +416,29 @@ export class GolfScene {
       meshes.forEach((m) => group.add(m));
       this._treeWind = windUpdate;
     }).catch((e) => console.error('[trees] load failed', e));
+  }
+
+  // Random scatter across rough polygons -> even fescue distribution.
+  _grassSpots(geo) {
+    if (!RENDER_CONFIG.groundGrass) return [];
+    const rough = (geo.surfaces || []).filter((s) => s.kind === 'rough' && s.poly && s.poly.length >= 3);
+    if (!rough.length) return [];
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (const s of rough) for (const [x, y] of s.poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+    const spots = [], rnd = mulberry32(8080), CAP = RENDER_CONFIG.grassCap;
+    let att = 0;
+    while (spots.length < CAP && att++ < CAP * 4) {
+      const x = minX + rnd() * (maxX - minX), y = minY + rnd() * (maxY - minY);
+      for (const s of rough) { if (pointInPoly(x, y, s.poly)) { spots.push({ x, y, s: 0.8 + rnd() * 0.5 }); break; } }
+    }
+    return spots;
+  }
+
+  _addGrass(geo, group) {
+    const spots = this._grassSpots(geo);
+    if (!spots.length) return;
+    const { mesh, windUpdate } = buildGrass(spots, (x, y) => this.hAt(x, y), V);
+    if (mesh) { group.add(mesh); this._grassWind = windUpdate; }
   }
 
   // ---------- gameplay state ----------
@@ -633,6 +662,7 @@ export class GolfScene {
 
     this._updateMarkers();
     if (this._treeWind) this._treeWind(this.clock.elapsedTime);
+    if (this._grassWind) this._grassWind(this.clock.elapsedTime);
     this.postfx.render();
   }
 

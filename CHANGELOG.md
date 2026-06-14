@@ -2,6 +2,25 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [0.3.0] - 2026-06-14
+
+Turf and atmosphere polish on top of the 0.2.0 renderer overhaul.
+
+### Added
+- **Bright sand bunkers** — tiled CC0 coast-sand texture (Poly Haven), brightened
+  in-shader and mixed in on a dedicated bunker mask so bunkers read as light sand
+  rather than flat tan (`public/render/turf.js`, `scene.js`).
+- **Fescue / rough grass** — instanced geometry blades (green base → golden tip) with
+  vertex-shader wind, clumped into tufts and scattered on the rough; the wispy long
+  grass that frames a hole (`public/render/grass.js`).
+- **Cinematic color grade** — a display-space grade pass after tone-mapping: gentle
+  contrast + saturation, warm-highlight / cool-shadow split-tone, and a soft vignette
+  (`public/render/postfx.js`).
+
+### Notes
+- Fescue lands as a foundation; density/LOD tuning is a later pass.
+- Provenance for the new turf grass + sand textures added to `ASSETS.md`.
+
 ## [0.2.0] - 2026-06-14
 
 Photoreal renderer overhaul — the course now reads as a real golf course under a

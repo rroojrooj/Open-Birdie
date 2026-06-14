@@ -10,5 +10,6 @@ export const ASSETS = {
     color: `${BASE}turf/grass_color.jpg`,
     normal: `${BASE}turf/grass_normal.jpg`,
     rough: `${BASE}turf/grass_rough.jpg`,
+    sand: `${BASE}turf/sand_color.jpg`,
   },
 };
