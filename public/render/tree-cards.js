@@ -35,8 +35,8 @@ const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 // Build the merged foliage-card geometry for ONE reference tree (height H).
 function foliageGeometry(H, rnd) {
   const pos = [], uv = [], nor = [], idx = [];
-  const yBase = H * 0.18, yTop = H * 0.96;
-  const rBottom = H * 0.26;
+  const yBase = H * 0.08, yTop = H * 0.97;
+  const rBottom = H * 0.40; // wide skirt so the tree reads full, not a toothpick
   const up = V3(0, 1, 0);
   let v = 0;
   const pushCard = (anchor, dir, across, L, W, sp, normal) => {
@@ -49,34 +49,34 @@ function foliageGeometry(H, rnd) {
     for (let k = 0; k < 4; k++) nor.push(normal.x, normal.y, normal.z);
     idx.push(v, v + 1, v + 2, v, v + 2, v + 3); v += 4;
   };
-  const nRings = 9;
+  const nRings = 14;
   for (let i = 0; i < nRings; i++) {
     const t = i / (nRings - 1);
     const y = yBase + (yTop - yBase) * t;
-    const r = rBottom * Math.pow(1 - t, 1.1) + 0.2;        // convex cone
-    const count = Math.round(3 + (1 - t) * 7);
+    const r = rBottom * Math.pow(1 - t, 0.78) + 0.25;      // full, slightly convex cone
+    const count = Math.round(7 + (1 - t) * 14);            // dense rings -> solid silhouette
     for (let c = 0; c < count; c++) {
-      const az = rnd() * Math.PI * 2;
+      const az = rnd() * Math.PI * 2 + i * 0.5;            // offset per ring so cards don't stack
       const ca = Math.cos(az), sa = Math.sin(az);
       const outward = V3(ca, 0, sa), tangent = V3(-sa, 0, ca);
-      const anchor = V3(ca * 0.15, y + (rnd() - 0.5) * 0.3, sa * 0.15);
-      const dir = outward.clone().add(V3(0, -0.32 - rnd() * 0.2, 0)).normalize(); // droop out+down
-      const L = r * 1.5 + 0.6, W = L * (0.55 + rnd() * 0.2);
+      const anchor = V3(ca * 0.12, y + (rnd() - 0.5) * 0.45, sa * 0.12);
+      const dir = outward.clone().add(V3(0, -0.18 - rnd() * 0.18, 0)).normalize(); // fan out, slight droop
+      const L = r * 0.95 + 0.7, W = L * (0.6 + rnd() * 0.25); // tip ~reaches the cone radius
       const sp = SPRIGS[(rnd() * SPRIGS.length) | 0];
       const normal = outward.clone().multiplyScalar(0.3).add(up.clone().multiplyScalar(0.7)).normalize();
-      pushCard(anchor, dir, tangent, L, W, sp, normal);                         // flat-ish branch
-      const across2 = tangent.clone().add(up.clone().multiplyScalar(0.8)).normalize();
-      pushCard(anchor, dir, across2, L, W * 0.9, sp, normal);                   // crossed for volume
+      pushCard(anchor, dir, tangent, L, W, sp, normal);                          // flat-ish branch
+      const across2 = tangent.clone().add(up.clone().multiplyScalar(0.85)).normalize();
+      pushCard(anchor, dir, across2, L, W * 0.9, sp, normal);                    // crossed for volume
     }
   }
-  // a couple of upward apex sprigs
-  for (let c = 0; c < 3; c++) {
+  // upward apex sprigs for a full top
+  for (let c = 0; c < 6; c++) {
     const az = rnd() * Math.PI * 2, ca = Math.cos(az), sa = Math.sin(az);
-    const anchor = V3(0, yTop - 0.2, 0);
-    const dir = V3(ca * 0.25, 1, sa * 0.25).normalize();
+    const anchor = V3(ca * 0.2, yTop - 0.3 - rnd() * 0.6, sa * 0.2);
+    const dir = V3(ca * 0.35, 1, sa * 0.35).normalize();
     const across = V3(-sa, 0, ca);
     const sp = SPRIGS[(rnd() * SPRIGS.length) | 0];
-    pushCard(anchor, dir, across, 1.1, 0.7, sp, up.clone());
+    pushCard(anchor, dir, across, 1.3, 0.8, sp, up.clone());
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

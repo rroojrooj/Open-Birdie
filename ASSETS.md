@@ -18,7 +18,7 @@ required for CC0; recorded here for provenance.
   sticks. Instead we reuse the model's **needle-sprig atlas** (`twig_diff` color +
   `twig_alpha` cutout) and **bark** (`bark_diff`) on procedurally-built foliage cards:
   a tapered bark trunk + a conical canopy of cross-fan cards (`public/render/tree-cards.js`).
-  Lush and cheap to instance (~240 tris/tree vs ~80k for the decimated model).
+  Lush and cheap to instance (~800 tris/tree vs ~80k for the decimated model).
 
 ## Turf textures (Tier 2)
 - `public/assets/turf/grass_{color,normal,rough}.jpg` — "Grass 004" by ambientCG (CC0).
