@@ -2,6 +2,23 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [0.5.0] - 2026-06-15
+
+### Changed
+- **Less uniform turf** — large-scale tonal variation (~50–120m patches) on the grass
+  so fairway/rough reads as natural turf rather than a flat green carpet
+  (`public/render/turf.js`).
+- **Lush card-foliage conifers** — replaced the decimated film-model trees (which
+  rendered as bare sticks — their 6.7M geometric needles collapse when decimated to an
+  instanceable budget) with procedurally-built foliage cards: a tapered bark trunk plus
+  a conical canopy of cross-fan cards textured with the fir's own needle-sprig atlas
+  (`public/render/tree-cards.js`). Lush, photoreal, and ~800 tris/tree (vs ~80k),
+  dropping the 17MB `conifer.glb` for three ~0.3–0.8MB textures.
+- **Denser fescue** — rough grass now scatters in tight, bushy clumps (center-biased
+  discs trimmed at the rough edge) instead of an even thin spread, with more blades
+  per tuft and taller blades. Reads as real patchy fescue framing the holes rather
+  than sparse isolated spikes (`public/render/scene.js`, `grass.js`, `config.js`).
+
 ## [0.4.0] - 2026-06-14
 
 ### Added

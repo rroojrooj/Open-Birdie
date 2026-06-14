@@ -17,15 +17,15 @@ export const RENDER_CONFIG = {
   sunAltitudeDeg: null,
   hdriFile: 'puresky_4k.hdr',
   // Tier 1
-  foliageTrees: true,
-  windStrength: 0.5, // canopy sway amount
-  treeScale: 0.95,   // base scale applied to the ~19m fir model
+  foliageTrees: true, // card-foliage conifers (see tree-cards.js)
+  windStrength: 0.5,  // canopy sway amount
+  treeScale: 1.0,     // base scale on the 12m reference card-tree (~12m trees)
   treeCap: 450,      // max instanced trees (perf); explicit trees prioritized
   // Later tiers / stretch — off until their tier lands
   pbrTurf: false,
   groundGrass: true,
   grassCap: 55000,  // max fescue tufts on the rough (× blades-per-tuft; perf)
-  grassHeight: 0.7, // base blade height (m), jittered per instance
+  grassHeight: 0.85, // base blade height (m), jittered per instance
   gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
   colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   water: true, // animated water: analytic ripples + fresnel + sun glitter (else static plane)

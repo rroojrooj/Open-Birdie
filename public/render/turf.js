@@ -59,6 +59,13 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float band = sin((wx * 0.82 + wy * 0.57) * (3.14159265 / uStripeM));
           float stripe = smoothstep(-0.15, 0.15, band) * 2.0 - 1.0;
           grass *= 1.0 + 0.14 * stripe * m;
+          // large-scale tonal variation (~50-120m patches) so turf isn't a flat carpet
+          float lv = (sin(wx * 0.13 + wy * 0.07) * 0.5
+                    + sin(wx * 0.06 - wy * 0.11) * 0.32
+                    + sin((wx * 0.9 - wy * 1.3) * 0.05) * 0.22) * 0.45;
+          grass *= 1.0 + 0.09 * lv;            // brightness patches
+          grass.r *= 1.0 + 0.045 * lv;         // warmer/cooler with the patch
+          grass.b *= 1.0 - 0.03 * lv;
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
           sand = mix(sand, vec3(1.0), 0.12) * 1.28;

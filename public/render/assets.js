@@ -4,7 +4,9 @@ const BASE = '/assets/';
 export const ASSETS = {
   hdri: () => `${BASE}hdri/${RENDER_CONFIG.hdriFile}`,
   trees: {
-    conifer: `${BASE}trees/conifer.glb`,
+    foliageDiff: `${BASE}trees/foliage_diff.jpg`,
+    foliageAlpha: `${BASE}trees/foliage_alpha.jpg`,
+    bark: `${BASE}trees/bark_diff.jpg`,
   },
   turf: {
     color: `${BASE}turf/grass_color.jpg`,
