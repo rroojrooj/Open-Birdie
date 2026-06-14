@@ -17,6 +17,8 @@ This is WebGL/visual code with **no existing test framework** and browser-only r
 - **Pure logic** (HDRI sun-direction + horizon-color math, config defaults) → real failing-first unit tests with `node --test` (zero new deps).
 - **Visual integration** (env, skybox, fog, exposure) → **goal-driven empirical verification**: render the two fixed Augusta frames through the capture harness and assert a **measurable acceptance** — a luminance histogram computed in-browser over the turf region with **no large near-white clip spike** and turf mean luminance landing in a target mid-range. This is the §6 verification + §4 Tier-0 acceptance from the spec, made concrete.
 
+> **Execution environment:** the host shell is Windows PowerShell, but a POSIX **Bash tool is available** — run all `curl`/`mkdir -p`/`grep`/`head`/`node tmp-sink.js` style steps below **via the Bash tool**, not PowerShell (they use `/dev/null`, `-p`, etc.).
+
 Reference: [design spec](../specs/2026-06-14-photoreal-renderer-design.md).
 
 ---
@@ -66,7 +68,7 @@ git add public/assets/hdri/meadow_4k.hdr ASSETS.md
 git commit -m "assets: bundle CC0 meadow 4K HDRI for renderer env"
 ```
 
-> Note: `data/courses/` and `shots/` are gitignored; `public/assets/` is NOT — the HDRI is meant to ship in-repo.
+> Note: `data/courses/` and `.shots/` are gitignored (capture evidence goes in `.shots/`, with a leading dot); `public/assets/` is NOT — the HDRI is meant to ship in-repo.
 
 ---
 
@@ -142,6 +144,7 @@ export const RENDER_CONFIG = {
   environmentIntensity: 1.0,
   sunIntensity: 2.0,
   fogDensity: 0.00016,
+  skyboxHeight: 30, // GroundedSkybox projection height (world meters); tuned in Task 7
   hdriFile: 'meadow_4k.hdr',
   // Later tiers / stretch — off until their tier lands
   foliageTrees: false,
@@ -327,7 +330,9 @@ Loads the HDRI, builds the PMREM env, sets background, derives `sunDir` via Task
 
 ```js
 import * as THREE from 'three';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+// HDRLoader, not RGBELoader: RGBELoader is a deprecated shim in r0.184 that logs a
+// console.warn on construction, which would trip our "no console warnings" gate.
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { GroundedSkybox } from 'three/addons/objects/GroundedSkybox.js';
 import { sunSphericalFromEquirect, horizonColorFromEquirect } from './hdri-analyze.js';
 import { RENDER_CONFIG } from './config.js';
@@ -343,7 +348,7 @@ const sunVec = (azimuth, altitude) => {
 
 // Loads HDRI, returns { envTexture, equirect, sunDir, horizonColor }.
 export async function loadHDRIEnvironment(renderer) {
-  const equirect = await new RGBELoader().setDataType(THREE.FloatType).loadAsync(ASSETS.hdri());
+  const equirect = await new HDRLoader().setDataType(THREE.FloatType).loadAsync(ASSETS.hdri());
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envTexture = pmrem.fromEquirectangular(equirect).texture;
   pmrem.dispose();
@@ -355,14 +360,15 @@ export async function loadHDRIEnvironment(renderer) {
   return { envTexture, equirect, sunDir, horizonColor };
 }
 
-// Directional key light aimed along sunDir (shadow framing handled by _fitShadows).
+// Directional key light. Given an initial aim along sunDir; _fitShadows refines
+// position/frustum per hole. (Direction = sun.position - sun.target; target is at origin.)
 export function makeSun(sunDir) {
   const sun = new THREE.DirectionalLight(0xfff4e0, RENDER_CONFIG.sunIntensity);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.35;
-  sun.userData.sunDir = sunDir;
+  sun.position.copy(sunDir).multiplyScalar(700); // initial aim before first _fitShadows
   return sun;
 }
 
@@ -371,8 +377,12 @@ export function makeSun(sunDir) {
 export function makeGroundedSkybox(equirect, bounds) {
   const spanX = bounds.maxX - bounds.minX, spanY = bounds.maxY - bounds.minY;
   const radius = Math.max(spanX, spanY) * 1.6 + 600;
-  const height = 90; // camera/horizon height feel; tuned in verification
+  const height = RENDER_CONFIG.skyboxHeight; // projection height; tuned in Task 7
   const sky = new GroundedSkybox(equirect, height, radius);
+  // REQUIRED: GroundedSkybox flattens its lower hemisphere to local y = -height;
+  // lifting by +height puts the projected ground at world y ≈ 0 (the course plane).
+  // Omitting this sinks the horizon ground below the course — the exact failure we're fixing.
+  sky.position.y = height;
   sky.name = 'groundedSky';
   return sky;
 }
@@ -532,15 +542,16 @@ Expected: `hasFog: true`, `hasSkybox: true`, a plausible `sunDir`.
 
 - [ ] **Step 2: Capture the two Augusta frames + luminance histogram**
 
-Start the throwaway sink (`node tmp-sink.js`, port 9100 — recreate the small sink server if absent; see memory `preview-webgl-screenshots`). For each of the two framings (hole-1 tee POV; long par-5), set the camera as in the prior session, then:
+Start the throwaway sink (`node tmp-sink.js`, port 9100 — recreate the small sink server if absent; see memory `preview-webgl-screenshots`; point its output dir at `.shots/`). For each of the two framings (hole-1 tee POV; long par-5), set the camera as in the prior session, then:
 ```
 preview_eval: (async () => {
   const s = window.__birdie.scene; await s.envReady;
   s.resize(); s._snapIdleCam(); s.postfx.render();
   const c = document.querySelector('#scene canvas');
-  // luminance histogram over the lower-center turf region
+  // luminance histogram over the lower-center turf region.
+  // NOTE: gl.readPixels origin is BOTTOM-left, so the turf (lower screen) is the LOW y band.
   const gl = c.getContext('webgl2') || c.getContext('webgl');
-  const W=c.width,H=c.height, x0=W*0.3|0,x1=W*0.7|0,y0=H*0.55|0,y1=H*0.95|0;
+  const W=c.width,H=c.height, x0=W*0.3|0,x1=W*0.7|0,y0=H*0.05|0,y1=H*0.45|0;
   const px=new Uint8Array((x1-x0)*(y1-y0)*4);
   gl.readPixels(x0,y0,(x1-x0),(y1-y0),gl.RGBA,gl.UNSIGNED_BYTE,px);
   let sum=0,white=0,n=px.length/4;
@@ -558,7 +569,7 @@ If `whiteFrac` high / `meanLum` > 150 → lower `RENDER_CONFIG.toneMappingExposu
 
 - [ ] **Step 4: Compare against the pre-Tier-0 baseline**
 
-The earlier captures (`shots/augusta-h1.jpg`, `shots/augusta-long.jpg`) are the before. Save the new ones as `shots/tier0-h1.jpg` / `shots/tier0-long.jpg` and confirm the qualitative wins: full believable horizon, no white-out midground, consistent light. (`shots/` is gitignored — these are evidence, not committed.)
+The earlier assessment captures are the "before" (they live in `shots/` from the prior session; copy them into `.shots/` to keep before/after together). Save the new ones as `.shots/tier0-h1.jpg` / `.shots/tier0-long.jpg` and confirm the qualitative wins: full believable horizon, no white-out midground, consistent light. (`.shots/` is gitignored — evidence, not committed.)
 
 - [ ] **Step 5: Commit any tuning**
 
@@ -584,7 +595,8 @@ If a renderer doc/section exists (per the spec's module map), note the new modul
 Run: `npm test`
 Expected: PASS (config + hdri-analyze).
 ```bash
-git add -A
+rm -f tmp-sink.js                       # remove the throwaway capture sink
+git add docs/ public/render/ ASSETS.md  # explicit paths — do NOT `git add -A` (avoids staging .shots/ stragglers / tmp files)
 git commit -m "docs(render): note HDRI env modules for tier 0"
 ```
 
