@@ -5,6 +5,9 @@ All notable changes to Open-Birdie are documented here.
 ## [Unreleased]
 
 ### Changed
+- **Less uniform turf** — large-scale tonal variation (~50–120m patches) on the grass
+  so fairway/rough reads as natural turf rather than a flat green carpet
+  (`public/render/turf.js`).
 - **Lush card-foliage conifers** — replaced the decimated film-model trees (which
   rendered as bare sticks — their 6.7M geometric needles collapse when decimated to an
   instanceable budget) with procedurally-built foliage cards: a tapered bark trunk plus
