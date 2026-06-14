@@ -79,7 +79,7 @@ git commit -m "assets: bundle CC0 meadow 4K HDRI for renderer env"
 | `public/render/config.js` | Feature flags + quality knobs, single import | Create |
 | `public/render/hdri-analyze.js` | Pure math: sun direction + horizon color from equirect float data (no three import) | Create |
 | `public/render/assets.js` | Offline asset path registry | Create |
-| `public/render/env.js` | HDRI → PMREM env + background, directional sun from `sunDir`, `GroundedSkybox` factory | Create |
+| `public/render/env.js` | HDRI → PMREM env + background, directional sun, `GroundedSkybox` factory, neutral fallback env | Create |
 | `public/render/atmosphere.js` | Horizon-matched `FogExp2` | Create |
 | `public/render/scene.js` | Orchestrate: async env load, `envReady`, place skybox in `loadCourse`, exposure rebalance | Modify (`_setupSkyAndLights` 112–150, constructor 49–63, `loadCourse` ~201, imports) |
 | `test/hdri-analyze.test.mjs` | Unit tests for the pure HDRI math | Create |
@@ -118,6 +118,11 @@ test('exposure + env intensity are numbers in sane range', () => {
   assert.ok(RENDER_CONFIG.toneMappingExposure > 0 && RENDER_CONFIG.toneMappingExposure < 3);
   assert.ok(RENDER_CONFIG.environmentIntensity > 0 && RENDER_CONFIG.environmentIntensity <= 2);
 });
+
+test('sun direction override defaults to auto (null)', () => {
+  assert.equal(RENDER_CONFIG.sunAzimuthDeg, null);
+  assert.equal(RENDER_CONFIG.sunAltitudeDeg, null);
+});
 ```
 
 - [ ] **Step 2: Add the `test` script and run to verify it fails**
@@ -145,6 +150,10 @@ export const RENDER_CONFIG = {
   sunIntensity: 2.0,
   fogDensity: 0.00016,
   skyboxHeight: 30, // GroundedSkybox projection height (world meters); tuned in Task 7
+  // Sun direction: null = auto-estimate from the HDRI's brightest texel.
+  // Set BOTH (degrees) to override when the estimate is wrong on a diffuse HDRI (D2).
+  sunAzimuthDeg: null,
+  sunAltitudeDeg: null,
   hdriFile: 'meadow_4k.hdr',
   // Later tiers / stretch — off until their tier lands
   foliageTrees: false,
@@ -185,7 +194,7 @@ Pure functions, no `three` import, so they unit-test in node and run in the brow
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sunSphericalFromEquirect, horizonColorFromEquirect } from '../public/render/hdri-analyze.js';
+import { sunSphericalFromEquirect, sunDirectionVec, horizonColorFromEquirect } from '../public/render/hdri-analyze.js';
 
 // Build a tiny equirect: dark everywhere, one very bright texel.
 function makeEquirect(w, h, brightX, brightY, rgb = [50, 50, 50]) {
@@ -216,6 +225,15 @@ test('horizon color samples the mid rows and returns a 0xRRGGBB int', () => {
   const c = horizonColorFromEquirect(new Float32Array(16 * 8 * 4).fill(0.5), 16, 8);
   assert.equal(typeof c, 'number');
   assert.ok(c >= 0 && c <= 0xffffff);
+});
+
+test('sunDirectionVec maps spherical to THREE axes with correct handedness', () => {
+  const up = sunDirectionVec(0, Math.PI / 2);
+  assert.ok(Math.abs(up.y - 1) < 1e-9 && Math.abs(up.x) < 1e-9 && Math.abs(up.z) < 1e-9, 'straight up -> +Y');
+  const east = sunDirectionVec(Math.PI / 2, 0);
+  assert.ok(Math.abs(east.x - 1) < 1e-9 && Math.abs(east.z) < 1e-9, 'east -> +X');
+  const north = sunDirectionVec(0, 0);
+  assert.ok(Math.abs(north.z + 1) < 1e-9 && Math.abs(north.x) < 1e-9, 'north -> -Z');
 });
 ```
 
@@ -250,6 +268,14 @@ export function sunSphericalFromEquirect(data, width, height, step = 2) {
   const colatitude = ((by + 0.5) / height) * Math.PI; // 0 = zenith
   const altitude = Math.PI / 2 - colatitude;           // + above horizon
   return { azimuth, altitude };
+}
+
+// Spherical (azimuth, altitude in rad) -> unit direction in THREE space.
+// Sim axes x=east, y=north, z=up map to THREE as (x, z, -y), so:
+//   east -> +X, straight up -> +Y, north -> -Z. (Unit-tested for handedness — D3.)
+export function sunDirectionVec(azimuth, altitude) {
+  const ca = Math.cos(altitude);
+  return { x: ca * Math.sin(azimuth), y: Math.sin(altitude), z: -ca * Math.cos(azimuth) };
 }
 
 // Average color of the rows near the horizon (v ≈ 0.5), tone-mapped to 0xRRGGBB.
@@ -334,16 +360,15 @@ import * as THREE from 'three';
 // console.warn on construction, which would trip our "no console warnings" gate.
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { GroundedSkybox } from 'three/addons/objects/GroundedSkybox.js';
-import { sunSphericalFromEquirect, horizonColorFromEquirect } from './hdri-analyze.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { sunSphericalFromEquirect, sunDirectionVec, horizonColorFromEquirect } from './hdri-analyze.js';
 import { RENDER_CONFIG } from './config.js';
 import { ASSETS } from './assets.js';
 
-// sim -> three (matches scene.js V()): x east, z up, -y north
+// pure math lives in hdri-analyze (unit-tested for handedness, D3); wrap as Vector3 here
 const sunVec = (azimuth, altitude) => {
-  const x = Math.cos(altitude) * Math.sin(azimuth);
-  const y = Math.cos(altitude) * Math.cos(azimuth);
-  const z = Math.sin(altitude);
-  return new THREE.Vector3(x, z, -y).normalize();
+  const v = sunDirectionVec(azimuth, altitude);
+  return new THREE.Vector3(v.x, v.y, v.z).normalize();
 };
 
 // Loads HDRI, returns { envTexture, equirect, sunDir, horizonColor }.
@@ -354,8 +379,12 @@ export async function loadHDRIEnvironment(renderer) {
   pmrem.dispose();
 
   const { data, width, height } = equirect.image;
-  const { azimuth, altitude } = sunSphericalFromEquirect(data, width, height);
-  const sunDir = sunVec(azimuth, Math.max(altitude, THREE.MathUtils.degToRad(8))); // floor so shadows read
+  // sun direction: explicit config override (D2) wins, else estimate from the HDRI
+  const ovAz = RENDER_CONFIG.sunAzimuthDeg, ovAlt = RENDER_CONFIG.sunAltitudeDeg;
+  const sph = (ovAz != null && ovAlt != null)
+    ? { azimuth: THREE.MathUtils.degToRad(ovAz), altitude: THREE.MathUtils.degToRad(ovAlt) }
+    : sunSphericalFromEquirect(data, width, height);
+  const sunDir = sunVec(sph.azimuth, Math.max(sph.altitude, THREE.MathUtils.degToRad(8))); // floor so shadows read
   const horizonColor = horizonColorFromEquirect(data, width, height);
   return { envTexture, equirect, sunDir, horizonColor };
 }
@@ -385,6 +414,15 @@ export function makeGroundedSkybox(equirect, bounds) {
   sky.position.y = height;
   sky.name = 'groundedSky';
   return sky;
+}
+
+// Neutral fallback env if the HDRI fails to load (D1). Without it, removing the
+// Preetham sky leaves PBR materials with no ambient and shadowed areas go near-black.
+export function makeFallbackEnv(renderer) {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const tex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+  return tex;
 }
 ```
 
@@ -448,7 +486,7 @@ In `scene.js` replace the `Sky` import (line 5) with the new modules:
 
 ```js
 // remove: import { Sky } from 'three/addons/objects/Sky.js';
-import { loadHDRIEnvironment, makeSun, makeGroundedSkybox } from './env.js';
+import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
 import { makeAerialFog } from './atmosphere.js';
 import { RENDER_CONFIG } from './config.js';
 ```
@@ -484,7 +522,11 @@ _setupSkyAndLights() {
     if (RENDER_CONFIG.aerialFog) this.scene.fog = makeAerialFog(horizonColor);
     if (this.bounds) this._placeSkybox(); // course already loaded
     if (this._activeHole) this._fitShadows(this._activeHole); // re-aim shadows to HDRI sun
-  }).catch((e) => { console.error('[env] HDRI load failed', e); });
+  }).catch((e) => {
+    console.error('[env] HDRI load failed, using fallback env', e);
+    this.scene.environment = makeFallbackEnv(this.renderer); // D1: keep scene lit
+    this.scene.environmentIntensity = RENDER_CONFIG.environmentIntensity;
+  });
 }
 
 _placeSkybox() {
@@ -609,9 +651,69 @@ git commit -m "docs(render): note HDRI env modules for tier 0"
 - [ ] Both Augusta frames meet the luminance acceptance (`whiteFrac < 0.02`, `meanLum` 70–150) and show a full, believable horizon via the GroundedSkybox.
 - [ ] `this.sunDir` drives both the directional light and `_fitShadows`; shadows agree with the HDRI sun.
 - [ ] Band-aids removed (`toneMappingExposure 0.45`, `environmentIntensity 0.5`, hardcoded Preetham sun); values now centralized in `config.js`.
+- [ ] HDRI-load-failure falls back to a neutral lit env (no black scene, D1); sun-direction config override path works (D2); sun axis-mapping is unit-tested (D3).
 - [ ] Before/after captures saved as evidence.
 
 ## Open questions deferred to later (do NOT solve here)
 - Per-course HDRI selection (biome-keyed) — Tier-later.
 - Dual-color depth fog via `onBeforeCompile` — FogExp2 is the Tier-0 choice (YAGNI); revisit only if aerial perspective reads flat.
 - MSAA composer target for `alphaToCoverage` — Tier-1 fork (foliage edges), not needed for Tier 0.
+
+---
+
+## Eng-review outputs (plan-eng-review, 2026-06-14)
+
+### NOT in scope (deferred, with rationale)
+- **Per-course / biome HDRI selection** — one default HDRI for now; biome keying is Tier-later.
+- **Dual-color depth fog via `onBeforeCompile`** — `FogExp2` is the Tier-0 choice (YAGNI); revisit only if aerial perspective reads flat.
+- **MSAA composer target** — only matters for Tier-1 foliage `alphaToCoverage`.
+- **Unifying the sim→three axis map** — `scene.js` `V()` and `hdri-analyze.sunDirectionVec` both encode `(x, z, -y)`. Minor DRY; left as a noted cleanup, not blocking Tier 0.
+- **Separate small env-bake vs large background HDRI** — single 4K HDRI for both; split only if PMREM bake/memory bites (spec §5 knob).
+
+### What already exists (reused, not rebuilt)
+- `PMREMGenerator` env bake — reused (was baking the Preetham sky; now bakes HDRI / fallback).
+- `DirectionalLight` + 4096 shadow map + `_fitShadows` per-hole frustum — reused; only the aim source (`this.sunDir`) changes.
+- `V()` sim→three mapping and `this.bounds` from `_bounds(geo)` — reused for sun vector + skybox sizing.
+- `window.__birdie.scene` + the headless capture harness — reused for verification.
+
+### Failure modes (per new codepath)
+| Codepath | Failure | Test? | Error handling? | User sees |
+|----------|---------|-------|-----------------|-----------|
+| HDRI load (`loadHDRIEnvironment`) | file missing/corrupt, fetch fail | empirical (Task 7) | **D1 fallback env** | lit fallback scene + console error (not black, not silent) |
+| PMREM bake on 4K | GPU OOM | empirical | caught → D1 fallback | same as above |
+| Sun estimate (`sunSphericalFromEquirect`) | brightest texel ≠ sun (diffuse HDRI) | unit (low/high alt) | **D2 config override** | shadows slightly off until override set; visible in Task 7 |
+| Axis map (`sunDirectionVec`) | future sign flip | **unit (D3)** | n/a | guarded by test before render |
+| `_placeSkybox` before bounds | called pre-loadCourse | n/a | `if (this.bounds)` guard | nothing (no-op until course loads) |
+
+**Critical gaps (silent + untested + unhandled): none.** Every failure is either tested, handled with a fallback, or visible (logged / on-screen).
+
+### Worktree parallelization
+Small plan, mostly sequential through `scene.js`. Two genuinely independent pure modules can go in parallel lanes if desired:
+- **Lane A:** `config.js` + test (independent)
+- **Lane B:** `hdri-analyze.js` + tests (independent)
+- **Then sequential:** `assets.js` → `env.js` + `atmosphere.js` → `scene.js` integration → Task 7 verification.
+
+Recommendation: build sequentially. The parallelizable units are ~5 min each; the coordination overhead isn't worth a worktree split here.
+
+### Completion summary
+- Step 0 Scope Challenge — scope accepted as-is (8 files, justified by module-isolation + testability).
+- Architecture Review — 2 issues, both resolved (D1 fallback env, D2 sun override).
+- Code Quality Review — 1 minor (DRY axis map); partly resolved by D3 extraction, remainder noted in NOT-in-scope.
+- Test Review — coverage diagram produced, 1 gap (axis mapping) resolved by D3.
+- Performance Review — 0 issues (one-time load cost only, zero per-frame add).
+- NOT in scope — written. What already exists — written.
+- Failure modes — 0 critical gaps.
+- Lake score — 3/3 decisions chose the complete/hardened option.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run (optional) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | pending | outside-voice offered |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 3 issues, all resolved; 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | pending | next step |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | n/a (no dev-facing surface) |
+
+- **UNRESOLVED:** 0
+- **VERDICT:** ENG CLEARED — ready to implement once design review passes. Spec + plan-doc reviews also passed.
