@@ -2,6 +2,13 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [Unreleased]
+
+### Added
+- **Distant horizon tree-line** — a jittered tree band around the course perimeter so the
+  far horizon reads as a hazy distant forest edge (aerial fog supplies the atmospheric
+  falloff) instead of bare turf meeting sky (`public/render/scene.js`, `config.horizonTrees`).
+
 ## [0.6.0] - 2026-06-15
 
 ### Fixed

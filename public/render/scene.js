@@ -431,10 +431,36 @@ export class GolfScene {
     return spots;
   }
 
-  // Trees load from a glTF model (async); added to the course group when ready.
+  // A jittered band of trees around the course perimeter -> a hazy distant tree-line
+  // on the horizon (aerial fog gives the atmospheric falloff). Skips water surfaces.
+  _horizonSpots(geo, b) {
+    const water = (geo.surfaces || []).filter((s) => s.kind === 'water' && s.poly && s.poly.length >= 3);
+    const inWater = (x, y) => { for (const w of water) if (pointInPoly(x, y, w.poly)) return true; return false; };
+    const rnd = mulberry32(424242);
+    const spots = [];
+    const step = 42, rows = 2, rowGap = 30, inset = 45;
+    const place = (x, y) => {
+      if (x < b.minX || x > b.maxX || y < b.minY || y > b.maxY || inWater(x, y)) return;
+      spots.push({ x, y, s: 1.1 + rnd() * 0.7 }); // larger so they read at distance
+    };
+    for (let r = 0; r < rows; r++) {
+      const d = inset + r * rowGap;
+      for (let x = b.minX + d; x <= b.maxX - d; x += step) {
+        place(x + (rnd() - 0.5) * step, b.minY + d + (rnd() - 0.5) * rowGap);
+        place(x + (rnd() - 0.5) * step, b.maxY - d + (rnd() - 0.5) * rowGap);
+      }
+      for (let y = b.minY + d; y <= b.maxY - d; y += step) {
+        place(b.minX + d + (rnd() - 0.5) * rowGap, y + (rnd() - 0.5) * step);
+        place(b.maxX - d + (rnd() - 0.5) * rowGap, y + (rnd() - 0.5) * step);
+      }
+    }
+    return spots;
+  }
+
   _addTrees(geo, group) {
     if (!RENDER_CONFIG.foliageTrees) return;
     const spots = this._treeSpots(geo);
+    if (RENDER_CONFIG.horizonTrees) spots.push(...this._horizonSpots(geo, this.bounds));
     if (!spots.length) return;
     const { meshes, windUpdate } = buildCardTrees(spots, (x, y) => this.hAt(x, y), V);
     meshes.forEach((m) => group.add(m));
