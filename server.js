@@ -39,8 +39,8 @@ oc.on('disconnected', () => {
 });
 oc.on('status', (s) => { lmStatus.ready = s.ready; broadcast('lm', lmStatus); });
 oc.on('shot', (shot) => {
-  console.log(`[OC] shot: ${shot.ball.Speed} mph, VLA ${shot.ball.VLA}, HLA ${shot.ball.HLA}, spin ${shot.ball.TotalSpin}`);
-  playShot(shot.ball);
+  console.log(`[OC] shot: ${shot.ball.Speed} mph, VLA ${shot.ball.VLA}, HLA ${shot.ball.HLA}, spin ${shot.ball.TotalSpin}${shot.clubName ? ' (' + shot.clubName + ')' : ''}`);
+  playShot(shot.ball, shot.clubName);
 });
 oc.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
@@ -48,8 +48,8 @@ oc.on('error', (err) => {
   } else console.error('[OC]', err.message);
 });
 
-function playShot(ballData) {
-  const result = game.handleShot(ballData);
+function playShot(ballData, clubName) {
+  const result = game.handleShot(ballData, clubName);
   if (!result) return;
   broadcast('shot', result);
   broadcast('state', game.state());
