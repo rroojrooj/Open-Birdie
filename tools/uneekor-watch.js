@@ -129,7 +129,7 @@ function sendShot(folder) {
   send({
     DeviceID: 'Uneekor VIEW (Open-Birdie watch)',
     Units: 'Yards', ShotNumber: shotCounter, APIversion: '1',
-    BallData: ball, ClubData: null,
+    BallData: ball, ClubData: null, ClubName: club,
     ShotDataOptions: { ContainsBallData: true, ContainsClubData: false,
       LaunchMonitorIsReady: true, LaunchMonitorBallDetected: true, IsHeartBeat: false },
   });
