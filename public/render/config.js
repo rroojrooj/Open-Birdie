@@ -16,8 +16,10 @@ export const RENDER_CONFIG = {
   sunAzimuthDeg: null,
   sunAltitudeDeg: null,
   hdriFile: 'meadow_4k.hdr',
+  // Tier 1
+  foliageTrees: true,
+  windStrength: 0.5, // canopy sway amount
   // Later tiers / stretch — off until their tier lands
-  foliageTrees: false,
   pbrTurf: false,
   groundGrass: false,
   gtao: false,

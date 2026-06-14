@@ -6,6 +6,7 @@ import { PostFX } from './postfx.js';
 import { grassNormalTexture } from './textures.js';
 import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } from './env.js';
 import { makeAerialFog } from './atmosphere.js';
+import { buildTrees } from './trees.js';
 import { RENDER_CONFIG } from './config.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
@@ -427,50 +428,9 @@ export class GolfScene {
     }
     if (!spots.length) return [];
 
-    const n = spots.length;
-    const trunkGeom = new THREE.CylinderGeometry(0.16, 0.32, 2.8, 6);
-    trunkGeom.translate(0, 1.4, 0);
-    // Lumpy crown: a detail icosahedron displaced per-vertex so it reads as
-    // organic foliage instead of a perfect blob. The noise is baked once and
-    // shared; per-instance rotation + HSL keep the trees from looking cloned.
-    const crownGeom = new THREE.IcosahedronGeometry(2.4, 2);
-    const cpos = crownGeom.attributes.position;
-    const crnd = mulberry32(99);
-    const cv = new THREE.Vector3();
-    for (let i = 0; i < cpos.count; i++) {
-      cv.fromBufferAttribute(cpos, i).multiplyScalar(0.72 + crnd() * 0.5);
-      cpos.setXYZ(i, cv.x, cv.y, cv.z);
-    }
-    crownGeom.computeVertexNormals();
-    crownGeom.scale(1, 1.18, 1);
-    crownGeom.translate(0, 4.4, 0);
-
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3f28, roughness: 0.95 });
-    const crownMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
-    const trunks = new THREE.InstancedMesh(trunkGeom, trunkMat, n);
-    const crowns = new THREE.InstancedMesh(crownGeom, crownMat, n);
-    trunks.castShadow = true;
-    crowns.castShadow = true;
-    crowns.receiveShadow = true;
-
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    const col = new THREE.Color();
-    for (let i = 0; i < n; i++) {
-      const sp = spots[i];
-      const h = this.hAt(sp.x, sp.y);
-      q.setFromAxisAngle(up, rnd() * Math.PI * 2);
-      m4.compose(V(sp.x, sp.y, h), q, new THREE.Vector3(sp.s, sp.s * (0.85 + rnd() * 0.4), sp.s));
-      trunks.setMatrixAt(i, m4);
-      crowns.setMatrixAt(i, m4);
-      col.setHSL(0.29 + rnd() * 0.06, 0.45 + rnd() * 0.2, 0.22 + rnd() * 0.1);
-      crowns.setColorAt(i, col);
-    }
-    trunks.instanceMatrix.needsUpdate = true;
-    crowns.instanceMatrix.needsUpdate = true;
-    if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
-    return [trunks, crowns];
+    const built = buildTrees(spots, (x, y) => this.hAt(x, y), V, rnd);
+    this._treeWind = built.windUpdate; // ticked in _frame
+    return built.meshes;
   }
 
   // ---------- gameplay state ----------
@@ -693,6 +653,7 @@ export class GolfScene {
     this.pin.scale.setScalar(THREE.MathUtils.clamp(pd * 0.013, 1, 6));
 
     this._updateMarkers();
+    if (this._treeWind) this._treeWind(this.clock.elapsedTime);
     this.postfx.render();
   }
 
