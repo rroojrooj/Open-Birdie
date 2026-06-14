@@ -27,6 +27,7 @@ export const RENDER_CONFIG = {
   grassCap: 55000,  // max fescue tufts on the rough (× blades-per-tuft; perf)
   grassHeight: 0.7, // base blade height (m), jittered per instance
   gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
+  colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   dof: false,
   volumetricClouds: false,
 };
