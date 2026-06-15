@@ -2,6 +2,27 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [Unreleased]
+
+### Fixed
+- **Malformed launch-monitor packets no longer corrupt the round** — `handleShot` now
+  validates/sanitizes ball data and rejects implausible speeds, so one partial/garbage
+  frame can't push `NaN` into the physics and permanently break play (it used to stay
+  broken until restart). (`lib/game.js`)
+- **A course with no playable holes is rejected, not loaded** — `parseOsm` throws and
+  `setCourse` guards before mutating, so a bad OSM course can't wedge the app on every
+  state read. (`lib/course.js`, `lib/game.js`)
+- **Atomic course-cache writes + corrupt-cache recovery** — cache is written via temp+rename
+  (an interrupted download no longer bricks startup), corrupt cache files are quarantined
+  instead of silently vanishing, and a zero-hole cached course is ignored. (`lib/course.js`)
+
+### Changed
+- **HTTP server binds to localhost by default** — the unauthenticated API is no longer
+  exposed to the LAN unless you opt in with `BIRDIE_HOST=0.0.0.0`. (`server.js`)
+- **`BIRDIE_SPEED_SCALE`** corrects monitors that report ball speed in m/s (which played
+  ~2.2× short, silently). (`server.js`)
+- Added regression tests for the malformed-packet and zero-hole cases (`test/robustness.test.js`).
+
 ## [0.7.0] - 2026-06-15
 
 ### Changed

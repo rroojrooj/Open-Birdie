@@ -13,6 +13,14 @@ const { Game, CLUB_FULL } = require('./lib/game');
 
 const HTTP_PORT = +(process.env.BIRDIE_PORT || 8222);
 const OC_PORT = +(process.env.BIRDIE_OC_PORT || 921);
+// Bind the HTTP API to localhost by default — its mutating endpoints (reset,
+// load-course, test-shot) are unauthenticated, so don't expose them to the LAN
+// unless explicitly opted in. Set BIRDIE_HOST=0.0.0.0 for tablet/phone mirroring
+// on a TRUSTED network only.
+const HTTP_HOST = process.env.BIRDIE_HOST || '127.0.0.1';
+// Correct ball speed for monitors/bridges that report m/s instead of mph
+// (m/s plays ~2.2x short). e.g. BIRDIE_SPEED_SCALE=2.23694 for a metric monitor.
+const SPEED_SCALE = +(process.env.BIRDIE_SPEED_SCALE || 1);
 const PUB = path.join(__dirname, 'public');
 
 const game = new Game();
@@ -39,6 +47,7 @@ oc.on('disconnected', () => {
 });
 oc.on('status', (s) => { lmStatus.ready = s.ready; broadcast('lm', lmStatus); });
 oc.on('shot', (shot) => {
+  if (SPEED_SCALE !== 1 && typeof shot.ball.Speed === 'number') shot.ball.Speed *= SPEED_SCALE;
   console.log(`[OC] shot: ${shot.ball.Speed} mph, VLA ${shot.ball.VLA}, HLA ${shot.ball.HLA}, spin ${shot.ball.TotalSpin}${shot.clubName ? ' (' + shot.clubName + ')' : ''}`);
   playShot(shot.ball, shot.clubName);
 });
@@ -184,9 +193,12 @@ if (cached.length) {
   } catch (e) { console.error('[course] cache load failed:', e.message); }
 }
 
+if (SPEED_SCALE !== 1) console.log(`[OC] BIRDIE_SPEED_SCALE=${SPEED_SCALE} — scaling incoming ball speed`);
 const ready = new Promise((resolve) => {
-  server.listen(HTTP_PORT, () => {
-    console.log(`[HTTP] Open-Birdie UI: http://localhost:${HTTP_PORT}`);
+  server.listen(HTTP_PORT, HTTP_HOST, () => {
+    const exposed = HTTP_HOST !== '127.0.0.1' && HTTP_HOST !== 'localhost';
+    console.log(`[HTTP] Open-Birdie UI: http://localhost:${HTTP_PORT}` +
+      (exposed ? `  (exposed on ${HTTP_HOST} — trusted networks only)` : '  (localhost only — set BIRDIE_HOST=0.0.0.0 to mirror on your LAN)'));
     resolve({ httpPort: HTTP_PORT });
   });
 });

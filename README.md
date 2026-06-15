@@ -9,7 +9,7 @@ with any launch monitor that speaks the **GSPro Open Connect** protocol — incl
 - **Real physics** — drag + Magnus lift flight model calibrated against tour launch-monitor numbers,
   spin-axis draws/fades, backspin zip-back on greens, gravity-fed breaks on slopes
 - **Full round play** — 18 holes, scorecard with a round-complete summary, pick up to bail on a hole, water/OB penalties, gimmes, cup capture
-- Desktop app (Electron) — no browser needed; a tablet/phone on the same network can mirror via the built-in web server
+- Desktop app (Electron) — no browser needed; a tablet/phone on the same network can mirror via the built-in web server (set `BIRDIE_HOST=0.0.0.0` to allow LAN access — localhost-only by default)
 
 > **Independent open-source project — not affiliated with, endorsed by, or sponsored by
 > Uneekor, GSPro, TrackMan, OpenStreetMap, or AWS.** All trademarks belong to their
@@ -76,6 +76,8 @@ and works offline.
 | --- | --- | --- |
 | `BIRDIE_PORT` | 8222 | web UI / API port |
 | `BIRDIE_OC_PORT` | 921 | GSPro Open Connect listener |
+| `BIRDIE_HOST` | 127.0.0.1 | web UI/API bind address. Localhost-only by default (the API is unauthenticated); set `0.0.0.0` to mirror on your LAN — **trusted networks only** |
+| `BIRDIE_SPEED_SCALE` | 1 | multiplier for incoming ball speed; set `2.23694` if your monitor reports m/s (shots play ~2.2× short otherwise) |
 | `BIRDIE_NO_WATCH` | (unset) | set to `1` to skip auto-starting the Uneekor VIEW feed bridge |
 
 Gimme distance: `POST /api/settings {"gimmeYd": feet}` (UI toggle coming later).
