@@ -1,6 +1,6 @@
 {
   "name": "open-birdie",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Open-data golf simulator: plays real OpenStreetMap courses with any GSPro Open Connect launch monitor (Uneekor VIEW/GSPconnect, etc.)",
   "main": "main.js",
   "type": "commonjs",
