@@ -2,7 +2,7 @@
 
 All notable changes to Open-Birdie are documented here.
 
-## [Unreleased]
+## [0.7.1] - 2026-06-15
 
 ### Fixed
 - **Malformed launch-monitor packets no longer corrupt the round** — `handleShot` now
