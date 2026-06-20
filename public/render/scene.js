@@ -194,9 +194,8 @@ export class GolfScene {
   }
 
   // ---------- terrain sampling (client copy of bilinear grid) ----------
-  hAt(x, y) {
-    const g = this.elev;
-    if (!g) return 0;
+  // Bilinear sample of one grid {minX,minY,cellM,nx,ny,heights}, clamped to edge.
+  _sampleGrid(g, x, y) {
     let fx = (x - g.minX) / g.cellM, fy = (y - g.minY) / g.cellM;
     fx = Math.min(Math.max(fx, 0), g.nx - 1.001);
     fy = Math.min(Math.max(fy, 0), g.ny - 1.001);
@@ -205,6 +204,18 @@ export class GolfScene {
     const H = g.heights, nx = g.nx;
     return H[j * nx + i] * (1 - dx) * (1 - dy) + H[j * nx + i + 1] * dx * (1 - dy) +
            H[(j + 1) * nx + i] * (1 - dx) * dy + H[(j + 1) * nx + i + 1] * dx * dy;
+  }
+
+  // Terrain height at (x,y): high-res LIDAR patch where one covers, else base.
+  // Sharp (no feather) — used to seat the ball/pin/objects on the real surface.
+  hAt(x, y) {
+    const g = this.elev;
+    if (!g) return 0;
+    for (const p of g.patches || []) {
+      const maxX = p.minX + (p.nx - 1) * p.cellM, maxY = p.minY + (p.ny - 1) * p.cellM;
+      if (x >= p.minX && x <= maxX && y >= p.minY && y <= maxY) return this._sampleGrid(p, x, y);
+    }
+    return this._sampleGrid(g, x, y);
   }
 
   // ---------- course construction ----------
@@ -236,6 +247,7 @@ export class GolfScene {
     this._addWater(geo, group);
     this._addTrees(geo, group);
     this._addGrass(geo, group);
+    this._addGreenPatches(group, terrain);
 
     this.courseGroup = group;
     this.scene.add(group);
@@ -526,6 +538,60 @@ export class GolfScene {
     if (!spots.length) return;
     const { mesh, windUpdate } = buildGrass(spots, (x, y) => this.hAt(x, y), V);
     if (mesh) { group.add(mesh); this._grassWind = windUpdate; }
+  }
+
+  // High-res LIDAR green patches: a finer terrain mesh per patch so the real
+  // green relief shows (the base mesh is too coarse to render it). Heights are
+  // feathered into the base at the patch edges to kill the seam. The mesh uses a
+  // fresh material that references (does not clone) the base turf textures, with
+  // a depth bias so the patch always wins over the coarse base — including green
+  // depressions that sit BELOW it (a height lift can't fix those; polygonOffset can).
+  _addGreenPatches(group, baseMesh) {
+    const patches = this.elev && this.elev.patches;
+    if (!patches || !patches.length || !baseMesh) return;
+    const b = this.bounds, extX = b.maxX - b.minX, extY = b.maxY - b.minY;
+    const FEATHER = 4; // m — matches the physics feather in makeTerrain
+    const bm = baseMesh.material;
+    const mat = new THREE.MeshStandardMaterial({
+      map: bm.map, normalMap: bm.normalMap, roughnessMap: bm.roughnessMap,
+      normalScale: bm.normalScale ? bm.normalScale.clone() : new THREE.Vector2(0.8, 0.8),
+      roughness: bm.roughness, metalness: 0, envMapIntensity: bm.envMapIntensity,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+    });
+    for (const p of patches) {
+      const { minX, minY, cellM, nx, ny, heights } = p;
+      const maxX = minX + (nx - 1) * cellM, maxY = minY + (ny - 1) * cellM;
+      const pos = new Float32Array(nx * ny * 3);
+      const uv = new Float32Array(nx * ny * 2);
+      for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+          const k = j * nx + i;
+          const x = minX + i * cellM, y = minY + j * cellM;
+          const baseH = this._sampleGrid(this.elev, x, y);
+          const w = Math.min(1, Math.min(x - minX, maxX - x, y - minY, maxY - y) / FEATHER);
+          pos[k * 3] = x;
+          pos[k * 3 + 1] = baseH + (heights[k] - baseH) * w;
+          pos[k * 3 + 2] = -y;
+          uv[k * 2] = (x - b.minX) / extX;
+          uv[k * 2 + 1] = (y - b.minY) / extY;
+        }
+      }
+      const idx = [];
+      for (let j = 0; j < ny - 1; j++) {
+        for (let i = 0; i < nx - 1; i++) {
+          const a = j * nx + i, c = a + nx;
+          idx.push(a, a + 1, c, a + 1, c + 1, c);
+        }
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geom.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geom.setIndex(idx);
+      geom.computeVertexNormals();
+      const m = new THREE.Mesh(geom, mat);
+      m.receiveShadow = true;
+      group.add(m);
+    }
   }
 
   // ---------- gameplay state ----------
