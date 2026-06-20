@@ -38,6 +38,12 @@ function stopWatcher() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Packaged builds run from a read-only app.asar; redirect the writable data
+  // dir (course cache) to per-user AppData. Dev + headless (node server.js)
+  // keep the repo's data/ via the env-var default in lib/course.js.
+  if (app.isPackaged) {
+    process.env.BIRDIE_DATA_DIR = path.join(app.getPath('userData'), 'data');
+  }
   let win = null;
   const srv = require('./server');
 

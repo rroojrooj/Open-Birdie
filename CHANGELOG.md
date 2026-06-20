@@ -2,6 +2,23 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [0.8.0] - 2026-06-21
+
+### Added
+- **One-click Windows installer** — `npm run dist` produces an NSIS installer
+  (`Open-Birdie-Setup-<version>.exe`) via electron-builder: per-user install (no admin
+  prompt), Start Menu + desktop shortcuts, launch-on-finish. Ships unsigned for now
+  (Windows SmartScreen → "More info → Run anyway"); a code-signing cert drops in via the
+  `CSC_LINK` env var with no rework. App icon generated offline from the existing `pngjs`
+  dep (`tools/make-icon.js`, `npm run make-icon`).
+
+### Fixed
+- **Course cache works in a packaged build** — the cache lived at an `__dirname`-relative
+  path that is read-only inside `app.asar` once packaged, so a packaged install couldn't
+  cache downloaded courses. `lib/course.js` now resolves its data dir from `BIRDIE_DATA_DIR`,
+  and `main.js` points that at per-user AppData when `app.isPackaged`. Dev (`npm start`) and
+  headless (`node server.js`) are unchanged. Regression test added (`test/cache-path.test.js`).
+
 ## [0.7.1] - 2026-06-15
 
 ### Fixed

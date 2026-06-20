@@ -1,6 +1,9 @@
 # dependencies
 node_modules/
 
+# electron-builder output (installer + unpacked app; regenerates via npm run dist)
+dist/
+
 # downloaded course + terrain cache (regenerates on demand from open data)
 data/courses/*.json
 

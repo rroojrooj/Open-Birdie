@@ -17,6 +17,15 @@ with any launch monitor that speaks the **GSPro Open Connect** protocol — incl
 > with no warranty and no liability** — see **[DISCLAIMER.md](DISCLAIMER.md)** and **[LICENSE](LICENSE)**.
 > Golf is a physical activity that can cause injury or property/equipment damage; **use at your own risk.**
 
+## Install
+
+Download the latest **Open-Birdie-Setup-_x.y.z_.exe** from
+[Releases](https://github.com/rroojrooj/Open-Birdie/releases) and run it. It installs
+per-user (no admin prompt), adds Start Menu + desktop shortcuts, and launches when done.
+
+Open-Birdie isn't code-signed yet, so the first run trips Windows SmartScreen
+("Windows protected your PC"). Click **More info → Run anyway** — it's a one-time prompt.
+
 ## Launch
 
 Double-click **Open-Birdie** on the Desktop, or from this folder:
@@ -104,7 +113,6 @@ node tools/test-load.js "Course name"   # test course download/parse
 - Driver apex runs ~15% high vs tour averages (carries are calibrated within ~3%).
 - Pin positions come from OSM hole lines (one per green; double greens use the mapped point).
 - No wind UI yet (the physics supports it).
-- Packaging into a single installer exe (electron-builder) not set up yet.
 
 ## License & disclaimer
 
