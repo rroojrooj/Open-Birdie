@@ -9,7 +9,7 @@ export const RENDER_CONFIG = {
   toneMappingExposure: 0.6,
   environmentIntensity: 1.0,
   sunIntensity: 2.0,
-  fogDensity: 0.00016,
+  fogDensity: 0.00019, // FogExp2 to the horizon colour — soft aerial recession, no hard far edge
   skyboxHeight: 30, // GroundedSkybox projection height (world meters); tuned in Task 7
   // Sun direction: null = auto-estimate from the HDRI's brightest texel.
   // Set BOTH (degrees) to override when the estimate is wrong on a diffuse HDRI (D2).

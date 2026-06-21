@@ -485,10 +485,10 @@ export class GolfScene {
     const inWater = (x, y) => { for (const w of water) if (pointInPoly(x, y, w.poly)) return true; return false; };
     const rnd = mulberry32(424242);
     const spots = [];
-    const step = 42, rows = 2, rowGap = 30, inset = 45;
+    const step = 30, rows = 2, rowGap = 24, inset = 40;
     const place = (x, y) => {
       if (x < b.minX || x > b.maxX || y < b.minY || y > b.maxY || inWater(x, y)) return;
-      spots.push({ x, y, s: 1.1 + rnd() * 0.7 }); // larger so they read at distance
+      spots.push({ x, y, s: 1.3 + rnd() * 0.95 }); // taller + denser -> an enclosing forest wall
     };
     for (let r = 0; r < rows; r++) {
       const d = inset + r * rowGap;
