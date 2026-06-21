@@ -20,6 +20,8 @@ export const RENDER_CONFIG = {
   foliageTrees: true, // card-foliage conifers (see tree-cards.js)
   grounding: true,    // contact-shadow decal blobs under trees (see grounding.js)
   pineStraw: true,    // warm pine-straw litter mat under on-course trees (see vegetation.js)
+  flowers: true,      // azalea-style flowering bushes clustered at the tree lines
+  flowerCap: 2000,    // max instanced flower bushes (perf)
   windStrength: 0.5,  // canopy sway amount
   treeScale: 1.0,     // base scale on the 12m reference card-tree (~12m trees)
   treeCap: 450,      // max instanced trees (perf); explicit trees prioritized

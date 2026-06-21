@@ -7,7 +7,7 @@ import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } fro
 import { makeAerialFog } from './atmosphere.js';
 import { buildCardTrees } from './tree-cards.js';
 import { buildGrounding } from './grounding.js';
-import { buildPineStraw } from './vegetation.js';
+import { buildPineStraw, buildFlowers } from './vegetation.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeWaterDepth } from './water-depth.js';
@@ -250,6 +250,7 @@ export class GolfScene {
     this._addWater(geo, group);
     this._addTrees(geo, group);
     this._addGrass(geo, group);
+    this._addFlowers(geo, group);
     // LIDAR green meshes are a visual enhancement — never let a bug here break
     // the course load (the picker, physics, base render must still work).
     try { this._addGreenPatches(group, terrain); }
@@ -555,6 +556,32 @@ export class GolfScene {
     if (!spots.length) return;
     const { mesh, windUpdate } = buildGrass(spots, (x, y) => this.hAt(x, y), V);
     if (mesh) { group.add(mesh); this._grassWind = windUpdate; }
+  }
+
+  // Azalea bushes clustered around ~half the on-course trees (the pine understory
+  // is where Augusta's azaleas live) — frames holes with color, and tree spots
+  // steer clear of water/bunkers/greens, so generic placement stays plausible.
+  _flowerSpots(geo) {
+    if (!RENDER_CONFIG.flowers) return [];
+    const trees = this._treeSpots(geo);
+    if (!trees.length) return [];
+    const spots = [], rnd = mulberry32(91), CAP = RENDER_CONFIG.flowerCap;
+    for (const t of trees) {
+      if (spots.length >= CAP) break;
+      if (rnd() > 0.62) continue;           // ~3 in 5 trees get a bed
+      const K = 3 + ((rnd() * 4) | 0);      // 3-6 bushes per chosen tree
+      for (let k = 0; k < K && spots.length < CAP; k++) {
+        const ang = rnd() * Math.PI * 2, rad = 2.5 + rnd() * 4.5; // 2.5-7m ring off the trunk
+        spots.push({ x: t.x + Math.cos(ang) * rad, y: t.y + Math.sin(ang) * rad, s: 0.8 + rnd() * 0.6 });
+      }
+    }
+    return spots;
+  }
+
+  _addFlowers(geo, group) {
+    const spots = this._flowerSpots(geo);
+    if (!spots.length) return;
+    buildFlowers(spots, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
   }
 
   // High-res LIDAR green patches: a finer terrain mesh per patch so the real
