@@ -2,6 +2,38 @@
 
 All notable changes to Open-Birdie are documented here.
 
+## [Unreleased]
+
+### Added
+- **Renderer quality pass (A–G)** — a sweep to take the runtime-procedural course from
+  "indie sim" toward a convincing ~6–7/10 (photoreal-named-course specifics remain a future
+  baked-content phase). Each system is a `public/render/config.js` flag so it can be toggled:
+  - **Planar water reflections** — each pond gets a `THREE.Reflector`, so the tree line and
+    banks mirror in the water instead of only the flat sky (`config.waterReflect`, `water.js`).
+  - **Richer turf** — multi-scale colour mottling + a mid-scale clump octave + grass-blade
+    chroma + a cross-cut mow pattern, so fairways/greens read as varied turf rather than a
+    flat carpet (`turf.js`).
+  - **Vegetation** — warm pine-straw litter mats under the on-course trees and vivid azalea
+    flower beds at the tree lines that frame each hole (`config.pineStraw`, `config.flowers`,
+    `vegetation.js`).
+  - **Forest framing** — a denser, taller perimeter tree wall so each hole reads as carved out
+    of pines, with a touch more aerial-fog depth.
+  - **Bunker rakes** — an instanced rake in each sand bunker (`config.props`, `props.js`).
+  - **LIDAR green relief** (Phase 1) — real USGS 3DEP elevation drapes finer green meshes so
+    putting-surface contours show (`lib/lidar.js`, `lib/elevation.js`).
+
+### Changed
+- **GTAO ambient occlusion + filmic bloom enabled** — contact AO darkens tree bases, bunker
+  lips and terrain folds; a restrained bloom lifts the hottest highlights (sun glints on water,
+  bright sand) without hazing the sky (`config.gtao`, `postfx.js`).
+- **Crisp bunkers** — bunkers render as their own sharp-edged polygon meshes with real sand
+  PBR instead of a soft painted patch (`turf.js` `makeSandMaterial`, `drape.js`).
+
+### Fixed
+- **No more fescue growing in bunkers** — bunkers map as islands inside a rough polygon, so the
+  grass scatter used to sprout tufts in the sand; the scatter now excludes bunker/water areas
+  (`scene.js` `_grassSpots`).
+
 ## [0.8.0] - 2026-06-21
 
 ### Added
