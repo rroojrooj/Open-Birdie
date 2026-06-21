@@ -98,12 +98,18 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           // procedural grain: fine "tooth" (~0.5-4m) + broad patches (~8-20m), so the
           // turf reads as real grass at the orbit camera instead of a flat plastic
           // sheet. Strong on purpose — this is the fix for the "Minecraft" look.
-          // fbm clusters near its mean, so use a big gain (and re-center ~0.47) to get
-          // real variation. Fine ~0.7-3m blade grain + broad ~10m growth/wear patches.
-          float fine  = tFbm(vec2(wx, wy) * 0.40) - 0.47;
-          float broad = tFbm(vec2(wy, wx) * 0.10 + 11.3) - 0.47;
-          grass *= 1.0 + 0.62 * fine + 0.45 * broad;            // textured, but leaves room for the stripes
-          grass.r *= 1.0 + 0.10 * broad;                        // patches drift warm/cool
+          // Multi-scale variation so the field is never the same twice (real grass
+          // isn't). fbm clusters near its mean, so use a big gain (re-center ~0.47).
+          float fine  = tFbm(vec2(wx, wy) * 0.40) - 0.47;        // ~0.7-3m blade grain
+          float broad = tFbm(vec2(wy, wx) * 0.10 + 11.3) - 0.47; // ~8-15m growth/wear patches
+          float zone  = tFbm(vec2(wx, wy) * 0.026 + 3.7) - 0.47; // ~30-80m big regions
+          grass *= 1.0 + 0.55 * fine + 0.40 * broad + 0.45 * zone; // brightness at every scale
+          // big regions also shift the grass CHARACTER — lush deep-green <-> dry
+          // yellow-green — so different parts of the course read as different grass,
+          // not one uniform tone stamped edge to edge.
+          grass *= mix(vec3(0.90, 1.05, 0.88), vec3(1.12, 1.02, 0.74),
+                       clamp(zone * 1.7 + 0.5, 0.0, 1.0));
+          grass.r *= 1.0 + 0.10 * broad;                        // finer warm/cool drift on top
           grass.b *= 1.0 - 0.07 * broad;
           // cross-cut mow stripes (bold enough to read from above), fairway/green only
           float band = sin((wx * 0.82 + wy * 0.57) * (3.14159265 / uStripeM));
@@ -124,7 +130,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         }
         #endif`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v7';
+  mat.customProgramCacheKey = () => 'turf-grain-v8';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
