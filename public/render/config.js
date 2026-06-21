@@ -29,7 +29,7 @@ export const RENDER_CONFIG = {
   groundGrass: true,
   grassCap: 55000,  // max fescue tufts on the rough (× blades-per-tuft; perf)
   grassHeight: 0.85, // base blade height (m), jittered per instance
-  gtao: false, // deferred: GTAO's normal-pass recompiles the onBeforeCompile turf material without vMapUv. Needs a proper integration (depth-derived normals / material exclusion).
+  gtao: true, // contact AO (grounding). If the turf goes black, GTAO's normal pass recompiled the onBeforeCompile shader without vMapUv — fall back to SSAO via a material-override prepass.
   colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   water: true, // animated water: analytic ripples + fresnel + sun glitter (else static plane)
   waterFoam: true, // shoreline foam via a depth pre-pass (wet line where water meets terrain)

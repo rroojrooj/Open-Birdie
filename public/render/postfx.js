@@ -18,9 +18,9 @@ import { RENDER_CONFIG } from './config.js';
 const GRADE_SHADER = {
   uniforms: {
     tDiffuse: { value: null },
-    uContrast: { value: 1.08 },
-    uSaturation: { value: 1.12 },
-    uVignette: { value: 0.32 },
+    uContrast: { value: 1.1 },
+    uSaturation: { value: 1.16 },
+    uVignette: { value: 0.34 },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `
