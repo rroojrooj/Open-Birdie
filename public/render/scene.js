@@ -8,6 +8,7 @@ import { makeAerialFog } from './atmosphere.js';
 import { buildCardTrees } from './tree-cards.js';
 import { buildGrounding } from './grounding.js';
 import { buildPineStraw, buildFlowers } from './vegetation.js';
+import { buildRakes } from './props.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeWaterDepth } from './water-depth.js';
@@ -259,6 +260,13 @@ export class GolfScene {
     if (RENDER_CONFIG.crispBunkers) {
       try { this._addSurfacePatches(group, ['bunker'], makeSandMaterial); }
       catch (e) { console.warn('[render] bunker patches skipped:', e && e.message); }
+    }
+    // Bunker rakes — iconic human-scale prop. Purely visual, so same load guard.
+    if (RENDER_CONFIG.props) {
+      try {
+        const bunkers = (geo.surfaces || []).filter((s) => s.kind === 'bunker' && s.poly && s.poly.length >= 3);
+        buildRakes(bunkers, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
+      } catch (e) { console.warn('[render] rakes skipped:', e && e.message); }
     }
 
     this.courseGroup = group;
@@ -533,6 +541,10 @@ export class GolfScene {
     const rough = (geo.surfaces || []).filter((s) => s.kind === 'rough' && s.poly && s.poly.length >= 3);
     if (!rough.length) return [];
     const onRough = (x, y) => { for (const s of rough) if (pointInPoly(x, y, s.poly)) return true; return false; };
+    // Bunkers (and water) often sit as islands inside a rough polygon, so "on rough"
+    // is true inside them — exclude those so fescue never sprouts in the sand.
+    const blocked = (geo.surfaces || []).filter((s) => (s.kind === 'bunker' || s.kind === 'water') && s.poly && s.poly.length >= 3);
+    const onBlocked = (x, y) => { for (const s of blocked) if (pointInPoly(x, y, s.poly)) return true; return false; };
     let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
     for (const s of rough) for (const [x, y] of s.poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
     const spots = [], rnd = mulberry32(8080), CAP = RENDER_CONFIG.grassCap;
@@ -545,7 +557,7 @@ export class GolfScene {
       for (let k = 0; k < K && spots.length < CAP; k++) {
         const ang = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.7) * R; // center-biased
         const x = cx + Math.cos(ang) * rad, y = cy + Math.sin(ang) * rad;
-        if (onRough(x, y)) spots.push({ x, y, s: 0.7 + rnd() * 0.7 });
+        if (onRough(x, y) && !onBlocked(x, y)) spots.push({ x, y, s: 0.7 + rnd() * 0.7 });
       }
     }
     return spots;
