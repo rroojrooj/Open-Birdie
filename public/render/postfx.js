@@ -62,11 +62,11 @@ export class PostFX {
       this.composer.addPass(gtao);
     }
 
-    // Bloom kept deliberately minimal: the Preetham sky is broadly bright, so
-    // anything stronger blooms the whole sky into a haze (verified on-screen).
-    // This is just a faint highlight lift on the sun/water; (strength, radius,
-    // threshold).
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.05, 0.3, 1.0);
+    // Bloom kept restrained: the HDRI sky is broadly bright, so too much strength
+    // blooms the whole sky into haze. A threshold of 1.0 (linear HDR, pre-OutputPass)
+    // limits it to the hottest highlights — sun glints on water, bright bunker sand —
+    // so a modest strength reads as a filmic glow, not a veil. (strength, radius, threshold).
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.11, 0.42, 1.0);
     this.composer.addPass(this.bloom);
 
     // OutputPass applies renderer.toneMapping + toneMappingExposure and converts
