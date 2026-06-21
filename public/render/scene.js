@@ -7,6 +7,7 @@ import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } fro
 import { makeAerialFog } from './atmosphere.js';
 import { buildCardTrees } from './tree-cards.js';
 import { buildGrounding } from './grounding.js';
+import { buildPineStraw } from './vegetation.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeWaterDepth } from './water-depth.js';
@@ -504,7 +505,8 @@ export class GolfScene {
 
   _addTrees(geo, group) {
     if (!RENDER_CONFIG.foliageTrees) return;
-    const spots = this._treeSpots(geo);
+    const coreSpots = this._treeSpots(geo); // on-course trees (no horizon band)
+    const spots = coreSpots.slice();
     if (RENDER_CONFIG.horizonTrees) spots.push(...this._horizonSpots(geo, this.bounds));
     if (!spots.length) return;
     const { meshes, windUpdate } = buildCardTrees(spots, (x, y) => this.hAt(x, y), V);
@@ -512,6 +514,11 @@ export class GolfScene {
     this._treeWind = windUpdate;
     if (RENDER_CONFIG.grounding) {
       buildGrounding(spots, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
+    }
+    // Pine-straw litter under the on-course trees only (the horizon band is too
+    // far to matter and would blow the instance budget).
+    if (RENDER_CONFIG.pineStraw) {
+      buildPineStraw(coreSpots, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
     }
   }
 
