@@ -62,11 +62,11 @@ export class PostFX {
       this.composer.addPass(gtao);
     }
 
-    // Bloom kept restrained: the HDRI sky is broadly bright, so too much strength
-    // blooms the whole sky into haze. A threshold of 1.0 (linear HDR, pre-OutputPass)
-    // limits it to the hottest highlights — sun glints on water, bright bunker sand —
-    // so a modest strength reads as a filmic glow, not a veil. (strength, radius, threshold).
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.11, 0.42, 1.0);
+    // Bloom must NOT touch turf: sun-lit bright grass (esp. the greens) sits near
+    // linear 1.0, so a 1.0 threshold haloed the greens into glowing blobs at the
+    // overview camera. Raise the threshold to 1.6 so only true speculars (sun glint
+    // on water, the brightest sand) bloom, and keep strength low. (strength, radius, threshold).
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.06, 0.4, 1.6);
     this.composer.addPass(this.bloom);
 
     // OutputPass applies renderer.toneMapping + toneMappingExposure and converts
