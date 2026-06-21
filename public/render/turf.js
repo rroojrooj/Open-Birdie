@@ -67,7 +67,22 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
       .replace('#include <common>', `#include <common>
         uniform sampler2D uDetail; uniform vec2 uDetailRepeat;
         uniform sampler2D uMask; uniform sampler2D uBunker; uniform sampler2D uSand;
-        uniform vec2 uExt; uniform float uStripeM;`)
+        uniform vec2 uExt; uniform float uStripeM;
+        // Procedural turf grain — evaluated from world XZ so it stays crisp at ANY
+        // zoom. A tiled grass photo mip-blurs to a flat average from the elevated
+        // orbit camera (the "Minecraft" smoothness); world-space value noise doesn't.
+        float tHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float tNoise(vec2 p){
+          vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          float a = tHash(i), b = tHash(i + vec2(1.0, 0.0));
+          float c = tHash(i + vec2(0.0, 1.0)), d = tHash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+        float tFbm(vec2 p){
+          float s = 0.0, a = 0.5;
+          for (int k = 0; k < 4; k++){ s += a * tNoise(p); p *= 2.03; a *= 0.5; }
+          return s;
+        }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
         #ifdef USE_MAP
         {
@@ -80,23 +95,23 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           grass *= mix(vec3(1.0), clamp(gd / max(dl, 0.1), 0.6, 1.5), 0.16);
           float m = texture2D(uMask, vMapUv).r;
           float wx = vMapUv.x * uExt.x, wy = vMapUv.y * uExt.y;
-          // cross-cut mow: two stripe directions give the checker sheen of a real cut
+          // procedural grain: fine "tooth" (~0.5-4m) + broad patches (~8-20m), so the
+          // turf reads as real grass at the orbit camera instead of a flat plastic
+          // sheet. Strong on purpose — this is the fix for the "Minecraft" look.
+          // fbm clusters near its mean, so use a big gain (and re-center ~0.47) to get
+          // real variation. Fine ~0.7-3m blade grain + broad ~10m growth/wear patches.
+          float fine  = tFbm(vec2(wx, wy) * 0.40) - 0.47;
+          float broad = tFbm(vec2(wy, wx) * 0.10 + 11.3) - 0.47;
+          grass *= 1.0 + 0.85 * fine + 0.62 * broad;
+          grass.r *= 1.0 + 0.10 * broad;                        // patches drift warm/cool
+          grass.b *= 1.0 - 0.07 * broad;
+          // cross-cut mow stripes (bold enough to read from above), fairway/green only
           float band = sin((wx * 0.82 + wy * 0.57) * (3.14159265 / uStripeM));
-          float stripe = smoothstep(-0.15, 0.15, band) * 2.0 - 1.0;
+          float stripe = smoothstep(-0.2, 0.2, band) * 2.0 - 1.0;
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
-          float stripe2 = smoothstep(-0.2, 0.2, band2) * 2.0 - 1.0;
-          grass *= 1.0 + (0.15 * stripe + 0.06 * stripe2) * m;
-          // multi-scale tonal mottling so turf isn't a flat carpet:
-          //  large swells (~50-120m) for broad shading...
-          float lv = (sin(wx * 0.13 + wy * 0.07) * 0.5
-                    + sin(wx * 0.06 - wy * 0.11) * 0.32
-                    + sin((wx * 0.9 - wy * 1.3) * 0.05) * 0.22) * 0.45;
-          //  ...plus mid clumps (~12-20m) for the patchy growth real turf has
-          float mv = sin(wx * 0.46 + wy * 0.28) * sin(wy * 0.39 - wx * 0.21);
-          grass *= 1.0 + 0.15 * lv + 0.08 * mv;   // brightness patches
-          grass.r *= 1.0 + 0.06 * lv + 0.03 * mv; // warmer/yellower clumps
-          grass.b *= 1.0 - 0.04 * lv;
-          grass *= vec3(0.96, 1.0, 0.97);          // deepen the cartoon zone-green a touch
+          float stripe2 = smoothstep(-0.25, 0.25, band2) * 2.0 - 1.0;
+          grass *= 1.0 + (0.22 * stripe + 0.10 * stripe2) * m;
+          grass *= vec3(0.96, 1.0, 0.97);          // deepen the zone-green a touch
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
           sand = mix(sand, vec3(1.0), 0.12) * 1.28;
@@ -105,7 +120,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         }
         #endif`);
   };
-  mat.customProgramCacheKey = () => 'turf-stripe-sand-v3';
+  mat.customProgramCacheKey = () => 'turf-grain-v4';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
