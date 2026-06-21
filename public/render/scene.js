@@ -233,6 +233,7 @@ export class GolfScene {
           m.dispose?.();
         }
         o.customDepthMaterial?.dispose?.(); // foliage cutout-shadow material isn't a child
+        if (o.userData?.isWaterReflector) o.dispose?.(); // free the reflection render target
       });
     }
     this.geo = geo;

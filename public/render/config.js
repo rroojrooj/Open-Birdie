@@ -33,6 +33,7 @@ export const RENDER_CONFIG = {
   colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   water: true, // animated water: analytic ripples + fresnel + sun glitter (else static plane)
   waterFoam: true, // shoreline foam via a depth pre-pass (wet line where water meets terrain)
+  waterReflect: true, // per-pond planar reflection (trees/banks mirror in the water; frustum-culled)
   dof: false,
   volumetricClouds: false,
 };

@@ -9,6 +9,7 @@
 // moving specular glitter toward the sun. Integrates with fog + post-FX because
 // it stays a MeshStandardMaterial in the normal render pass.
 import * as THREE from 'three';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { RENDER_CONFIG } from './config.js';
 
 // GLSL: sum of directional gerstner-ish ripples -> height gradient -> normal.
@@ -117,9 +118,11 @@ export function buildWater(surfaces, hAt, sunDir, foamEnabled) {
   const meshes = [];
   const windRef = [];
   const foam = foamEnabled ? { depthTex: null, resolution: null, near: 0.3, far: 12000, u: [] } : null;
+  const reflect = RENDER_CONFIG.waterReflect;
   const mat = new THREE.MeshStandardMaterial({
     color: 0x21566e, roughness: 0.12, metalness: 0.0,
-    envMapIntensity: 1.25, transparent: true, opacity: 0.9,
+    envMapIntensity: 1.25, transparent: true,
+    opacity: reflect ? 0.58 : 0.9, // translucent so the planar reflection shows through
   });
   addWaterShader(mat, windRef, sunDir, foam);
 
@@ -130,8 +133,21 @@ export function buildWater(surfaces, hAt, sunDir, foamEnabled) {
     g2.rotateX(-Math.PI / 2); // lay flat, y up
     let level = Infinity;
     for (const [x, y] of s.poly) level = Math.min(level, hAt(x, y));
+    // Per-pond planar reflection at the pond's own level, so trees/banks mirror in
+    // the water. Frustum-culled, so only the in-view hole's pond(s) cost a scene
+    // re-render (cheaper in practice than a single mis-levelled whole-course plane).
+    // The animated water sits just above as a translucent ripple/tint/foam overlay.
+    if (reflect) {
+      const refl = new Reflector(g2.clone(), {
+        textureWidth: 1024, textureHeight: 1024, color: 0x6f868f, clipBias: 0.01,
+      });
+      refl.position.y = level - 0.05;
+      refl.renderOrder = -1;
+      refl.userData.isWaterReflector = true; // for disposal on course reload
+      meshes.push(refl);
+    }
     const m = new THREE.Mesh(g2, mat);
-    m.position.y = level - 0.06;
+    m.position.y = level - (reflect ? 0.035 : 0.06); // just above the reflector
     m.receiveShadow = true;
     meshes.push(m);
   }
