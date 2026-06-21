@@ -14,12 +14,13 @@ function mul32(seed) {
   };
 }
 
-// One blade: a tapered 3-segment strip, base at y=0, ~1 unit tall (scaled per
-// instance). Vertex color runs green base -> golden tip (fescue).
-function bladeGeometry() {
-  const segs = 3, h = 1.0, baseW = 0.024;
+// One blade: a tapered strip, base at y=0, 1 unit tall (scaled per instance).
+// Vertex color runs base -> tip. Defaults = the golden fescue; opts let the
+// fairway variant pass short-green colors, a wider base, and fewer segments.
+function bladeGeometry(opts = {}) {
+  const segs = opts.segs ?? 3, h = 1.0, baseW = opts.baseWidth ?? 0.024;
   const pos = [], col = [], idx = [];
-  const base = new THREE.Color(0x53703a), tip = new THREE.Color(0xc2b06a), c = new THREE.Color();
+  const base = new THREE.Color(opts.colorBase ?? 0x53703a), tip = new THREE.Color(opts.colorTip ?? 0xc2b06a), c = new THREE.Color();
   for (let i = 0; i <= segs; i++) {
     const t = i / segs, y = t * h, w = baseW * (1 - 0.85 * t);
     pos.push(-w, y, 0, w, y, 0);
@@ -52,26 +53,29 @@ function addWind(material, windRef) {
   material.customProgramCacheKey = () => 'grass-wind';
 }
 
-// spots: [{x,y,s}], hAt, V. Returns { mesh, windUpdate }.
-export function buildGrass(spots, hAt, V) {
+// spots: [{x,y,s}], hAt, V, opts. Returns { mesh, windUpdate }.
+// opts (all optional, defaults = the rough fescue): {perTuft, height, baseWidth,
+// segs, colorBase, colorTip, wind, jitter, seed}.
+export function buildGrass(spots, hAt, V, opts = {}) {
   if (!spots.length) return { mesh: null, windUpdate: () => {} };
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true, side: THREE.DoubleSide, roughness: 1.0, metalness: 0,
   });
   const windRef = [];
-  addWind(mat, windRef);
-  const PER = 12; // blades per tuft — a dense clump reads, a lone blade doesn't
-  const mesh = new THREE.InstancedMesh(bladeGeometry(), mat, spots.length * PER);
+  if (opts.wind !== false) addWind(mat, windRef);
+  const PER = opts.perTuft ?? 12; // blades per tuft — a dense clump reads, a lone blade doesn't
+  const mesh = new THREE.InstancedMesh(bladeGeometry(opts), mat, spots.length * PER);
   mesh.castShadow = false;   // blade shadows are expensive + low value at this density
   mesh.receiveShadow = true;
 
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), scaleVec = new THREE.Vector3();
-  const rnd = mul32(8081);
-  const H = RENDER_CONFIG.grassHeight;
+  const rnd = mul32(opts.seed ?? 8081);
+  const H = opts.height ?? RENDER_CONFIG.grassHeight;
+  const jit = opts.jitter ?? 0.28;
   let bi = 0;
   for (const sp of spots) {
     for (let k = 0; k < PER; k++) {
-      const x = sp.x + (rnd() - 0.5) * 0.28, y = sp.y + (rnd() - 0.5) * 0.28;
+      const x = sp.x + (rnd() - 0.5) * jit, y = sp.y + (rnd() - 0.5) * jit;
       const h = hAt(x, y);
       q.setFromAxisAngle(up, rnd() * Math.PI * 2);
       const sc = H * (0.6 + rnd() * 0.9) * (sp.s || 1);
