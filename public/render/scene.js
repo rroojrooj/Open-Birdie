@@ -43,7 +43,7 @@ function pointInPoly(x, y, poly) {
 // staying muted enough that the regraded lighting doesn't push them neon.
 const COLORS = {
   base: '#33502f',
-  rough: '#374f2d',
+  rough: '#5d6034', // warm olive — links/fescue rough, golden against the green fairway
   wood: '#2b4124',
   range: '#567a44',
   fairwayA: '#5f8d49', fairwayB: '#588343', // base mown tone (mow stripes added in shader)

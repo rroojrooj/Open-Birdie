@@ -62,7 +62,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
     shader.uniforms.uBunker = { value: bunkerMaskTex };
     shader.uniforms.uSand = { value: sand };
     shader.uniforms.uExt = { value: new THREE.Vector2(extX, extY) };
-    shader.uniforms.uStripeM = { value: 6.0 };
+    shader.uniforms.uStripeM = { value: 7.0 }; // mow-band width (m) — a touch wider reads better from the orbit cam
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D uDetail; uniform vec2 uDetailRepeat;
@@ -102,7 +102,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           // real variation. Fine ~0.7-3m blade grain + broad ~10m growth/wear patches.
           float fine  = tFbm(vec2(wx, wy) * 0.40) - 0.47;
           float broad = tFbm(vec2(wy, wx) * 0.10 + 11.3) - 0.47;
-          grass *= 1.0 + 0.85 * fine + 0.62 * broad;
+          grass *= 1.0 + 0.62 * fine + 0.45 * broad;            // textured, but leaves room for the stripes
           grass.r *= 1.0 + 0.10 * broad;                        // patches drift warm/cool
           grass.b *= 1.0 - 0.07 * broad;
           // cross-cut mow stripes (bold enough to read from above), fairway/green only
@@ -110,7 +110,11 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float stripe = smoothstep(-0.2, 0.2, band) * 2.0 - 1.0;
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
           float stripe2 = smoothstep(-0.25, 0.25, band2) * 2.0 - 1.0;
-          grass *= 1.0 + (0.22 * stripe + 0.10 * stripe2) * m;
+          // balanced cross-hatch: the two stripe sets are ~perpendicular, so whichever
+          // way you face down a hole, at least one set crosses your view and reads
+          // (a fixed single direction vanishes when you look along it). Checkerboard
+          // mow is also a real pattern.
+          grass *= 1.0 + (0.18 * stripe + 0.16 * stripe2) * m;
           grass *= vec3(0.96, 1.0, 0.97);          // deepen the zone-green a touch
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
@@ -120,7 +124,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         }
         #endif`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v4';
+  mat.customProgramCacheKey = () => 'turf-grain-v7';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
