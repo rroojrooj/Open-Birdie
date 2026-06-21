@@ -47,7 +47,7 @@ const COLORS = {
   wood: '#2b4124',
   range: '#567a44',
   fairwayA: '#5f8d49', fairwayB: '#588343', // base mown tone (mow stripes added in shader)
-  greenA: '#6a9c57', greenB: '#5f8e50', // just a shade lighter/cooler than fairway — not a glowing blob
+  greenA: '#5b9150', greenB: '#4f8848', // ~fairway brightness, a touch cooler (bentgrass) — distinct by hue, never by glow
   tee: '#6b9850',
   bunker: '#cbb583',
   water: '#2f6d97',
