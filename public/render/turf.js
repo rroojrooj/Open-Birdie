@@ -15,6 +15,27 @@ function tiled(url, srgb, repX, repY, aniso) {
   return t;
 }
 
+// Dedicated sand material for crisp bunker meshes (Tier 1). A plain
+// MeshStandardMaterial — no onBeforeCompile — so it stays GTAO-safe and cheap.
+// Uses the full CC0 sand PBR set (color + normal + roughness), brightened toward
+// bunker-white. polygonOffset so the bunker mesh wins over the base + green collar.
+export function makeSandMaterial(bounds, aniso) {
+  const extX = bounds.maxX - bounds.minX, extY = bounds.maxY - bounds.minY;
+  const tileM = 2.0, repX = extX / tileM, repY = extY / tileM;
+  const map = tiled(ASSETS.turf.sand, true, repX, repY, aniso);
+  const normalMap = tiled(ASSETS.turf.sandNormal, false, repX, repY, aniso);
+  const roughnessMap = tiled(ASSETS.turf.sandRough, false, repX, repY, aniso);
+  const mat = new THREE.MeshStandardMaterial({
+    map, normalMap, normalScale: new THREE.Vector2(1.0, 1.0),
+    roughnessMap, roughness: 1.0, metalness: 0,
+    envMapIntensity: 0.5,
+    polygonOffset: true, polygonOffsetFactor: -1.2, polygonOffsetUnits: -1.2,
+  });
+  mat.color = new THREE.Color(1.3, 1.24, 1.08); // brighten + warm toward bright bunker sand
+  mat.userData.disposeTextures = [map, normalMap, roughnessMap];
+  return mat;
+}
+
 export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso) {
   const extX = bounds.maxX - bounds.minX, extY = bounds.maxY - bounds.minY;
   const tileM = 2.0; // grass texture repeats ~every 2m

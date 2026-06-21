@@ -25,6 +25,7 @@ export const RENDER_CONFIG = {
   horizonTrees: true, // jittered tree band around the course perimeter (distant tree-line)
   // Later tiers / stretch — off until their tier lands
   pbrTurf: false,
+  crispBunkers: true, // bunkers as their own crisp polygon meshes (sharp sand edges, real sand PBR)
   groundGrass: true,
   grassCap: 55000,  // max fescue tufts on the rough (× blades-per-tuft; perf)
   grassHeight: 0.85, // base blade height (m), jittered per instance

@@ -10,7 +10,8 @@ import { buildGrounding } from './grounding.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeWaterDepth } from './water-depth.js';
-import { makeTurfMaterial } from './turf.js';
+import { makeTurfMaterial, makeSandMaterial } from './turf.js';
+import { densifyRing, drapeRing } from './drape.js';
 import { RENDER_CONFIG } from './config.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
@@ -247,7 +248,15 @@ export class GolfScene {
     this._addWater(geo, group);
     this._addTrees(geo, group);
     this._addGrass(geo, group);
-    this._addGreenPatches(group, terrain);
+    // LIDAR green meshes are a visual enhancement — never let a bug here break
+    // the course load (the picker, physics, base render must still work).
+    try { this._addGreenPatches(group, terrain); }
+    catch (e) { console.warn('[render] green patches skipped:', e && e.message); }
+    // Crisp bunker meshes (sharp sand edges). Same guard — purely visual.
+    if (RENDER_CONFIG.crispBunkers) {
+      try { this._addSurfacePatches(group, ['bunker'], makeSandMaterial); }
+      catch (e) { console.warn('[render] bunker patches skipped:', e && e.message); }
+    }
 
     this.courseGroup = group;
     this.scene.add(group);
@@ -588,6 +597,41 @@ export class GolfScene {
       geom.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       geom.setIndex(idx);
       geom.computeVertexNormals();
+      const m = new THREE.Mesh(geom, mat);
+      m.receiveShadow = true;
+      group.add(m);
+    }
+  }
+
+  // Render the given surface kinds (e.g. bunkers) as their own polygon meshes
+  // draped on the terrain — the boundary becomes a crisp GEOMETRIC edge instead
+  // of a blurry low-res splat paint, sharp at any zoom. One shared material.
+  _addSurfacePatches(group, kinds, makeMat) {
+    const surfs = (this.geo.surfaces || []).filter(
+      (s) => kinds.includes(s.kind) && s.poly && s.poly.length >= 3);
+    if (!surfs.length) return;
+    const b = this.bounds;
+    const mat = makeMat(b, this.renderer.capabilities.getMaxAnisotropy());
+    const sampler = (x, y) => this.hAt(x, y);
+    for (const s of surfs) {
+      const ring = densifyRing(s.poly, 3);
+      if (ring.length < 3) continue;
+      const tris = THREE.ShapeUtils.triangulateShape(
+        ring.map((p) => new THREE.Vector2(p[0], p[1])), []);
+      if (!tris.length) continue;
+      const { pos, uv } = drapeRing(ring, sampler, b, 0.04); // small lift + polygonOffset
+      const idx = [];
+      for (const t of tris) idx.push(t[0], t[1], t[2]);
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geom.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geom.setIndex(idx);
+      geom.computeVertexNormals();
+      // Up-facing fix: triangle winding depends on the polygon orientation AND
+      // the sim->three y->-z flip, so normalize to point up.
+      const nrm = geom.attributes.normal.array;
+      let ny = 0; for (let i = 1; i < nrm.length; i += 3) ny += nrm[i];
+      if (ny < 0) { idx.reverse(); geom.setIndex(idx); geom.computeVertexNormals(); }
       const m = new THREE.Mesh(geom, mat);
       m.receiveShadow = true;
       group.add(m);

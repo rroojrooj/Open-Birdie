@@ -16,5 +16,7 @@ export const ASSETS = {
     normal: `${BASE}turf/grass_normal.jpg`,
     rough: `${BASE}turf/grass_rough.jpg`,
     sand: `${BASE}turf/sand_color.jpg`,
+    sandNormal: `${BASE}turf/sand_normal.jpg`,
+    sandRough: `${BASE}turf/sand_rough.jpg`,
   },
 };
