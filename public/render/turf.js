@@ -79,7 +79,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float wx = vMapUv.x * uExt.x, wy = vMapUv.y * uExt.y;
           float band = sin((wx * 0.82 + wy * 0.57) * (3.14159265 / uStripeM));
           float stripe = smoothstep(-0.15, 0.15, band) * 2.0 - 1.0;
-          grass *= 1.0 + 0.14 * stripe * m;
+          grass *= 1.0 + 0.20 * stripe * m;
           // large-scale tonal variation (~50-120m patches) so turf isn't a flat carpet
           float lv = (sin(wx * 0.13 + wy * 0.07) * 0.5
                     + sin(wx * 0.06 - wy * 0.11) * 0.32
@@ -95,7 +95,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         }
         #endif`);
   };
-  mat.customProgramCacheKey = () => 'turf-stripe-sand';
+  mat.customProgramCacheKey = () => 'turf-stripe-sand-v2';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
