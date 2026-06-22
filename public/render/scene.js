@@ -43,7 +43,7 @@ function pointInPoly(x, y, poly) {
 // staying muted enough that the regraded lighting doesn't push them neon.
 const COLORS = {
   base: '#3c6736',  // lusher corridor/base (much of the visible play ground is unlabeled base)
-  rough: '#5d6034', // warm olive — golden links rough (taste call, kept for this pass)
+  rough: '#4a8038', // lush green rough (Augusta second cut) — deeper than the fairway
   wood: '#2b4124',
   range: '#52883f',
   fairwayA: '#5aa848', fairwayB: '#4f9a40', // vivid lush fairway (mow stripes added in shader)
