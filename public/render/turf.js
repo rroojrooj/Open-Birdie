@@ -143,9 +143,35 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float bm = texture2D(uBunker, vMapUv).r;
           diffuseColor.rgb = mix(grass, sand, bm);
         }
-        #endif`);
+        #endif`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        // Soften roughness on mown surfaces so a gentle specular lobe exists for the
+        // sheen to roll through — subtle, to stay clear of the plasticky/wet glow we
+        // de-glowed earlier. Mask recomputed here (the m in map_fragment is out of scope).
+        {
+          float rmm = texture2D(uMask, vMapUv).r;
+          roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.84, rmm);
+        }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        // Specular sheen: tilt the shading normal by a low-frequency undulation field so
+        // the sun glint + sky reflection ROLL across the turf as the camera moves (the
+        // wet-lush pro-sim sheen). World XZ from the splat UV; nudge the view-space
+        // normal toward the undulation downslope. vMapUv is defined (USE_MAP) so this
+        // stays GTAO-safe; the tilt is gentle so distant turf doesn't shimmer.
+        {
+          float snwx = vMapUv.x * uExt.x, snwy = vMapUv.y * uExt.y;
+          // SMOOTH single-octave noise (not fbm): broad rolls only, no fine facets —
+          // fine facets + a sharp specular lobe are what glitter without TAA. Broad
+          // rolls give soft sheen BANDS on the flanks, so we can afford a lower
+          // roughness (below) for a sheen that actually reads.
+          vec2 snp = vec2(snwx, snwy) * 0.045;   // ~22m smooth rolls
+          float sgx = tNoise(snp + vec2(0.12, 0.0)) - tNoise(snp - vec2(0.12, 0.0));
+          float sgy = tNoise(snp + vec2(0.0, 0.12)) - tNoise(snp - vec2(0.0, 0.12));
+          vec3 tiltV = (viewMatrix * vec4(-sgx, 0.0, -sgy, 0.0)).xyz;
+          normal = normalize(normal + tiltV * 1.0); // visible sheen w/o dramatic wide pooling
+        }`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v10';
+  mat.customProgramCacheKey = () => 'turf-grain-v14';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
