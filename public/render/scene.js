@@ -42,13 +42,13 @@ function pointInPoly(x, y, poly) {
 // green) so the hole reads as a golf hole, not one flat green carpet — while
 // staying muted enough that the regraded lighting doesn't push them neon.
 const COLORS = {
-  base: '#33502f',
-  rough: '#5d6034', // warm olive — links/fescue rough, golden against the green fairway
+  base: '#3c6736',  // lusher corridor/base (much of the visible play ground is unlabeled base)
+  rough: '#5d6034', // warm olive — golden links rough (taste call, kept for this pass)
   wood: '#2b4124',
-  range: '#567a44',
-  fairwayA: '#5f8d49', fairwayB: '#588343', // base mown tone (mow stripes added in shader)
-  greenA: '#5b9150', greenB: '#4f8848', // ~fairway brightness, a touch cooler (bentgrass) — distinct by hue, never by glow
-  tee: '#6b9850',
+  range: '#52883f',
+  fairwayA: '#5aa848', fairwayB: '#4f9a40', // vivid lush fairway (mow stripes added in shader)
+  greenA: '#5cab4f', greenB: '#519c45', // lush, ~fairway brightness, a touch cooler — distinct by hue, never by glow
+  tee: '#63a84f',
   bunker: '#cbb583',
   water: '#2f6d97',
 };
