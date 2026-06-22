@@ -107,12 +107,12 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           // and BURIED the mow stripes — the opposite of manicured. Tame fine+broad,
           // keep the large zone (it survives the orbit-cam mip-collapse and carries the
           // lush/dry character below). Clean base + bold stripes = the "pro sim" read.
-          grass *= 1.0 + 0.40 * fine + 0.24 * broad + 0.36 * zone; // brightness at every scale (zone tamed — was blooming lime)
+          grass *= 1.0 + 0.26 * fine + 0.12 * broad + 0.20 * zone; // GENTLE — stacked mottling read as churned "warzone" mud on hilly holes
           // big regions also shift the grass CHARACTER — lush deep-green <-> dry
           // yellow-green — so different parts of the course read as different grass,
           // not one uniform tone stamped edge to edge.
-          grass *= mix(vec3(0.91, 1.01, 0.89), vec3(1.10, 1.01, 0.74),
-                       clamp(zone * 1.7 + 0.5, 0.0, 1.0));
+          grass *= mix(vec3(0.94, 1.01, 0.92), vec3(1.05, 1.02, 0.86),
+                       clamp(zone * 1.7 + 0.5, 0.0, 1.0)); // dry side kept GREEN — was tipping muddy yellow-brown
           grass.r *= 1.0 + 0.10 * broad;                        // finer warm/cool drift on top
           grass.b *= 1.0 - 0.07 * broad;
           // Mowing stripes — the dominant "manicured" signal, fairway/green only.
@@ -135,7 +135,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float gy = tFbm(sp + vec2(0.0, 0.07)) - tFbm(sp - vec2(0.0, 0.07));
           vec2 sunDir = normalize(vec2(0.55, -0.84));      // HDRI sun's horizontal bearing
           float rake = clamp((gx * sunDir.x + gy * sunDir.y) * 7.0, -0.6, 0.6);
-          grass *= 1.0 + 0.22 * rake;                      // sun-side bright, shade-side dark
+          grass *= 1.0 + 0.09 * rake;                      // GENTLE — 0.22 was carving dark shade-bands into the hills
           grass *= vec3(0.96, 1.0, 0.97);          // deepen the zone-green a touch
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
@@ -172,10 +172,10 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float sgx = tNoise(snp + vec2(0.12, 0.0)) - tNoise(snp - vec2(0.12, 0.0));
           float sgy = tNoise(snp + vec2(0.0, 0.12)) - tNoise(snp - vec2(0.0, 0.12));
           vec3 tiltV = (viewMatrix * vec4(-sgx, 0.0, -sgy, 0.0)).xyz;
-          normal = normalize(normal + tiltV * 1.0); // visible sheen w/o dramatic wide pooling
+          normal = normalize(normal + tiltV * 0.4); // GENTLE — strong tilt over-shaded the undulating holes into mud
         }`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v15';
+  mat.customProgramCacheKey = () => 'turf-grain-v16';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
