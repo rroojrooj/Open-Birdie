@@ -21,6 +21,13 @@ All notable changes to Open-Birdie are documented here.
   - **Bunker rakes** — an instanced rake in each sand bunker (`config.props`, `props.js`).
   - **LIDAR green relief** (Phase 1) — real USGS 3DEP elevation drapes finer green meshes so
     putting-surface contours show (`lib/lidar.js`, `lib/elevation.js`).
+  - **Foreground grass objects** — a camera-anchored patch of short, dense, distance-faded
+    grass blades on the mown corridor (fairway/tee — never greens or rough, which has its own
+    fescue), tinted per-instance from the turf zone underneath so the near foreground reads as
+    real grass instead of a smooth surface. Blades collapse to nothing past ~22m from the
+    camera, so the mid/far field stays the proven shaded turf (no sub-pixel blade smear) and the
+    patch re-anchors as the ball moves down the hole (`config.foregroundGrass` + radius/cap/
+    height/fade knobs, `grass.js` `buildGrass` `colorAt`/`cameraFade`, `scene.js`).
 
 ### Changed
 - **GTAO ambient occlusion + filmic bloom enabled** — contact AO darkens tree bases, bunker
@@ -28,6 +35,13 @@ All notable changes to Open-Birdie are documented here.
   bright sand) without hazing the sky (`config.gtao`, `postfx.js`).
 - **Crisp bunkers** — bunkers render as their own sharp-edged polygon meshes with real sand
   PBR instead of a soft painted patch (`turf.js` `makeSandMaterial`, `drape.js`).
+- **Turf lush + manicured + sheen finish pass** — play surfaces retuned toward a lush
+  TrackMan-style green (fairway/green/base, plus a green Augusta-second-cut rough), with bolder
+  cross-cut mow stripes, low-frequency procedural sun-play for gentle 3-D form, and a
+  glitter-free specular sheen (smooth single-octave normal perturbation — fbm facets alias
+  without TAA — distance-gated so the near turf stays matte instead of wet-vinyl). The
+  multi-scale mottling and the dry-zone colour were then calmed so undulating holes read as
+  clean lush fairway rather than churned mud (`turf.js`, `scene.js` `COLORS`).
 
 ### Fixed
 - **No more fescue growing in bunkers** — bunkers map as islands inside a rough polygon, so the
