@@ -224,6 +224,7 @@ export class GolfScene {
   // ---------- course construction ----------
   loadCourse(geo) {
     this._treeWind = this._grassWind = this._waterUpdate = this._waterMeshList = this._terrain = null; // drop stale per-course refs
+    this._fairwayGrassMesh = this._fairwayGrassWind = this._fairwayGrassCenter = this._fgGeo = this._fgGroup = this._fairwayZoneColorFn = null;
     if (this.courseGroup) {
       this.scene.remove(this.courseGroup);
       this.courseGroup.traverse((o) => {
@@ -252,6 +253,7 @@ export class GolfScene {
     this._addTrees(geo, group);
     this._addGrass(geo, group);
     this._addFlowers(geo, group);
+    this._addFairwayGrass(geo, group);
     // LIDAR green meshes are a visual enhancement — never let a bug here break
     // the course load (the picker, physics, base render must still work).
     try { this._addGreenPatches(group, terrain); }
@@ -568,6 +570,66 @@ export class GolfScene {
     if (!spots.length) return;
     const { mesh, windUpdate } = buildGrass(spots, (x, y) => this.hAt(x, y), V);
     if (mesh) { group.add(mesh); this._grassWind = windUpdate; }
+  }
+
+  // Foreground grass-object layer (see config.foregroundGrass). A camera-anchored patch of
+  // SHORT, dense, per-instance zone-tinted blades on the mown corridor — fairway/tee/base,
+  // never greens (must stay smooth) or rough (has its own fescue). The shader collapses
+  // blades past the fade radius, so a patch centered on the ball reads as foreground grass at
+  // the orbit camera and never re-triggers the mid/far sub-pixel smear. Re-anchored when the
+  // ball moves to a new lie (debounced in _frame).
+  _addFairwayGrass(geo, group) {
+    if (!RENDER_CONFIG.foregroundGrass) return;
+    this._fgGeo = geo; this._fgGroup = group;
+    this._fairwayZoneColorFn = this._fairwayZoneColor(geo);
+    this._placeFairwayGrass();
+  }
+
+  // Per-blade tint = the COLORS hue of the surface zone under it (fairway/tee else base),
+  // so blades read matched to the turf they stand on, not one flat carpet color.
+  _fairwayZoneColor(geo) {
+    const surf = geo.surfaces || [];
+    const fairway = surf.filter((s) => s.kind === 'fairway' && s.poly && s.poly.length >= 3);
+    const tee = surf.filter((s) => s.kind === 'tee' && s.poly && s.poly.length >= 3);
+    const cFair = new THREE.Color(COLORS.fairwayA), cTee = new THREE.Color(COLORS.tee), cBase = new THREE.Color(COLORS.base);
+    const onAny = (polys, x, y) => { for (const s of polys) if (pointInPoly(x, y, s.poly)) return true; return false; };
+    return (x, y) => (onAny(tee, x, y) ? cTee : onAny(fairway, x, y) ? cFair : cBase);
+  }
+
+  _fairwayGrassSpots(geo, cx, cy, radius) {
+    const surf = geo.surfaces || [];
+    const blocked = surf.filter((s) => ['green', 'bunker', 'water', 'rough', 'range'].includes(s.kind) && s.poly && s.poly.length >= 3);
+    const onBlocked = (x, y) => { for (const s of blocked) if (pointInPoly(x, y, s.poly)) return true; return false; };
+    const b = this.bounds, spots = [], rnd = mulberry32(1234), CAP = RENDER_CONFIG.foregroundGrassCap;
+    let att = 0;
+    while (spots.length < CAP && att++ < CAP * 5) {
+      const ang = rnd() * Math.PI * 2, rad = Math.sqrt(rnd()) * radius; // uniform over the disc
+      const x = cx + Math.cos(ang) * rad, y = cy + Math.sin(ang) * rad;
+      if (b && (x < b.minX || x > b.maxX || y < b.minY || y > b.maxY)) continue;
+      if (onBlocked(x, y)) continue; // keep off greens/bunkers/water/rough
+      spots.push({ x, y, s: 1 });
+    }
+    return spots;
+  }
+
+  _placeFairwayGrass() {
+    if (!RENDER_CONFIG.foregroundGrass || !this._fgGeo) return;
+    const cx = this.ballSim.x, cy = this.ballSim.y;
+    if (this._fairwayGrassMesh) {
+      this._fgGroup.remove(this._fairwayGrassMesh);
+      this._fairwayGrassMesh.geometry.dispose();
+      this._fairwayGrassMesh.material.dispose();
+      this._fairwayGrassMesh = this._fairwayGrassWind = null;
+    }
+    this._fairwayGrassCenter = { x: cx, y: cy };
+    const spots = this._fairwayGrassSpots(this._fgGeo, cx, cy, RENDER_CONFIG.foregroundGrassRadius);
+    if (!spots.length) return;
+    const { mesh, windUpdate } = buildGrass(spots, (x, y) => this.hAt(x, y), V, {
+      perTuft: 4, height: RENDER_CONFIG.foregroundGrassHeight, baseWidth: 0.018, segs: 2,
+      jitter: 0.15, seed: 1234, colorAt: this._fairwayZoneColorFn,
+      cameraFade: { near: RENDER_CONFIG.foregroundGrassFadeNear, far: RENDER_CONFIG.foregroundGrassFadeFar },
+    });
+    if (mesh) { this._fgGroup.add(mesh); this._fairwayGrassMesh = mesh; this._fairwayGrassWind = windUpdate; }
   }
 
   // Azalea bushes clustered around ~half the on-course trees (the pine understory
@@ -908,6 +970,11 @@ export class GolfScene {
     this._updateMarkers();
     if (this._treeWind) this._treeWind(this.clock.elapsedTime);
     if (this._grassWind) this._grassWind(this.clock.elapsedTime);
+    if (RENDER_CONFIG.foregroundGrass && this.camMode === 'idle' && this._fairwayGrassCenter) {
+      const fdx = this.ballSim.x - this._fairwayGrassCenter.x, fdy = this.ballSim.y - this._fairwayGrassCenter.y;
+      if (fdx * fdx + fdy * fdy > 64) this._placeFairwayGrass(); // ball moved > 8m -> re-anchor the foreground patch
+    }
+    if (this._fairwayGrassWind) this._fairwayGrassWind(this.clock.elapsedTime);
     if (this._flagU) this._flagU.value = this.clock.elapsedTime;
     if (this._waterUpdate) this._waterUpdate(this.clock.elapsedTime);
     if (this.waterDepth && this._terrain) this.waterDepth.prepass(this._terrain, this.camera);

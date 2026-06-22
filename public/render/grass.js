@@ -36,21 +36,37 @@ function bladeGeometry(opts = {}) {
   return g;
 }
 
-function addWind(material, windRef) {
+// Vertex-shader wind sway + optional camera-distance fade. The fade collapses each
+// blade to zero size past a camera radius (length of its view-space origin), so a static
+// instanced field reads as a camera-anchored FOREGROUND patch — blades exist only where
+// they actually resolve at the orbit camera, and cost ~nothing (no fragments) elsewhere.
+function addBladeShader(material, refs, opts = {}) {
+  const wind = opts.wind !== false;
+  const fade = opts.fade || null;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
-    windRef.push(shader.uniforms.uTime);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
+    refs.push(shader.uniforms.uTime);
+    let header = '#include <common>\nuniform float uTime;';
+    if (fade) { header += '\nuniform vec2 uFade;'; shader.uniforms.uFade = { value: new THREE.Vector2(fade.near, fade.far) }; }
+    let body = '#include <begin_vertex>';
+    if (fade) body += `
+        {
+          vec4 ivp = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          float fk = 1.0 - smoothstep(uFade.x, uFade.y, length(ivp.xyz));
+          transformed *= fk; // collapse blades past the fade radius -> camera-anchored foreground
+        }`;
+    if (wind) body += `
         {
           float ph = float(gl_InstanceID) * 0.613;
-          float t = transformed.y; // 0..1 up the blade (pre-scale)
+          float t = transformed.y; // 0..1 up the blade (post-fade scale)
           transformed.x += (sin(uTime * 1.6 + ph) * 0.10 + sin(uTime * 3.1 + ph * 1.7) * 0.04) * t;
           transformed.z += cos(uTime * 1.3 + ph) * 0.06 * t;
-        }`);
+        }`;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', header)
+      .replace('#include <begin_vertex>', body);
   };
-  material.customProgramCacheKey = () => 'grass-wind';
+  material.customProgramCacheKey = () => `grass-${wind ? 'w' : ''}${fade ? 'f' : ''}`;
 }
 
 // spots: [{x,y,s}], hAt, V, opts. Returns { mesh, windUpdate }.
@@ -61,10 +77,20 @@ export function buildGrass(spots, hAt, V, opts = {}) {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true, side: THREE.DoubleSide, roughness: 1.0, metalness: 0,
   });
-  const windRef = [];
-  if (opts.wind !== false) addWind(mat, windRef);
+  const refs = [];
+  const wind = opts.wind !== false;
+  const fade = opts.cameraFade || null;
+  if (wind || fade) addBladeShader(mat, refs, { wind, fade });
   const PER = opts.perTuft ?? 12; // blades per tuft — a dense clump reads, a lone blade doesn't
-  const mesh = new THREE.InstancedMesh(bladeGeometry(opts), mat, spots.length * PER);
+  // Per-instance zone tint (opts.colorAt): bake a neutral base->tip BRIGHTNESS gradient into
+  // the blade (dark base = the inter-blade micro-shadow the flat turf lacks, lit tip =
+  // sun-catch) and let instanceColor carry each blade's surface-zone HUE, so the layer reads
+  // matched to the turf underneath instead of a carpet glued on top.
+  const tint = opts.colorAt || null;
+  const geoOpts = tint
+    ? { ...opts, colorBase: new THREE.Color(0.86, 0.86, 0.86), colorTip: new THREE.Color(1.12, 1.12, 1.12) }
+    : opts;
+  const mesh = new THREE.InstancedMesh(bladeGeometry(geoOpts), mat, spots.length * PER);
   mesh.castShadow = false;   // blade shadows are expensive + low value at this density
   mesh.receiveShadow = true;
 
@@ -81,9 +107,12 @@ export function buildGrass(spots, hAt, V, opts = {}) {
       const sc = H * (0.6 + rnd() * 0.9) * (sp.s || 1);
       scaleVec.set(sc * (0.8 + rnd() * 0.5), sc, sc);
       m4.compose(V(x, y, h), q, scaleVec);
-      mesh.setMatrixAt(bi++, m4);
+      mesh.setMatrixAt(bi, m4);
+      if (tint) { const c = tint(x, y); if (c) mesh.setColorAt(bi, c); }
+      bi++;
     }
   }
   mesh.instanceMatrix.needsUpdate = true;
-  return { mesh, windUpdate: (t) => { for (const u of windRef) u.value = t; } };
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  return { mesh, windUpdate: (t) => { for (const u of refs) u.value = t; } };
 }

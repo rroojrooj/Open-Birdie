@@ -33,6 +33,17 @@ export const RENDER_CONFIG = {
   groundGrass: true,
   grassCap: 55000,  // max fescue tufts on the rough (× blades-per-tuft; perf)
   grassHeight: 0.85, // base blade height (m), jittered per instance
+  // Foreground grass-OBJECT layer: a camera-anchored patch of SHORT, dense, per-instance
+  // zone-tinted blades on the mown corridor (fairway/tee/base — NOT greens, NOT the rough
+  // which has its own fescue). The vertex shader collapses blades past the fade radius, so a
+  // patch placed around the address point reads as real foreground grass at the orbit camera
+  // without re-triggering the sub-pixel smear in the mid/far field (reality-tested out there).
+  foregroundGrass: true,
+  foregroundGrassRadius: 18,    // m — patch radius around the ball/address point (tight = dense)
+  foregroundGrassCap: 24000,    // spot clumps (× ~4 blades); the fade culls everything far
+  foregroundGrassHeight: 0.08,  // m — short fairway-cut blade (exaggerated to read at distance)
+  foregroundGrassFadeNear: 12,  // m from camera: full size nearer than this
+  foregroundGrassFadeFar: 22,   // m from camera: collapsed to nothing past this
   gtao: true, // contact AO (grounding). If the turf goes black, GTAO's normal pass recompiled the onBeforeCompile shader without vMapUv — fall back to SSAO via a material-override prepass.
   colorGrade: true, // cinematic grade + vignette pass (after OutputPass)
   water: true, // animated water: analytic ripples + fresnel + sun glitter (else static plane)
