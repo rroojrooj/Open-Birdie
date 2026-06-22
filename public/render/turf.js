@@ -125,6 +125,17 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
           float stripe2 = smoothstep(-0.5, 0.5, band2) * 2.0 - 1.0;
           grass *= 1.0 + (0.27 * stripe + 0.12 * stripe2) * m;
+          // Procedural sun-play — directional shading from a low-frequency undulation
+          // field so the sun visibly rakes across gentle rolls instead of lighting a
+          // flat sheet. The DIRECTIONAL gradient (one flank of a roll lit, the other
+          // shaded) is what reads as a lit 3D surface; the isotropic grain above only
+          // reads as texture. Faked in albedo — cheap, GTAO-safe, turf normal is ~flat.
+          vec2 sp = vec2(wx, wy) * 0.085;                  // ~12m roll wavelength (survives distance)
+          float gx = tFbm(sp + vec2(0.07, 0.0)) - tFbm(sp - vec2(0.07, 0.0));
+          float gy = tFbm(sp + vec2(0.0, 0.07)) - tFbm(sp - vec2(0.0, 0.07));
+          vec2 sunDir = normalize(vec2(0.55, -0.84));      // HDRI sun's horizontal bearing
+          float rake = clamp((gx * sunDir.x + gy * sunDir.y) * 7.0, -0.6, 0.6);
+          grass *= 1.0 + 0.22 * rake;                      // sun-side bright, shade-side dark
           grass *= vec3(0.96, 1.0, 0.97);          // deepen the zone-green a touch
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
@@ -134,7 +145,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         }
         #endif`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v9';
+  mat.customProgramCacheKey = () => 'turf-grain-v10';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
