@@ -103,7 +103,11 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float fine  = tFbm(vec2(wx, wy) * 0.40) - 0.47;        // ~0.7-3m blade grain
           float broad = tFbm(vec2(wy, wx) * 0.10 + 11.3) - 0.47; // ~8-15m growth/wear patches
           float zone  = tFbm(vec2(wx, wy) * 0.026 + 3.7) - 0.47; // ~30-80m big regions
-          grass *= 1.0 + 0.55 * fine + 0.40 * broad + 0.45 * zone; // brightness at every scale
+          // Manicured rebalance (Phase 2): the loud mid-scale grain read as blotch/wear
+          // and BURIED the mow stripes — the opposite of manicured. Tame fine+broad,
+          // keep the large zone (it survives the orbit-cam mip-collapse and carries the
+          // lush/dry character below). Clean base + bold stripes = the "pro sim" read.
+          grass *= 1.0 + 0.40 * fine + 0.24 * broad + 0.45 * zone; // brightness at every scale
           // big regions also shift the grass CHARACTER — lush deep-green <-> dry
           // yellow-green — so different parts of the course read as different grass,
           // not one uniform tone stamped edge to edge.
@@ -111,16 +115,16 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
                        clamp(zone * 1.7 + 0.5, 0.0, 1.0));
           grass.r *= 1.0 + 0.10 * broad;                        // finer warm/cool drift on top
           grass.b *= 1.0 - 0.07 * broad;
-          // cross-cut mow stripes (bold enough to read from above), fairway/green only
+          // Mowing stripes — the dominant "manicured" signal, fairway/green only.
+          // Softer smoothstep ramps give the mower-sheen gradient (not hard bars). A
+          // BOLD primary set reads as light/dark bands from the orbit camera; a fainter,
+          // wider cross set keeps the pattern alive when you sight straight down the
+          // primary axis (a single direction vanishes when you look along it).
           float band = sin((wx * 0.82 + wy * 0.57) * (3.14159265 / uStripeM));
-          float stripe = smoothstep(-0.2, 0.2, band) * 2.0 - 1.0;
+          float stripe = smoothstep(-0.42, 0.42, band) * 2.0 - 1.0;
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
-          float stripe2 = smoothstep(-0.25, 0.25, band2) * 2.0 - 1.0;
-          // balanced cross-hatch: the two stripe sets are ~perpendicular, so whichever
-          // way you face down a hole, at least one set crosses your view and reads
-          // (a fixed single direction vanishes when you look along it). Checkerboard
-          // mow is also a real pattern.
-          grass *= 1.0 + (0.18 * stripe + 0.16 * stripe2) * m;
+          float stripe2 = smoothstep(-0.5, 0.5, band2) * 2.0 - 1.0;
+          grass *= 1.0 + (0.27 * stripe + 0.12 * stripe2) * m;
           grass *= vec3(0.96, 1.0, 0.97);          // deepen the zone-green a touch
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
@@ -130,7 +134,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         }
         #endif`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v8';
+  mat.customProgramCacheKey = () => 'turf-grain-v9';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
