@@ -107,11 +107,11 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           // and BURIED the mow stripes — the opposite of manicured. Tame fine+broad,
           // keep the large zone (it survives the orbit-cam mip-collapse and carries the
           // lush/dry character below). Clean base + bold stripes = the "pro sim" read.
-          grass *= 1.0 + 0.40 * fine + 0.24 * broad + 0.45 * zone; // brightness at every scale
+          grass *= 1.0 + 0.40 * fine + 0.24 * broad + 0.36 * zone; // brightness at every scale (zone tamed — was blooming lime)
           // big regions also shift the grass CHARACTER — lush deep-green <-> dry
           // yellow-green — so different parts of the course read as different grass,
           // not one uniform tone stamped edge to edge.
-          grass *= mix(vec3(0.90, 1.05, 0.88), vec3(1.12, 1.02, 0.74),
+          grass *= mix(vec3(0.91, 1.01, 0.89), vec3(1.10, 1.01, 0.74),
                        clamp(zone * 1.7 + 0.5, 0.0, 1.0));
           grass.r *= 1.0 + 0.10 * broad;                        // finer warm/cool drift on top
           grass.b *= 1.0 - 0.07 * broad;
@@ -150,7 +150,11 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
         // de-glowed earlier. Mask recomputed here (the m in map_fragment is out of scope).
         {
           float rmm = texture2D(uMask, vMapUv).r;
-          roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.84, rmm);
+          // Distance-gate the sheen: NEAR turf stays MATTE (real close-up grass scatters
+          // diffusely — a spec lobe right under the camera read as wet vinyl). Only the
+          // far field gets a subtle lobe. specFar: 0 near -> 1 far.
+          float specFar = smoothstep(14.0, 45.0, length(vViewPosition));
+          roughnessFactor = mix(roughnessFactor, roughnessFactor * mix(1.0, 0.88, specFar), rmm);
         }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         // Specular sheen: tilt the shading normal by a low-frequency undulation field so
@@ -171,7 +175,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           normal = normalize(normal + tiltV * 1.0); // visible sheen w/o dramatic wide pooling
         }`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v14';
+  mat.customProgramCacheKey = () => 'turf-grain-v15';
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
