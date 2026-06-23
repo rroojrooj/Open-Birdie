@@ -86,7 +86,13 @@ setCourse(course, { terrainPatches = [], ready = true } = {}) {
 }
 ```
 
-Reject shots while `runtimeReady === false`; include `runtimeReady` in state.
+Add `Game.activateRuntimeTerrain(terrainPatches)` to rebuild only `this.terrain` from the
+already loaded course without resetting hole index, scores, strokes, ball position, aim, or
+round state. Test that both HD and procedural activation preserve those fields. Reject shots
+while `runtimeReady === false`; include `runtimeReady` in state. For a valid HD candidate,
+the server initially calls `setCourse(course, { terrainPatches: [], ready: false })`, then
+calls `activateRuntimeTerrain([hdGrid])` on an `hd` acknowledgement or
+`activateRuntimeTerrain([])` on a `procedural` acknowledgement before setting readiness.
 
 - [ ] **Step 4: Run focused/full tests**
 
@@ -384,7 +390,9 @@ POST /api/course-runtime-ready
 For valid HD, server holds decoded terrain but sets `runtimeReady:false`. Browser changes
 `loadGeometry()` to await all HD resources and `scene.loadCourse()`, then acknowledges `hd`.
 On load/construction failure it fully rebuilds procedural and acknowledges `procedural`.
-Server installs matching terrain and unlocks shots only after a valid current revision ack.
+Server calls `Game.activateRuntimeTerrain()` with the matching HD patch or an empty patch
+list and unlocks shots only after a valid current revision acknowledgement. This terrain
+switch must not reset any round/gameplay state.
 
 `server.js` generates a cryptographically random primary nonce. `main.js` receives it through
 the local module interface and appends it only to the loopback Electron URL. Headless mode
