@@ -1,0 +1,23 @@
+name: test-windows
+
+# Proves a clean checkout installs and tests green on the supported runtime.
+# The HD compiler targets Node >=22 (see package.json engines); CI runs the
+# same Windows x64 + Node 22 combination as the primary dev machine so the
+# committed package-lock.json (incl. Sharp's @img/sharp-win32-x64 prebuilt)
+# resolves identically.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm ci
+      - run: npm test
