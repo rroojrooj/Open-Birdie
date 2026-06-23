@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "course": {
+    "name": "Bandon Dunes Golf Resort",
+    "cacheVersion": 3,
+    "fingerprint": "pending"
+  },
+  "hole": 1,
+  "padding": 150,
+  "terrain": {
+    "targetSpacingM": 3.0,
+    "crs": "EPSG:3857"
+  },
+  "imagery": {
+    "collection": "naip",
+    "date": "2022-06-23",
+    "gsdM": 0.3,
+    "itemIds": [
+      "or_m_4312453_ne_10_030_20220623",
+      "or_m_4312453_se_10_030_20220623"
+    ]
+  },
+  "providers": {
+    "elevation": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+    "imagery": "https://planetarycomputer.microsoft.com/api/stac/v1"
+  },
+  "limits": {
+    "maxPixels": 80000000,
+    "maxDownloadBytes": 3221225472,
+    "maxBundleBytes": 157286400
+  },
+  "normalization": {
+    "format": "webp",
+    "quality": 90
+  },
+  "discovered": {
+    "state": "pending"
+  }
+}
