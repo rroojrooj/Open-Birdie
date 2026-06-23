@@ -1,5 +1,12 @@
 # Open-Birdie Visual Upgrade Plan
 
+> **2026-06-23 direction update:** Renderer-only tuning has reached its useful limit for
+> site realism. The next prototype is the offline, public-data HD hole compiler defined in
+> [`docs/superpowers/specs/2026-06-23-hd-hole-course-compiler-design.md`](superpowers/specs/2026-06-23-hd-hole-course-compiler-design.md).
+> It adds full-hole 3DEP terrain and pinned NAIP macro imagery while retaining the existing
+> PBR turf/grass renderer. Do not treat additional procedural shader tuning as a substitute
+> for that content pipeline.
+
 > Status: **Steps 1–2 + procedural part of Step 3 shipped (1.5/10 → 5/10).**
 > The lighting/grade/relief lanes are tapped out; the remaining 5 → 6-7 lever is the
 > turf **albedo material** (bundled CC0 PBR tiles + per-surface split), not more
