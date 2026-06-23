@@ -64,8 +64,10 @@ process an entire course.
   variation and do not show obvious stretching, tile seams, or color discontinuities.
 - Close turf retains PBR normal/roughness response and near-camera grass geometry.
 - Runtime makes no data-provider requests.
-- Target performance on the current RTX 3060 at 1920×1080 is 60 FPS average and at least
-  45 FPS 1%-low during a repeatable representative camera path.
+- Target performance on the current RTX 3060 at 1920×1080 is 60-Hz-class delivery: average
+  frame time at most 16.8 ms (or at least 99% of a measured 59–60 Hz refresh cap), plus at
+  least 45 FPS 1%-low during a repeatable representative camera path. Record GPU draw time
+  separately when timer-query support is available.
 - The HD hole loads from local storage in under 5 seconds after application startup.
 - Incremental GPU memory attributable to the bundle remains below 250 MB.
 - Existing gameplay, terrain sampling, physics, and rendering tests remain passing.
@@ -111,6 +113,10 @@ Primary public references:
 The prototype uses the Planetary Computer STAC catalog to locate a public NAIP COG because
 the AWS visualization bucket is Requester Pays. Provider access is isolated so a later
 catalog/source can replace it without changing the compiler core or runtime bundle format.
+The checked-in build manifest pins each unsigned canonical COG URL plus content length and a
+stable provider validator such as ETag. Builds reject drift. Current NAIP blobs are publicly
+readable without SAS signing; a provider that later requires short-lived signing needs an
+explicit adapter and must never persist the signed query string.
 
 ## 6. Architecture
 
@@ -279,15 +285,23 @@ Proposed layout:
 ```text
 data/hd-courses/
   bandon-dunes/
-    manifest.json
-    provenance.json
-    holes/
-      01/
-        terrain.f32
-        orthophoto.webp
-        surfaces.png
-        coverage.png
+    active.json
+    bundles/
+      <bundle-id>/
+        manifest.json
+        provenance.json
+        holes/
+          01/
+            terrain.f32
+            orthophoto.webp
+            surfaces.png
+            coverage.png
 ```
+
+Bundles are immutable. Publication writes and validates a new `<bundle-id>` directory,
+then atomically replaces only the small `active.json` pointer. This avoids unreliable
+non-empty directory replacement behavior on Windows and keeps the last known-good bundle
+available for rollback.
 
 `manifest.json` includes:
 
@@ -303,6 +317,10 @@ data/hd-courses/
 `provenance.json` records source organization, dataset, item/service identifiers, access
 date, source URL, license/public-domain statement, compiler parameters, and relevant tool
 versions. It is data provenance, not a substitute for repository asset documentation.
+
+Mask packing for schema version 1 is explicit: `surfaces.png` stores fairway, green, tee,
+and bunker coverage in R, G, B, and A respectively; `coverage.png` stores imagery validity
+in R and water coverage in G. Rough is the default where no surface channel wins.
 
 The compiler workspace and downloaded raw COG/DEM data live under an ignored build-cache
 directory. Final prototype bundles also remain ignored initially because their size is not
@@ -331,9 +349,14 @@ The renderer and physics need one consistent height model. For the prototype:
 
 - the HD patch covers the entire padded hole and overrides the coarse base grid within its
   extent;
-- rendering uses the high-resolution grid to construct the local terrain mesh;
+- compilation snaps HD bounds to both the 1 m output grid and the coarse-grid cell lines;
+  rendering removes every coarse cell inside that exact rectangle, then fills the zero-area
+  cutout with the high-resolution mesh. Both meshes share boundary positions/heights; there
+  is no positive-area overlap. A simple overlaid plane is not acceptable because lower HD
+  relief can be occluded by the coarse surface. Terrain depth prepasses include both meshes;
 - gameplay/physics uses the same raw height source through `makeTerrain`, retaining its
-  existing optional smoothing behavior for physics; and
+  existing smoothing behavior for physics gradients; raw ground heights remain identical
+  between physics and rendering; and
 - the patch edge blends into the base grid over a documented ring to prevent steps.
 
 Do not build an independent visual-only terrain that disagrees with ball physics.
@@ -364,6 +387,17 @@ separated material stack.
   error, and reload the procedural course as one coherent state.
 
 There is no mixed half-HD state.
+
+### 9.5 Runtime readiness
+
+The server must not activate HD physics before the primary client has loaded and constructed
+the matching HD scene. Each course load receives a revision ID. The client acknowledges
+that revision as `hd` only after all assets and the scene are ready, or as `procedural` after
+coherent fallback. The acknowledgement requires a random primary-client nonce issued only
+to the loopback Electron/headless primary client; LAN mirrors cannot obtain or use it. The
+server then installs the corresponding physics terrain and unlocks shots. Stale revisions,
+wrong nonces, and non-loopback acknowledgements are rejected. An activated revision is
+immutable.
 
 ## 10. Error handling and observability
 
@@ -455,6 +489,8 @@ that distribution decision is deferred.
 - Use temporary files plus atomic rename; never stream provider data directly into the final
   bundle.
 - Record NAIP public-domain attribution/provenance and USGS public-domain provenance.
+- Record OpenStreetMap ODbL provenance and the exact cached-course fingerprint used by the
+  build.
 - Do not commit raw provider downloads or large generated bundles to normal Git history.
 - Do not incorporate imagery from consumer map screenshots or sources whose terms prohibit
   redistribution.
@@ -470,6 +506,11 @@ During implementation:
 - add the bundle schema/version contract near the compiler source; and
 - update `docs/visual-upgrade-plan.md` so future work does not return to shader-only tuning
   as the primary realism strategy.
+
+The existing Electron package excludes `data/`, compiler tools, docs, and tests. The first
+prototype is therefore a development-workspace feature. Shipping HD bundles in installed
+builds requires a separate copy/download mechanism and is explicitly deferred until the
+one-hole prototype passes.
 
 No persistent external “memory” is required. This approved specification and the later
 implementation plan are the repository source of truth.
