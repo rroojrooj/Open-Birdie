@@ -6,7 +6,18 @@
 
 **Architecture:** The server owns validated filesystem descriptors and exposes only allow-listed asset keys plus sanitized metadata. The browser verifies bytes/hashes/dimensions before constructing an HD overlay mesh; a revision handshake activates matching physics only after the primary scene is ready.
 
-**Tech Stack:** Node.js 18+, Electron HTTP server, Three.js, browser Fetch/Crypto/ImageBitmap, existing Open-Birdie terrain/physics modules.
+**Tech Stack:** Node.js 22+, Electron HTTP server, Three.js, browser Fetch/Crypto/ImageBitmap, existing Open-Birdie terrain/physics modules.
+
+> **Implementation status (2026-06-25): Plan 3 is implemented** on branch
+> `claude/hd-plan3-runtime-integration` (commits `c90428f`…`61f6c16`), **188/188** tests green (+37).
+> **Amendments:** Node floor 22 (per Plan 1). **Verification boundary:** every algorithmic core is
+> Node-tested — physics injection, `resolveHdBundle`, asset serving, the browser loader, the
+> sampler-parity + no-overlap terrain mesh, the turf `onBeforeCompile` macro contract, and the
+> readiness security core (nonce/loopback/revision). The pure **browser render-wiring**
+> (`scene.js loadCourse(hdAssets)` + `app.js` HD-load/ack) is syntax-checked only — it is verified in
+> the running Electron app, which is Plan 4's domain. The live visual capstone also needs a Plan-2
+> discovery step to resolve the `pending` Bandon manifest + the cached course. Full plan:
+> `~/.claude/plans/plan-if-not-have-polished-parasol.md`.
 
 ---
 
