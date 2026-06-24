@@ -9,8 +9,12 @@
 
 import * as THREE from 'three';
 
-function gridGeometry(grid, skip) {
+function gridGeometry(grid, skip, uvBounds) {
   const { minX, minY, cellM, nx, ny, heights } = grid;
+  // UVs are course-relative when uvBounds is given (so a course-wide splat/mask
+  // aligns over an HD sub-mesh); otherwise self-relative (i/(nx-1)).
+  const ub = uvBounds || { minX, minY, maxX: minX + (nx - 1) * cellM, maxY: minY + (ny - 1) * cellM };
+  const uExtX = ub.maxX - ub.minX; const uExtY = ub.maxY - ub.minY;
   const pos = new Float32Array(nx * ny * 3);
   const uv = new Float32Array(nx * ny * 2);
   for (let j = 0; j < ny; j += 1) {
@@ -19,8 +23,8 @@ function gridGeometry(grid, skip) {
       pos[k * 3] = minX + i * cellM;
       pos[k * 3 + 1] = heights[k];
       pos[k * 3 + 2] = -(minY + j * cellM);
-      uv[k * 2] = i / (nx - 1);
-      uv[k * 2 + 1] = j / (ny - 1);
+      uv[k * 2] = (minX + i * cellM - ub.minX) / uExtX;
+      uv[k * 2 + 1] = (minY + j * cellM - ub.minY) / uExtY;
     }
   }
   const idx = [];
@@ -39,8 +43,8 @@ function gridGeometry(grid, skip) {
   return geom;
 }
 
-export function buildHdTerrain({ grid, material }) {
-  const mesh = new THREE.Mesh(gridGeometry(grid), material);
+export function buildHdTerrain({ grid, material, uvBounds }) {
+  const mesh = new THREE.Mesh(gridGeometry(grid, null, uvBounds), material);
   mesh.receiveShadow = true;
   return mesh;
 }

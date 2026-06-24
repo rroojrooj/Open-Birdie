@@ -1,9 +1,12 @@
 // Open-Birdie UI glue: SSE <-> HUD <-> 3D scene.
 import { GolfScene } from './render/scene.js';
+import { loadHdBundle } from './render/hd-bundle.js';
 import { toPar, forwardLabel, verdict } from './scoring.mjs';
 
 const $ = (id) => document.getElementById(id);
 const scene = new GolfScene($('scene'));
+// Readiness nonce handed only to the loopback Electron primary client (absent on LAN mirrors).
+const primaryNonce = new URLSearchParams(location.search).get('primaryNonce') || '';
 window.__birdie = { scene, get state() { return state; } };
 
 let state = null;
@@ -61,10 +64,33 @@ function applyState(s) {
 
 async function loadGeometry() {
   const geo = await (await fetch('/api/course-geometry')).json();
-  if (geo && geo.name) {
-    scene.loadCourse(geo);
-    lastHoleKey = '';
-    if (state) applyState(state);
+  if (!geo || !geo.name) return;
+  let hdAssets = null;
+  let mode = 'procedural';
+  if (geo.hd) {
+    try {
+      hdAssets = await loadHdBundle(geo.hd, {
+        imageDecoder: (bytes, opts) => createImageBitmap(new Blob([bytes]), opts),
+        expectedRevision: geo.courseRevision,
+      });
+      mode = 'hd';
+    } catch (e) {
+      console.warn('[hd] bundle load failed — procedural fallback:', e && e.message);
+      hdAssets = null;
+    }
+  }
+  scene.loadCourse(geo, { hdAssets });
+  lastHoleKey = '';
+  if (state) applyState(state);
+  // Acknowledge readiness so the server activates the matching physics. HD courses are
+  // held at runtimeReady:false until this; plain courses are already ready.
+  if (geo.hd) {
+    try {
+      await fetch('/api/course-runtime-ready', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseRevision: geo.courseRevision, bundleId: geo.hd.bundleId, mode, primaryNonce }),
+      });
+    } catch (e) { /* LAN mirror / transient — the server's readiness timeout covers it */ }
   }
 }
 
