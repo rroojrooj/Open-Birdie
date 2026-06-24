@@ -13,6 +13,9 @@
     "shot": "node tools/test-shot.js",
     "watch": "node tools/uneekor-watch.js --speed-scale 2.23694",
     "make-icon": "node tools/make-icon.js",
+    "build:hd-hole": "node tools/hd-course/cli.mjs build",
+    "validate:hd-bundle": "node tools/validate-hd-bundle.js",
+    "smoke:hd-providers": "node tools/smoke-hd-providers.mjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win"
   },
