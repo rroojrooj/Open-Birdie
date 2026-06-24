@@ -1,0 +1,49 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id": "or_m_4312453_ne_10_030_20220623",
+      "properties": {
+        "datetime": "2022-06-23T00:00:00Z",
+        "gsd": 0.3,
+        "proj:epsg": 26910,
+        "naip:year": "2022",
+        "naip:state": "or"
+      },
+      "assets": {
+        "image": {
+          "href": "https://naipeuwest.blob.core.windows.net/naip/v002/or/2022/or_030cm_2022/43124/m_4312453_ne_10_030_20220623.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+        }
+      }
+    },
+    {
+      "id": "or_m_4312453_se_10_030_20220623",
+      "properties": {
+        "datetime": "2022-06-23T00:00:00Z",
+        "gsd": 0.3,
+        "proj:epsg": 26910,
+        "naip:year": "2022",
+        "naip:state": "or"
+      },
+      "assets": {
+        "image": {
+          "href": "https://naipeuwest.blob.core.windows.net/naip/v002/or/2022/or_030cm_2022/43124/m_4312453_se_10_030_20220623.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized"
+        }
+      }
+    },
+    {
+      "id": "or_m_4312453_ne_10_060_20180714",
+      "properties": {
+        "datetime": "2018-07-14T00:00:00Z",
+        "gsd": 0.6,
+        "proj:epsg": 26910,
+        "naip:year": "2018"
+      },
+      "assets": {
+        "image": { "href": "https://example.test/old.tif" }
+      }
+    }
+  ]
+}
