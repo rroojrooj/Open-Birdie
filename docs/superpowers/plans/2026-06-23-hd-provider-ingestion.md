@@ -6,7 +6,17 @@
 
 **Architecture:** Provider adapters are strict and injectable; pure raster stages consume normalized in-memory contracts. The checked-in build manifest pins source identity and parameters, while generated provenance records current response metadata and tool versions.
 
-**Tech Stack:** Node.js 18+, GeoTIFF.js, Proj4js, Sharp 0.34.5, PNGJS, USGS 3DEP ImageServer, Planetary Computer NAIP STAC/COG.
+**Tech Stack:** Node.js 22+, GeoTIFF.js, Proj4js, Sharp (current stable), PNGJS, USGS 3DEP ImageServer, Planetary Computer NAIP STAC/COG.
+
+> **Implementation status (2026-06-24): the OFFLINE portion of Plan 2 is implemented** on branch
+> `claude/suspicious-pike-b4f09a` (commits `07e2217`…`5581744`), 52 new offline tests, full suite
+> 151/151 green. **Amendments:** Node floor is **22** (not 18) per the Plan 1 decision; the existing
+> `test/lidar.test.js` is unchanged and green (gameplay's best-effort `fetchPatch` preserved). The
+> **live discovery + real Bandon build is deliberately deferred** as an opt-in capstone — the
+> committed manifest stays `discovered:"pending"`; the offline e2e injects fixture providers and
+> forces `global.fetch` to throw. Encoder output is reconciled byte-for-byte against the Plan 1
+> `lib/hd-bundle.js` validator. Full execution record:
+> `~/.claude/plans/plan-if-not-have-polished-parasol.md`.
 
 ---
 
