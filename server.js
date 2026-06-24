@@ -12,6 +12,7 @@ const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/cou
 const { Game, CLUB_FULL } = require('./lib/game');
 const { resolveHdBundle } = require('./lib/hd-bundle');
 const { serveHdAsset, publicHdMetadata } = require('./lib/hd-http');
+const { makeNonce, verifyReadinessAck } = require('./lib/hd-readiness');
 
 const HTTP_PORT = +(process.env.BIRDIE_PORT || 8222);
 const OC_PORT = +(process.env.BIRDIE_OC_PORT || 921);
@@ -32,13 +33,33 @@ const sseClients = new Set();
 // paths + Float32 heights never leak through course JSON.
 let activeHd = null;     // resolved descriptor (server-only paths) or null
 let courseRevision = 0;  // bumped on each course activation
+// Per-process secret handed only to the loopback Electron primary client; an HD
+// revision activates only on a nonce-matched ack from it.
+const PRIMARY_NONCE = makeNonce();
+const READY_TIMEOUT_MS = +(process.env.BIRDIE_HD_READY_TIMEOUT_MS || 15000);
+let readyTimer = null;
+const isLoopbackAddr = (a) => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 
 function activateCourse(course) {
-  game.setCourse(course);
-  courseRevision += 1;
   const r = resolveHdBundle(course, { dataDir: DATA_DIR });
   activeHd = r.status === 'valid' ? r.descriptor : null;
   if (r.status === 'rejected') console.warn(`[hd] bundle rejected: ${r.code}`);
+  courseRevision += 1;
+  // An HD candidate holds physics (ready:false) until the primary client acks a
+  // coherent scene; a plain course is immediately playable.
+  game.setCourse(course, { ready: !activeHd });
+  if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
+  if (activeHd) {
+    const rev = courseRevision;
+    readyTimer = setTimeout(() => {
+      if (!game.runtimeReady && courseRevision === rev) {
+        console.warn('[hd] readiness timeout — activating procedural fallback');
+        game.activateRuntimeTerrain([]);
+        broadcast('state', game.state());
+      }
+    }, READY_TIMEOUT_MS);
+    if (readyTimer.unref) readyTimer.unref();
+  }
   return r;
 }
 let lmStatus = { connected: false, ready: false };
@@ -142,6 +163,19 @@ const server = http.createServer(async (req, res) => {
         broadcast('state', game.state());
         return json(res, { ok: true });
       }
+      if (p === '/api/course-runtime-ready') {
+        const v = verifyReadinessAck(body, {
+          currentRevision: courseRevision,
+          currentBundleId: activeHd ? activeHd.bundleId : null,
+          serverNonce: PRIMARY_NONCE,
+          isLoopback: isLoopbackAddr(req.socket.remoteAddress),
+        });
+        if (!v.ok) return json(res, { ok: false, code: v.code }, 403); // nonce never echoed
+        if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
+        game.activateRuntimeTerrain(v.mode === 'hd' && activeHd ? [activeHd.grid] : []);
+        broadcast('state', game.state());
+        return json(res, { ok: true, mode: v.mode });
+      }
       if (p === '/api/reset') {
         game.reset();
         broadcast('state', game.state());
@@ -236,4 +270,4 @@ function close() {
   } catch (_) { /* already closed */ }
 }
 
-module.exports = { ready, close };
+module.exports = { ready, close, primaryNonce: PRIMARY_NONCE };

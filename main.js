@@ -64,7 +64,9 @@ if (!app.requestSingleInstanceLock()) {
       title: 'Open-Birdie',
       webPreferences: { contextIsolation: true },
     });
-    win.loadURL(`http://localhost:${HTTP_PORT}`);
+    // Hand the readiness nonce ONLY to the loopback Electron primary client, so
+    // LAN/SSE mirrors can render but cannot activate an HD course revision.
+    win.loadURL(`http://localhost:${HTTP_PORT}?primaryNonce=${srv.primaryNonce}`);
     win.on('closed', () => { win = null; });
 
     globalShortcut.register('F11', () => {
