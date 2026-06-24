@@ -18,6 +18,17 @@ All notable changes to Open-Birdie are documented here.
     with little-endian Float32 terrain decode and hand-rolled PNG/WebP/JPEG header checks
     (`lib/hd-bundle.js`), plus an atomic immutable bundle publisher (`tools/hd-course/publisher.mjs`).
   - Toolchain raised to **Node 22** (drops EOL Node 18) with a Windows CI gate; 54 new offline tests.
+- **HD hole compiler — provider ingestion (Plan 2)** — the compiler now ingests real data
+  (still offline scaffolding; the live Bandon build is an opt-in capstone):
+  - Shared coordinate/grid contracts (local↔WGS84↔UTM, snap to coarse + HD cell lines).
+  - Strict 3DEP terrain acquisition — `lib/lidar.js` gains a throwing `fetchPatchStrict`; gameplay's
+    best-effort `fetchPatch` is unchanged. Rejects data coarser than the pinned native spacing.
+  - Range-only NAIP COG reads via a custom geotiff client bounded to ≤2 in-flight requests — never a
+    full-object download — with deterministic pinned-item selection and ETag/length drift guards.
+  - UTM→local imagery reprojection (corner-color tested), pure-JS semantic masks, pinned-LUT
+    normalization, and deterministic encoding (`terrain.f32` byte-reproducible).
+  - An 11-stage compiler behind `npm run build:hd-hole` that validates each staged bundle against the
+    Plan 1 runtime validator before the atomic publisher swaps it in. +52 offline tests (151 total).
 - **Renderer quality pass (A–G)** — a sweep to take the runtime-procedural course from
   "indie sim" toward a convincing ~6–7/10 (photoreal-named-course specifics remain a future
   baked-content phase). Each system is a `public/render/config.js` flag so it can be toggled:

@@ -3,6 +3,25 @@
 All assets below are CC0 (public domain) unless noted. No attribution is legally
 required for CC0; recorded here for provenance.
 
+## HD compiler — external data sources (build-time, NOT bundled)
+
+The HD hole compiler (`tools/hd-course/`, `npm run build:hd-hole`) fetches public open data
+at build time and compiles it into local hole bundles under `data/hd-courses/` (git-ignored —
+regenerable, too large for history). None of this data is committed to the repo.
+
+- **OpenStreetMap course geometry** — © OpenStreetMap contributors, licensed **ODbL**. Cached
+  under `data/courses/`; used for hole routing + surface polygons. Anything published from a
+  bundle must credit "© OpenStreetMap contributors" and honor ODbL share-alike.
+- **USDA NAIP aerial imagery** — **U.S. public domain**. Read by pinned, range-limited COG
+  windows from the Microsoft Planetary Computer STAC catalog (never a full-object download).
+  The build manifest pins item IDs, acquisition date, and asset ETags for reproducibility.
+- **USGS 3DEP elevation** — **U.S. public domain**, from the 3DEP ImageServer. Native source
+  resolution is recorded in each bundle's `provenance.json` (≈3.4 m 1/9 arc-second lidar at
+  Bandon per Gate 1.5) and is never presented as native 1 m.
+- **Generated hole bundles** — each `data/hd-courses/<course>/bundles/<id>/provenance.json`
+  records source organizations, dataset/item identifiers, access date, licenses, and the
+  compiler tool versions used. Bundles are immutable and git-ignored.
+
 ## HDRIs
 - `public/assets/hdri/puresky_4k.hdr` — "Kloofendal 48d Partly Cloudy (Pure Sky)" by
   Poly Haven (CC0). Source: https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky
