@@ -330,7 +330,10 @@ export class GolfScene {
     bunkerMaskTex.colorSpace = THREE.NoColorSpace;
     bunkerMaskTex.anisotropy = tex.anisotropy;
 
-    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, maskTex, bunkerMaskTex, b, tex.anisotropy));
+    const mesh = new THREE.Mesh(geom, makeTurfMaterial({
+      baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
+      macro: this._hdMacro || null,
+    }));
     mesh.receiveShadow = true;
     return mesh;
   }

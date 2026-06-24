@@ -36,7 +36,8 @@ export function makeSandMaterial(bounds, aniso) {
   return mat;
 }
 
-export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso) {
+export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisotropy, macro = null }) {
+  const splatTex = baseMap, maskTex = mownMask, bunkerMaskTex = bunkerMask, aniso = anisotropy;
   const extX = bounds.maxX - bounds.minX, extY = bounds.maxY - bounds.minY;
   const tileM = 2.0; // grass texture repeats ~every 2m
   const repX = extX / tileM, repY = extY / tileM;
@@ -63,6 +64,33 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
     shader.uniforms.uSand = { value: sand };
     shader.uniforms.uExt = { value: new THREE.Vector2(extX, extY) };
     shader.uniforms.uStripeM = { value: 7.0 }; // mow-band width (m) — a touch wider reads better from the orbit cam
+    // HD aerial macro layer (optional): real low-frequency color tint inside the HD rect.
+    // Aerial RGB shifts the grass HUE/VALUE only — the tiled PBR detail, mow stripes, and
+    // grass geometry all survive. Coverage R gates it; near/far weighted; tuned in Plan 4.
+    const macroDecl = macro ? `
+        uniform sampler2D uMacro; uniform sampler2D uMacroSurfaces; uniform sampler2D uMacroCoverage;
+        uniform vec2 uMacroMin; uniform vec2 uMacroSize; uniform vec2 uMacroWeights; uniform vec2 uCourseMin;` : '';
+    const macroBlend = macro ? `
+          { vec2 wXY = uCourseMin + vMapUv * uExt;
+            vec2 mUv = (wXY - uMacroMin) / uMacroSize;
+            if (mUv.x >= 0.0 && mUv.x <= 1.0 && mUv.y >= 0.0 && mUv.y <= 1.0) {
+              float mvalid = texture2D(uMacroCoverage, mUv).r;
+              vec3 aerial = texture2D(uMacro, mUv).rgb;
+              float macFar = smoothstep(14.0, 45.0, length(vViewPosition));
+              float mw = mvalid * mix(uMacroWeights.x, uMacroWeights.y, macFar);
+              float gl = max(dot(grass, vec3(0.299, 0.587, 0.114)), 0.04);
+              vec3 tint = aerial * (gl / max(dot(aerial, vec3(0.299, 0.587, 0.114)), 0.04));
+              grass = mix(grass, tint, mw);
+            } }` : '';
+    if (macro) {
+      shader.uniforms.uMacro = { value: macro.albedo };
+      shader.uniforms.uMacroSurfaces = { value: macro.surfaces };
+      shader.uniforms.uMacroCoverage = { value: macro.coverage };
+      shader.uniforms.uMacroMin = { value: new THREE.Vector2(macro.bounds.minX, macro.bounds.minY) };
+      shader.uniforms.uMacroSize = { value: new THREE.Vector2(macro.bounds.maxX - macro.bounds.minX, macro.bounds.maxY - macro.bounds.minY) };
+      shader.uniforms.uMacroWeights = { value: new THREE.Vector2(macro.closeWeight ?? 0.25, macro.farWeight ?? 0.6) };
+      shader.uniforms.uCourseMin = { value: new THREE.Vector2(bounds.minX, bounds.minY) };
+    }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D uDetail; uniform vec2 uDetailRepeat;
@@ -82,7 +110,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float s = 0.0, a = 0.5;
           for (int k = 0; k < 4; k++){ s += a * tNoise(p); p *= 2.03; a *= 0.5; }
           return s;
-        }`)
+        }${macroDecl}`)
       .replace('#include <map_fragment>', `#include <map_fragment>
         #ifdef USE_MAP
         {
@@ -137,6 +165,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           float rake = clamp((gx * sunDir.x + gy * sunDir.y) * 7.0, -0.6, 0.6);
           grass *= 1.0 + 0.09 * rake;                      // GENTLE — 0.22 was carving dark shade-bands into the hills
           grass *= vec3(0.96, 1.0, 0.97);          // deepen the zone-green a touch
+          ${macroBlend}
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
           sand = mix(sand, vec3(1.0), 0.12) * 1.28;
@@ -175,7 +204,7 @@ export function makeTurfMaterial(splatTex, maskTex, bunkerMaskTex, bounds, aniso
           normal = normalize(normal + tiltV * 0.4); // GENTLE — strong tilt over-shaded the undulating holes into mud
         }`);
   };
-  mat.customProgramCacheKey = () => 'turf-grain-v16';
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v17-macro' : 'turf-grain-v17');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
