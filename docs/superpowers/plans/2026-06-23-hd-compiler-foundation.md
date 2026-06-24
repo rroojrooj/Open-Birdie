@@ -6,7 +6,18 @@
 
 **Architecture:** Compiler code is ESM under `tools/hd-course/`; runtime validation stays dependency-light CommonJS under `lib/`. Immutable versioned bundle directories are published by atomically swapping `active.json`, so a failed Windows build cannot destroy the last known-good bundle.
 
-**Tech Stack:** Node.js 18+, Node test runner, Ajv 8.20, GeoTIFF.js 3.0.5, Proj4js 2.20.9, Sharp 0.34.5, PNGJS.
+**Tech Stack:** Node.js 22+, Node test runner, Ajv 8.20, GeoTIFF.js 3.0.5, Proj4js 2.20.9, Sharp (current stable). `lib/hd-bundle.js` parses image headers by hand (no PNGJS).
+
+> **Implementation status (2026-06-23): Plan 1 is implemented** on branch
+> `claude/suspicious-pike-b4f09a` (commits `b4ab85d`…`9ead73f`), 54 offline tests green.
+> **Amendments to the steps below:** the Node floor is **22**, not 18.17. Node 18 is EOL (Apr 2025),
+> and the `node --test` quoted-glob in the `npm test` script only expands on Node ≥21 — so the
+> original "prove the quoted glob on 18.17" CI gate could never pass. Pinning to Node 22 (the dev
+> machine) closes that landmine and unlocks current Sharp (no longer pinned to 0.34.5). Image
+> headers are hand-rolled (no PNGJS). The Bandon manifest ships `discovered.state:"pending"` and a
+> synthetic resolved fixture exercises the resolved branch; bundle fixtures are generated in-test
+> via Sharp rather than committed as binaries. Full execution record:
+> `~/.claude/plans/plan-if-not-have-polished-parasol.md`.
 
 ---
 

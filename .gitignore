@@ -7,6 +7,11 @@ dist/
 # downloaded course + terrain cache (regenerates on demand from open data)
 data/courses/*.json
 
+# HD compiler build workspace + generated hole bundles
+# (regenerate from open 3DEP/NAIP data; too large for normal git history)
+data/hd-build-cache/
+data/hd-courses/
+
 # throwaway render-capture sink + screenshots (dev verification only)
 .shots/
 # static HUD preview harness (WebGL-free, for screenshotting the HUD)

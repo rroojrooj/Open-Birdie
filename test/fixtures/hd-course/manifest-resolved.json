@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "course": {
+    "name": "Synthetic Test Course",
+    "cacheVersion": 3,
+    "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "hole": 1,
+  "padding": 150,
+  "terrain": {
+    "targetSpacingM": 3.0,
+    "crs": "EPSG:3857"
+  },
+  "imagery": {
+    "collection": "naip",
+    "date": "2022-06-23",
+    "gsdM": 0.3,
+    "itemIds": ["or_m_4312453_ne_10_030_20220623"]
+  },
+  "providers": {
+    "elevation": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+    "imagery": "https://planetarycomputer.microsoft.com/api/stac/v1"
+  },
+  "limits": {
+    "maxPixels": 80000000,
+    "maxDownloadBytes": 3221225472,
+    "maxBundleBytes": 157286400
+  },
+  "normalization": {
+    "format": "webp",
+    "quality": 90
+  },
+  "discovered": {
+    "state": "resolved",
+    "bounds": { "minX": -160, "minY": -160, "maxX": 290, "maxY": 460 },
+    "assets": [
+      {
+        "url": "https://naipeuwest.blob.core.windows.net/naip/v002/or/2022/or_060cm_2022/43124/m_4312453_ne_10_060_20220623.tif",
+        "contentLength": 123456789,
+        "etag": "0x8DA1234567890AB"
+      }
+    ]
+  }
+}

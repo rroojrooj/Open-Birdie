@@ -5,6 +5,19 @@ All notable changes to Open-Birdie are documented here.
 ## [Unreleased]
 
 ### Added
+- **HD hole compiler — foundation (Plan 1)** — the offline contract layer for compiling real
+  public geodata (USGS 3DEP elevation + USDA NAIP imagery + cached OSM) into versioned, immutable
+  hole bundles the runtime loads with no network. This phase is scaffolding only — no data is
+  fetched or rendered yet (that is Plans 2–3):
+  - Strict, stage-coded `HdCompileError` with URL/token redaction, cross-platform path-traversal
+    guards, and a fail-closed bounded HTTP primitive (`tools/hd-course/{errors,paths,http}.mjs`).
+  - A reproducible build-manifest schema + loader and a canonical course fingerprint that excludes
+    generated HD green patches; the pinned Bandon Hole 1 manifest ships `discovered:"pending"`
+    until a later discovery command resolves bounds/ETags (`tools/hd-course/{config,course-source}.mjs`).
+  - A dependency-light runtime bundle validator returning typed `absent | rejected | valid` status,
+    with little-endian Float32 terrain decode and hand-rolled PNG/WebP/JPEG header checks
+    (`lib/hd-bundle.js`), plus an atomic immutable bundle publisher (`tools/hd-course/publisher.mjs`).
+  - Toolchain raised to **Node 22** (drops EOL Node 18) with a Windows CI gate; 54 new offline tests.
 - **Renderer quality pass (A–G)** — a sweep to take the runtime-procedural course from
   "indie sim" toward a convincing ~6–7/10 (photoreal-named-course specifics remain a future
   baked-content phase). Each system is a `public/render/config.js` flag so it can be toggled:
