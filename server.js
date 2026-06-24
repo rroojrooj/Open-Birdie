@@ -10,6 +10,8 @@ const path = require('path');
 const { OpenConnectServer } = require('./lib/openconnect');
 const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/course');
 const { Game, CLUB_FULL } = require('./lib/game');
+const { resolveHdBundle } = require('./lib/hd-bundle');
+const { serveHdAsset, publicHdMetadata } = require('./lib/hd-http');
 
 const HTTP_PORT = +(process.env.BIRDIE_PORT || 8222);
 const OC_PORT = +(process.env.BIRDIE_OC_PORT || 921);
@@ -22,9 +24,23 @@ const HTTP_HOST = process.env.BIRDIE_HOST || '127.0.0.1';
 // (m/s plays ~2.2x short). e.g. BIRDIE_SPEED_SCALE=2.23694 for a metric monitor.
 const SPEED_SCALE = +(process.env.BIRDIE_SPEED_SCALE || 1);
 const PUB = path.join(__dirname, 'public');
+const DATA_DIR = process.env.BIRDIE_DATA_DIR || path.join(__dirname, 'data');
 
 const game = new Game();
 const sseClients = new Set();
+// HD bundle runtime state, kept OUTSIDE the serializable course object so absolute
+// paths + Float32 heights never leak through course JSON.
+let activeHd = null;     // resolved descriptor (server-only paths) or null
+let courseRevision = 0;  // bumped on each course activation
+
+function activateCourse(course) {
+  game.setCourse(course);
+  courseRevision += 1;
+  const r = resolveHdBundle(course, { dataDir: DATA_DIR });
+  activeHd = r.status === 'valid' ? r.descriptor : null;
+  if (r.status === 'rejected') console.warn(`[hd] bundle rejected: ${r.code}`);
+  return r;
+}
 let lmStatus = { connected: false, ready: false };
 
 function broadcast(event, data) {
@@ -96,7 +112,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       if (p === '/api/load-course') {
         const course = body.cached ? loadCached(body.cached) : await loadCourse(body);
-        game.setCourse(course);
+        activateCourse(course);
         updatePlayerInfo();
         // geometry is heavy (elevation grid) — clients refetch it themselves
         broadcast('course', { name: course.name });
@@ -137,6 +153,11 @@ const server = http.createServer(async (req, res) => {
         return json(res, { ok: true });
       }
     }
+    if (p.startsWith('/api/hd-assets/') && (req.method === 'GET' || req.method === 'HEAD')) {
+      const m = /^\/api\/hd-assets\/([^/]+)\/([^/]+)$/.exec(p);
+      if (!m || !activeHd || activeHd.bundleId !== m[1]) { res.writeHead(404); return res.end('not found'); }
+      return serveHdAsset(req, res, activeHd, m[2]);
+    }
     if (p === '/api/course-geometry') return json(res, courseGeometry());
 
     // three.js served from node_modules (keeps the app fully offline-capable)
@@ -167,7 +188,8 @@ const server = http.createServer(async (req, res) => {
 function courseGeometry() {
   if (!game.course) return null;
   const { name, surfaces, boundary, holes, trees, woods, elevation } = game.course;
-  return { name, surfaces, boundary, holes, trees, woods, elevation };
+  // hd is sanitized metadata only (no absolute paths, no Float32 heights).
+  return { name, surfaces, boundary, holes, trees, woods, elevation, hd: publicHdMetadata(activeHd), courseRevision };
 }
 
 function json(res, obj, code = 200) {
@@ -188,7 +210,7 @@ function readBody(req) {
 const cached = listCached();
 if (cached.length) {
   try {
-    game.setCourse(loadCached(cached[0].file));
+    activateCourse(loadCached(cached[0].file));
     console.log(`[course] loaded cached: ${cached[0].name} (${game.course.holes.length} holes)`);
   } catch (e) { console.error('[course] cache load failed:', e.message); }
 }
