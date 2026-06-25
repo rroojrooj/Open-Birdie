@@ -145,8 +145,8 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // big regions also shift the grass CHARACTER — lush deep-green <-> dry
           // yellow-green — so different parts of the course read as different grass,
           // not one uniform tone stamped edge to edge.
-          grass *= mix(vec3(0.94, 1.01, 0.92), vec3(1.05, 1.02, 0.86),
-                       clamp(zone * 1.7 + 0.5, 0.0, 1.0)); // dry side kept GREEN — was tipping muddy yellow-brown
+          grass *= mix(vec3(0.93, 1.0, 0.9), vec3(1.13, 1.03, 0.74),
+                       clamp(zone * 1.7 + 0.5, 0.0, 1.0)); // lush green <-> golden tan-fescue patches
           grass.r *= 1.0 + 0.10 * broad;                        // finer warm/cool drift on top
           grass.b *= 1.0 - 0.07 * broad;
           // Mowing stripes — the dominant "manicured" signal, fairway/green only.
@@ -170,10 +170,10 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           vec2 sunDir = normalize(vec2(0.55, -0.84));      // HDRI sun's horizontal bearing
           float rake = clamp((gx * sunDir.x + gy * sunDir.y) * 7.0, -0.6, 0.6);
           grass *= 1.0 + 0.09 * rake;                      // GENTLE — 0.22 was carving dark shade-bands into the hills
-          // Pull the radioactive kelly-green toward a muted, slightly warm turf — real
-          // fescue is a desaturated tan-green, not astroturf emerald.
+          // Pull the radioactive kelly-green toward muted, warm tan-green fescue (Bandon
+          // links is firm golden-tan, not astroturf emerald). Desaturate + warm.
           float gLum = dot(grass, vec3(0.299, 0.587, 0.114));
-          grass = mix(grass, vec3(gLum) * vec3(1.06, 1.0, 0.82), 0.32);
+          grass = mix(grass, vec3(gLum) * vec3(1.12, 1.0, 0.76), 0.42);
           ${macroBlend}
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
@@ -206,7 +206,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + tiltV * 0.12); // tiny: gentle form only — strong tilt + low roughness was the wet-plastic glare
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v19-macro' : 'turf-grain-v19');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v20-macro' : 'turf-grain-v20');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];

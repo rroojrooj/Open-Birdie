@@ -254,7 +254,7 @@ export class GolfScene {
       this._hdPatch = { minX: t.bounds.minX, minY: t.bounds.minY, cellM: t.cellM, nx: t.nx, ny: t.ny, heights: t.heights, edgeBlendM: 0 };
       this._hdMacro = {
         albedo: hdAssets.orthophoto, surfaces: hdAssets.surfaces, coverage: hdAssets.coverage, bounds: t.bounds,
-        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.25, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.6,
+        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.25, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.42,
       };
       this._hdSampler = makeTerrainSampler(this.elev, [this._hdPatch]);
     } else {
@@ -533,10 +533,11 @@ export class GolfScene {
     const inWater = (x, y) => { for (const w of water) if (pointInPoly(x, y, w.poly)) return true; return false; };
     const rnd = mulberry32(424242);
     const spots = [];
-    const step = 30, rows = 2, rowGap = 24, inset = 40;
+    const step = 55, rows = 2, rowGap = 26, inset = 40;
     const place = (x, y) => {
       if (x < b.minX || x > b.maxX || y < b.minY || y > b.maxY || inWater(x, y)) return;
-      spots.push({ x, y, s: 1.3 + rnd() * 0.95 }); // taller + denser -> an enclosing forest wall
+      if (rnd() < 0.35) return; // random gaps -> a broken, sparse tree-line, not an enclosing wall
+      spots.push({ x, y, s: 0.8 + rnd() * 1.5 }); // wide scale variation -> not a uniform cardboard ring
     };
     for (let r = 0; r < rows; r++) {
       const d = inset + r * rowGap;
