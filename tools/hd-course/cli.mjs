@@ -21,6 +21,7 @@ import { wgs84ToUtm, localToWgs84 } from './coordinates.mjs';
 import { hdCoursesRoot, hdBuildCacheRoot } from './paths.mjs';
 import { makeReport } from './report.mjs';
 import lidar from '../../lib/lidar.js';
+import elevation from '../../lib/elevation.js';
 import { HdCompileError } from './errors.mjs';
 
 const slug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
@@ -53,6 +54,17 @@ const boundedFetch = (manifest) => async (url, { headers, signal } = {}) => {
   };
 };
 
+// The HD patch edge ring + any 3DEP NoData cells must blend to the COARSE course
+// terrain, not to 0, or the patch boundary steps off a cliff against the coarse
+// surround. Reuse the runtime's own gridSampler so the compiler's edge target is
+// byte-identical to the coarse mesh the runtime draws (continuous seam). Heights
+// are relative to course baseM — the same frame resampleTerrain stores HD in.
+export function coarseBaseHeight(course) {
+  if (!course || !course.elevation) return () => 0;
+  const s = elevation.gridSampler(course.elevation);
+  return (x, y) => s.h(x, y);
+}
+
 function liveProviders(manifest, course) {
   return {
     acquireElevation: async ({ bbox, origin }) => {
@@ -62,7 +74,7 @@ function liveProviders(manifest, course) {
       });
       const sampler = lidar.makePatchSampler(patch);
       const baseM = course.elevation ? course.elevation.baseM : 0;
-      return { sampler, baseM, baseHeightAt: () => 0, stats };
+      return { sampler, baseM, baseHeightAt: coarseBaseHeight(course), stats };
     },
     acquireImagery: async ({ bbox, bounds, origin }) => {
       const features = await searchNaipCandidates({ bbox, endpoint: manifest.providers.imagery });
