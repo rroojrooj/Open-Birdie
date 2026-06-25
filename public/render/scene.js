@@ -274,9 +274,13 @@ export class GolfScene {
     this._addFlowers(geo, group);
     this._addFairwayGrass(geo, group);
     // LIDAR green meshes are a visual enhancement — never let a bug here break
-    // the course load (the picker, physics, base render must still work).
-    try { this._addGreenPatches(group, terrain); }
-    catch (e) { console.warn('[render] green patches skipped:', e && e.message); }
+    // the course load (the picker, physics, base render must still work). With an
+    // HD bundle the high-res terrain + aerial already supply the greens, and
+    // `terrain` is a Group (no single material), so skip the legacy patches.
+    if (!this._hdPatch) {
+      try { this._addGreenPatches(group, terrain); }
+      catch (e) { console.warn('[render] green patches skipped:', e && e.message); }
+    }
     // Crisp bunker meshes (sharp sand edges). Same guard — purely visual.
     if (RENDER_CONFIG.crispBunkers) {
       try { this._addSurfacePatches(group, ['bunker'], makeSandMaterial); }
