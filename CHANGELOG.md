@@ -42,6 +42,20 @@ All notable changes to Open-Birdie are documented here.
   - A course-revision readiness handshake (loopback nonce, constant-time compare, bounded-timeout
     procedural fallback) so HD physics activates only after the matching scene is ready.
   - +37 offline tests (188 total). The browser render path is verified in the running app (Plan 4).
+- **HD hole compiler — manifest discovery + first live render (Plan 4)** — the pipeline now produces and
+  renders a *real* hole bundle end-to-end from open data:
+  - A `discover` command (`npm run discover:hd-hole`) resolves a `pending` build manifest into a buildable
+    one — pins the canonical course fingerprint, the snapped compilation bounds, and each NAIP tile's live
+    content-length + ETag (`tools/hd-course/discover.mjs`). Provider calls are injected so the resolver is
+    unit-tested offline; the committed Bandon Hole 1 manifest is now resolved.
+  - First live **Bandon Dunes Hole 1** build against USGS 3DEP (≈3 m) + USDA NAIP (0.3 m, 2022), verified
+    on screen in the running app — real aerial (fairway mow lines, the green, gorse, waste bunkers) draped
+    on continuous high-resolution terrain. This shakes out the previously untested live provider wiring.
+  - Two render-wiring bugs the live build surfaced, now fixed: the HD patch edge ring blended toward 0
+    instead of the coarse terrain (a baked zero-ring seam cliff) — it now blends to the coarse grid via the
+    runtime's shared `gridSampler`, so the patch sits flush; and the legacy LIDAR green patches crashed on
+    the HD terrain Group — now cleanly skipped when an HD bundle is active (the aerial supplies the greens).
+  - +6 offline tests (194 total).
 - **Renderer quality pass (A–G)** — a sweep to take the runtime-procedural course from
   "indie sim" toward a convincing ~6–7/10 (photoreal-named-course specifics remain a future
   baked-content phase). Each system is a `public/render/config.js` flag so it can be toggled:
