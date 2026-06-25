@@ -11,10 +11,11 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadManifest, assertBuildable, assertCourseMatches } from './config.mjs';
 import { loadCourseFile } from './course-source.mjs';
+import { resolveManifest } from './discover.mjs';
 import { compileHole } from './compiler.mjs';
 import { acquireElevation as liveAcquireElevation } from './three-dep.mjs';
 import { searchNaipCandidates, selectPinnedAcquisition, assetHref } from './naip.mjs';
-import { openPinnedCog, makeSemaphore } from './cog-source.mjs';
+import { openPinnedCog, makeSemaphore, assertCogDrift } from './cog-source.mjs';
 import { fetchBounded } from './http.mjs';
 import { wgs84ToUtm, localToWgs84 } from './coordinates.mjs';
 import { hdCoursesRoot, hdBuildCacheRoot } from './paths.mjs';
@@ -27,7 +28,8 @@ const slug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').re
 function parse(argv) {
   const cmd = argv[0];
   const opt = (n) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : undefined; };
-  return { cmd, opt };
+  const flag = (n) => argv.includes(`--${n}`);
+  return { cmd, opt, flag };
 }
 
 function boundsUtmExtent(bounds, origin, epsg) {
@@ -93,7 +95,21 @@ function liveProviders(manifest, course) {
 }
 
 export async function main(argv) {
-  const { cmd, opt } = parse(argv);
+  const { cmd, opt, flag } = parse(argv);
+
+  if (cmd === 'discover') {
+    const manifestPath = opt('manifest');
+    const manifest = loadManifest(manifestPath);
+    const course = loadCourseFile(opt('course'));
+    const next = await resolveManifest({ manifest, course, providers: { searchNaipCandidates, assertCogDrift } });
+    if (flag('write')) {
+      fs.writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
+      process.stdout.write(`Resolved manifest written: ${manifestPath}\n`);
+    } else {
+      process.stdout.write(`${JSON.stringify(next, null, 2)}\n`);
+    }
+    return next;
+  }
 
   if (cmd === 'build') {
     const manifest = loadManifest(opt('manifest'));
