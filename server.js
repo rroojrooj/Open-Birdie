@@ -10,6 +10,9 @@ const path = require('path');
 const { OpenConnectServer } = require('./lib/openconnect');
 const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/course');
 const { Game, CLUB_FULL } = require('./lib/game');
+const { resolveHdBundle } = require('./lib/hd-bundle');
+const { serveHdAsset, publicHdMetadata } = require('./lib/hd-http');
+const { makeNonce, verifyReadinessAck } = require('./lib/hd-readiness');
 
 const HTTP_PORT = +(process.env.BIRDIE_PORT || 8222);
 const OC_PORT = +(process.env.BIRDIE_OC_PORT || 921);
@@ -22,9 +25,43 @@ const HTTP_HOST = process.env.BIRDIE_HOST || '127.0.0.1';
 // (m/s plays ~2.2x short). e.g. BIRDIE_SPEED_SCALE=2.23694 for a metric monitor.
 const SPEED_SCALE = +(process.env.BIRDIE_SPEED_SCALE || 1);
 const PUB = path.join(__dirname, 'public');
+const DATA_DIR = process.env.BIRDIE_DATA_DIR || path.join(__dirname, 'data');
 
 const game = new Game();
 const sseClients = new Set();
+// HD bundle runtime state, kept OUTSIDE the serializable course object so absolute
+// paths + Float32 heights never leak through course JSON.
+let activeHd = null;     // resolved descriptor (server-only paths) or null
+let courseRevision = 0;  // bumped on each course activation
+// Per-process secret handed only to the loopback Electron primary client; an HD
+// revision activates only on a nonce-matched ack from it.
+const PRIMARY_NONCE = makeNonce();
+const READY_TIMEOUT_MS = +(process.env.BIRDIE_HD_READY_TIMEOUT_MS || 15000);
+let readyTimer = null;
+const isLoopbackAddr = (a) => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+
+function activateCourse(course) {
+  const r = resolveHdBundle(course, { dataDir: DATA_DIR });
+  activeHd = r.status === 'valid' ? r.descriptor : null;
+  if (r.status === 'rejected') console.warn(`[hd] bundle rejected: ${r.code}`);
+  courseRevision += 1;
+  // An HD candidate holds physics (ready:false) until the primary client acks a
+  // coherent scene; a plain course is immediately playable.
+  game.setCourse(course, { ready: !activeHd });
+  if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
+  if (activeHd) {
+    const rev = courseRevision;
+    readyTimer = setTimeout(() => {
+      if (!game.runtimeReady && courseRevision === rev) {
+        console.warn('[hd] readiness timeout — activating procedural fallback');
+        game.activateRuntimeTerrain([]);
+        broadcast('state', game.state());
+      }
+    }, READY_TIMEOUT_MS);
+    if (readyTimer.unref) readyTimer.unref();
+  }
+  return r;
+}
 let lmStatus = { connected: false, ready: false };
 
 function broadcast(event, data) {
@@ -96,7 +133,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       if (p === '/api/load-course') {
         const course = body.cached ? loadCached(body.cached) : await loadCourse(body);
-        game.setCourse(course);
+        activateCourse(course);
         updatePlayerInfo();
         // geometry is heavy (elevation grid) — clients refetch it themselves
         broadcast('course', { name: course.name });
@@ -126,6 +163,19 @@ const server = http.createServer(async (req, res) => {
         broadcast('state', game.state());
         return json(res, { ok: true });
       }
+      if (p === '/api/course-runtime-ready') {
+        const v = verifyReadinessAck(body, {
+          currentRevision: courseRevision,
+          currentBundleId: activeHd ? activeHd.bundleId : null,
+          serverNonce: PRIMARY_NONCE,
+          isLoopback: isLoopbackAddr(req.socket.remoteAddress),
+        });
+        if (!v.ok) return json(res, { ok: false, code: v.code }, 403); // nonce never echoed
+        if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
+        game.activateRuntimeTerrain(v.mode === 'hd' && activeHd ? [activeHd.grid] : []);
+        broadcast('state', game.state());
+        return json(res, { ok: true, mode: v.mode });
+      }
       if (p === '/api/reset') {
         game.reset();
         broadcast('state', game.state());
@@ -136,6 +186,11 @@ const server = http.createServer(async (req, res) => {
         broadcast('state', game.state());
         return json(res, { ok: true });
       }
+    }
+    if (p.startsWith('/api/hd-assets/') && (req.method === 'GET' || req.method === 'HEAD')) {
+      const m = /^\/api\/hd-assets\/([^/]+)\/([^/]+)$/.exec(p);
+      if (!m || !activeHd || activeHd.bundleId !== m[1]) { res.writeHead(404); return res.end('not found'); }
+      return serveHdAsset(req, res, activeHd, m[2]);
     }
     if (p === '/api/course-geometry') return json(res, courseGeometry());
 
@@ -167,7 +222,8 @@ const server = http.createServer(async (req, res) => {
 function courseGeometry() {
   if (!game.course) return null;
   const { name, surfaces, boundary, holes, trees, woods, elevation } = game.course;
-  return { name, surfaces, boundary, holes, trees, woods, elevation };
+  // hd is sanitized metadata only (no absolute paths, no Float32 heights).
+  return { name, surfaces, boundary, holes, trees, woods, elevation, hd: publicHdMetadata(activeHd), courseRevision };
 }
 
 function json(res, obj, code = 200) {
@@ -188,7 +244,7 @@ function readBody(req) {
 const cached = listCached();
 if (cached.length) {
   try {
-    game.setCourse(loadCached(cached[0].file));
+    activateCourse(loadCached(cached[0].file));
     console.log(`[course] loaded cached: ${cached[0].name} (${game.course.holes.length} holes)`);
   } catch (e) { console.error('[course] cache load failed:', e.message); }
 }
@@ -214,4 +270,4 @@ function close() {
   } catch (_) { /* already closed */ }
 }
 
-module.exports = { ready, close };
+module.exports = { ready, close, primaryNonce: PRIMARY_NONCE };

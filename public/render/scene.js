@@ -14,6 +14,8 @@ import { buildWater } from './water.js';
 import { makeWaterDepth } from './water-depth.js';
 import { makeTurfMaterial, makeSandMaterial } from './turf.js';
 import { densifyRing, drapeRing } from './drape.js';
+import { buildHdTerrain, buildCoarseTerrain } from './hd-terrain.js';
+import { makeTerrainSampler } from './terrain-grid.js';
 import { RENDER_CONFIG } from './config.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
@@ -212,6 +214,7 @@ export class GolfScene {
   // Terrain height at (x,y): high-res LIDAR patch where one covers, else base.
   // Sharp (no feather) — used to seat the ball/pin/objects on the real surface.
   hAt(x, y) {
+    if (this._hdSampler) return this._hdSampler.h(x, y); // HD patch wins (parity with physics)
     const g = this.elev;
     if (!g) return 0;
     for (const p of g.patches || []) {
@@ -222,9 +225,11 @@ export class GolfScene {
   }
 
   // ---------- course construction ----------
-  loadCourse(geo) {
+  loadCourse(geo, { hdAssets = null } = {}) {
     this._treeWind = this._grassWind = this._waterUpdate = this._waterMeshList = this._terrain = null; // drop stale per-course refs
     this._fairwayGrassMesh = this._fairwayGrassWind = this._fairwayGrassCenter = this._fgGeo = this._fgGroup = this._fairwayZoneColorFn = null;
+    // A previous HD bundle owns its textures — free them before swapping.
+    if (this._hdAssets && this._hdAssets !== hdAssets) { try { this._hdAssets.dispose?.(); } catch (e) { /* already gone */ } }
     if (this.courseGroup) {
       this.scene.remove(this.courseGroup);
       this.courseGroup.traverse((o) => {
@@ -241,6 +246,20 @@ export class GolfScene {
     }
     this.geo = geo;
     this.elev = geo.elevation || null;
+    // HD bundle: a high-res terrain patch + aerial macro within its rect. Sets up the
+    // unified sampler (placement) + macro (turf shader) consumed below.
+    this._hdAssets = hdAssets;
+    if (hdAssets && this.elev) {
+      const t = hdAssets.terrain;
+      this._hdPatch = { minX: t.bounds.minX, minY: t.bounds.minY, cellM: t.cellM, nx: t.nx, ny: t.ny, heights: t.heights, edgeBlendM: 0 };
+      this._hdMacro = {
+        albedo: hdAssets.orthophoto, surfaces: hdAssets.surfaces, coverage: hdAssets.coverage, bounds: t.bounds,
+        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.25, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.6,
+      };
+      this._hdSampler = makeTerrainSampler(this.elev, [this._hdPatch]);
+    } else {
+      this._hdPatch = this._hdMacro = this._hdSampler = null;
+    }
     const group = new THREE.Group();
 
     const b = this._bounds(geo);
@@ -330,7 +349,22 @@ export class GolfScene {
     bunkerMaskTex.colorSpace = THREE.NoColorSpace;
     bunkerMaskTex.anisotropy = tex.anisotropy;
 
-    const mesh = new THREE.Mesh(geom, makeTurfMaterial(tex, maskTex, bunkerMaskTex, b, tex.anisotropy));
+    const turfMat = makeTurfMaterial({
+      baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
+      macro: this._hdMacro || null,
+    });
+    if (this._hdPatch) {
+      // Unified terrain: coarse mesh with the HD rect cut out + the HD mesh filling it,
+      // sharing the boundary with zero positive-area overlap. Both use the same turf
+      // material (the macro tints only inside the HD rect); course-relative UVs (uvBounds)
+      // keep the splat/masks aligned over the HD sub-mesh.
+      const coarse = buildCoarseTerrain({ grid: this.elev, cutout: this._hdMacro.bounds, material: turfMat });
+      const hd = buildHdTerrain({ grid: this._hdPatch, material: turfMat, uvBounds: b });
+      const grp = new THREE.Group();
+      grp.add(coarse, hd);
+      return grp;
+    }
+    const mesh = new THREE.Mesh(geom, turfMat);
     mesh.receiveShadow = true;
     return mesh;
   }

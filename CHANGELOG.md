@@ -29,6 +29,19 @@ All notable changes to Open-Birdie are documented here.
     normalization, and deterministic encoding (`terrain.f32` byte-reproducible).
   - An 11-stage compiler behind `npm run build:hd-hole` that validates each staged bundle against the
     Plan 1 runtime validator before the atomic publisher swaps it in. +52 offline tests (151 total).
+- **HD hole compiler — runtime integration (Plan 3)** — loads a validated bundle into the live game so
+  a compiled hole becomes *viewable*:
+  - Physics terrain injection — render and physics ground heights identical (raw h / smoothed grad),
+    plus a real NaN-guard fix for a compiler-pre-blended (`edgeBlendM:0`) patch at its exact boundary.
+  - Secure asset serving — `GET|HEAD /api/hd-assets/<id>/<key>`, key-allow-listed + range-safe, with no
+    path/height leak through course JSON.
+  - A verified browser loader (SHA-256 + dimensions, all-or-nothing, idempotent dispose).
+  - A unified HD terrain mesh — coarse cells removed inside the snapped HD rect + the HD mesh filling
+    it with zero positive-area overlap; the browser sampler has parity with physics.
+  - Aerial macro color layered into the PBR turf shader (low-frequency tint; detail/stripes survive).
+  - A course-revision readiness handshake (loopback nonce, constant-time compare, bounded-timeout
+    procedural fallback) so HD physics activates only after the matching scene is ready.
+  - +37 offline tests (188 total). The browser render path is verified in the running app (Plan 4).
 - **Renderer quality pass (A–G)** — a sweep to take the runtime-procedural course from
   "indie sim" toward a convincing ~6–7/10 (photoreal-named-course specifics remain a future
   baked-content phase). Each system is a `public/render/config.js` flag so it can be toggled:
