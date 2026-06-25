@@ -74,10 +74,16 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           { vec2 wXY = uCourseMin + vMapUv * uExt;
             vec2 mUv = (wXY - uMacroMin) / uMacroSize;
             if (mUv.x >= 0.0 && mUv.x <= 1.0 && mUv.y >= 0.0 && mUv.y <= 1.0) {
+              // Feather the aerial across the rect edge so it dissolves into the
+              // procedural turf instead of clipping at a hard rectangle. Distance (m)
+              // to the nearest edge, jittered by low-freq noise so the blend line is
+              // organic, not a clean contour.
+              vec2 edgeM = min(mUv, 1.0 - mUv) * uMacroSize;
+              float edgeW = smoothstep(0.0, 7.0, min(edgeM.x, edgeM.y) + (tNoise(wXY * 0.15) - 0.5) * 5.0);
               float mvalid = texture2D(uMacroCoverage, mUv).r;
               vec3 aerial = texture2D(uMacro, mUv).rgb;
               float macFar = smoothstep(14.0, 45.0, length(vViewPosition));
-              float mw = mvalid * mix(uMacroWeights.x, uMacroWeights.y, macFar);
+              float mw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, macFar);
               float gl = max(dot(grass, vec3(0.299, 0.587, 0.114)), 0.04);
               vec3 tint = aerial * (gl / max(dot(aerial, vec3(0.299, 0.587, 0.114)), 0.04));
               grass = mix(grass, tint, mw);
@@ -204,7 +210,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + tiltV * 0.4); // GENTLE — strong tilt over-shaded the undulating holes into mud
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v17-macro' : 'turf-grain-v17');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v18-macro' : 'turf-grain-v17');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
