@@ -12,13 +12,15 @@ const resolved = JSON.parse(
   fs.readFileSync(path.join(HERE, 'fixtures', 'hd-course', 'manifest-resolved.json'), 'utf8'),
 );
 
-test('the committed Bandon manifest loads, validates, and is pending', () => {
+test('the committed Bandon manifest loads, validates, and is buildable', () => {
   const m = loadManifest(bandonPath);
   assert.equal(m.hole, 1);
   assert.equal(m.imagery.date, '2022-06-23');
-  assert.equal(m.discovered.state, 'pending');
-  assert.equal(isBuildable(m), false);
-  assert.throws(() => assertBuildable(m), /HD_MANIFEST_PENDING/);
+  assert.equal(m.discovered.state, 'resolved');
+  assert.match(m.course.fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(m.discovered.assets.length, 2);
+  assert.equal(isBuildable(m), true);
+  assert.doesNotThrow(() => assertBuildable(m));
 });
 
 test('a resolved manifest is buildable', () => {
@@ -26,6 +28,12 @@ test('a resolved manifest is buildable', () => {
   assert.equal(m.discovered.state, 'resolved');
   assert.equal(isBuildable(m), true);
   assert.doesNotThrow(() => assertBuildable(m));
+});
+
+test('a pending manifest is not buildable', () => {
+  const pending = { ...resolved, course: { ...resolved.course, fingerprint: 'pending' }, discovered: { state: 'pending' } };
+  assert.equal(isBuildable(pending), false);
+  assert.throws(() => assertBuildable(pending), /HD_MANIFEST_PENDING/);
 });
 
 test('unknown top-level keys are rejected (fail closed)', () => {

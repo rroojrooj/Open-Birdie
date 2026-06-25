@@ -99,9 +99,13 @@ test('a course fingerprint mismatch is rejected', async () => {
   });
 });
 
-test('CLI build refuses the pending manifest before any network', async () => {
+test('CLI build refuses a pending manifest before any network', async () => {
   await withNoNetwork(async () => {
-    const bandon = path.join(HERE, '..', 'tools', 'hd-course', 'manifests', 'bandon-dunes-hole-01.json');
-    await assert.rejects(() => cliMain(['build', '--manifest', bandon]), /HD_MANIFEST_PENDING/);
+    const m = manifest();
+    m.course.fingerprint = 'pending';
+    m.discovered = { state: 'pending' };
+    const p = path.join(tmp('hd-mf-'), 'pending.json');
+    fs.writeFileSync(p, JSON.stringify(m));
+    await assert.rejects(() => cliMain(['build', '--manifest', p]), /HD_MANIFEST_PENDING/);
   });
 });
