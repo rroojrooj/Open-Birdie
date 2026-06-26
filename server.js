@@ -8,7 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { OpenConnectServer } = require('./lib/openconnect');
-const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/course');
+const { searchCourses, loadCourse, listCached, loadCached, applySurfaceOverride, loadSurfaceOverride } = require('./lib/course');
 const { Game, CLUB_FULL } = require('./lib/game');
 const { resolveHdBundle } = require('./lib/hd-bundle');
 const { serveHdAsset, publicHdMetadata } = require('./lib/hd-http');
@@ -45,6 +45,12 @@ function activateCourse(course) {
   activeHd = r.status === 'valid' ? r.descriptor : null;
   if (r.status === 'rejected') console.warn(`[hd] bundle rejected: ${r.code}`);
   courseRevision += 1;
+  // Per-course surface override (corrected greens/fairways/bunkers + relocated
+  // pins): applied here, AFTER the HD fingerprint match above (bundle stays
+  // valid) and BEFORE setCourse, so physics (surfaceAt) and the served geometry
+  // both use the corrected map. Absent sidecar = unchanged OSM behaviour.
+  const override = loadSurfaceOverride(course);
+  if (override) { applySurfaceOverride(course, override); console.log(`[override] applied surface override for ${course.name}`); }
   // An HD candidate holds physics (ready:false) until the primary client acks a
   // coherent scene; a plain course is immediately playable.
   game.setCourse(course, { ready: !activeHd });
