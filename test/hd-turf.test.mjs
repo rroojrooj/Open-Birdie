@@ -19,7 +19,7 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   mat.onBeforeCompile(s);
   for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v17');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v21');
 });
 
 test('macro turf material: adds aerial uniforms + a distinct program', () => {
@@ -28,7 +28,7 @@ test('macro turf material: adds aerial uniforms + a distinct program', () => {
   const s = fakeShader();
   mat.onBeforeCompile(s);
   for (const u of ['uMacro', 'uMacroSurfaces', 'uMacroCoverage', 'uMacroMin', 'uMacroSize', 'uMacroWeights']) assert.ok(s.uniforms[u], `missing ${u}`);
-  assert.notEqual(mat.customProgramCacheKey(), 'turf-grain-v17');
+  assert.notEqual(mat.customProgramCacheKey(), 'turf-grain-v21');
   assert.match(s.fragmentShader, /uMacro/);
 });
 
