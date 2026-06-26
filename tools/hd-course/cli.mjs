@@ -70,7 +70,12 @@ function liveProviders(manifest, course) {
     acquireElevation: async ({ bbox, origin }) => {
       const { patch, stats } = await liveAcquireElevation(bbox, {
         targetM: manifest.terrain.targetSpacingM,
-        nativeSpacingM: 3.4, // Gate 1.5 measured native ≈3.4 m at Bandon
+        // Adaptive: a QL1 (~1 m) course sets these in its manifest so the gate admits fine
+        // lidar AND the raster isn't capped at 600 px (a 1 m large hole needs ~1200, else
+        // the service returns coarser pixels and the coarse-gate rejects them). Bandon's 2008
+        // 3DEP defaults stand (3.4 m gate, 600 px) when the manifest omits them.
+        nativeSpacingM: manifest.terrain.nativeSpacingM ?? 3.4,
+        maxPx: manifest.terrain.maxPx ?? 600,
       });
       const sampler = lidar.makePatchSampler(patch);
       const baseM = course.elevation ? course.elevation.baseM : 0;

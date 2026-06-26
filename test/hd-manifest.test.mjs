@@ -50,6 +50,16 @@ test('an out-of-range terrain spacing is rejected', () => {
   assert.throws(() => parseManifest(bad), /HD_MANIFEST_INVALID/);
 });
 
+test('optional QL1 terrain knobs (nativeSpacingM, maxPx) are accepted', () => {
+  const m = parseManifest({ ...resolved, terrain: { ...resolved.terrain, nativeSpacingM: 1, maxPx: 1200 } });
+  assert.equal(m.terrain.nativeSpacingM, 1);
+  assert.equal(m.terrain.maxPx, 1200);
+});
+
+test('a non-integer maxPx is rejected', () => {
+  assert.throws(() => parseManifest({ ...resolved, terrain: { ...resolved.terrain, maxPx: 1200.5 } }), /HD_MANIFEST_INVALID/);
+});
+
 test('a resolved manifest missing its discovered assets is rejected', () => {
   const bad = { ...resolved, discovered: { state: 'resolved', bounds: resolved.discovered.bounds } };
   assert.throws(() => parseManifest(bad), /HD_MANIFEST_INVALID/);
