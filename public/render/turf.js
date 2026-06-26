@@ -158,7 +158,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float stripe = smoothstep(-0.42, 0.42, band) * 2.0 - 1.0;
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
           float stripe2 = smoothstep(-0.5, 0.5, band2) * 2.0 - 1.0;
-          grass *= 1.0 + (0.27 * stripe + 0.12 * stripe2) * m;
+          grass *= 1.0 + (0.2 * stripe + 0.09 * stripe2) * m;
           // Procedural sun-play — directional shading from a low-frequency undulation
           // field so the sun visibly rakes across gentle rolls instead of lighting a
           // flat sheet. The DIRECTIONAL gradient (one flank of a roll lit, the other
@@ -173,8 +173,11 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // Pull the radioactive kelly-green toward muted, warm tan-green fescue (Bandon
           // links is firm golden-tan, not astroturf emerald). Desaturate + warm.
           float gLum = dot(grass, vec3(0.299, 0.587, 0.114));
-          grass = mix(grass, vec3(gLum) * vec3(1.12, 1.0, 0.76), 0.42);
+          grass = mix(grass, vec3(gLum * 0.85) * vec3(1.1, 1.0, 0.8), 0.4); // *0.85 darkens so desaturating doesn't LIGHTEN the green to pale
           ${macroBlend}
+          // Soft highlight rolloff: light mown/aerial areas + mow-stripe peaks were
+          // washing out to pale rectangles. Compress grass values above ~0.66.
+          grass = grass / (1.0 + 0.5 * max(vec3(0.0), grass - 0.66));
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
           sand = mix(sand, vec3(1.0), 0.12) * 1.28;
@@ -206,7 +209,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + tiltV * 0.12); // tiny: gentle form only — strong tilt + low roughness was the wet-plastic glare
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v20-macro' : 'turf-grain-v20');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v21-macro' : 'turf-grain-v21');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
