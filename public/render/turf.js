@@ -84,9 +84,14 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
               vec3 aerial = texture2D(uMacro, mUv).rgb;
               float macFar = smoothstep(14.0, 45.0, length(vViewPosition));
               float mw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, macFar);
-              float gl = max(dot(grass, vec3(0.299, 0.587, 0.114)), 0.04);
-              vec3 tint = aerial * (gl / max(dot(aerial, vec3(0.299, 0.587, 0.114)), 0.04));
-              grass = mix(grass, tint, mw);
+              // The aerial IS the real course — a registered satellite photo of the actual
+              // fairway/green/bunkers/dunes. Let it BE the ground colour, not a faint hue
+              // tint: the old luminance-preserving blend buried the photo under the pale
+              // procedural splat zones + synthetic mow stripes ("what is this" abstract
+              // blobs). Keep a sliver of tiled blade-detail grain (dl) so close-up turf
+              // still has micro-texture; the terrain normals still light it as 3D.
+              vec3 photo = aerial * (0.86 + 0.30 * dl);
+              grass = mix(grass, photo, mw);
             } }` : '';
     if (macro) {
       shader.uniforms.uMacro = { value: macro.albedo };
@@ -209,7 +214,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + tiltV * 0.12); // tiny: gentle form only — strong tilt + low roughness was the wet-plastic glare
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v21-macro' : 'turf-grain-v21');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v22-macro' : 'turf-grain-v22');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];

@@ -258,7 +258,7 @@ export class GolfScene {
       this._hdPatch = { minX: t.bounds.minX, minY: t.bounds.minY, cellM: t.cellM, nx: t.nx, ny: t.ny, heights: t.heights, edgeBlendM: 0 };
       this._hdMacro = {
         albedo: hdAssets.orthophoto, surfaces: hdAssets.surfaces, coverage: hdAssets.coverage, bounds: t.bounds,
-        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.25, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.42,
+        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.78, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.96,
       };
       this._hdSampler = makeTerrainSampler(this.elev, [this._hdPatch]);
     } else {
