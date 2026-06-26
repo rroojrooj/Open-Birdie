@@ -91,8 +91,12 @@ export class GolfScene {
     this.geo = null;          // course geometry payload
     this.elev = null;         // elevation grid
     this.anim = null;         // active shot replay
-    this.camMode = 'idle';
+    this.camMode = 'idle'; // 'idle' (orbit ball) | 'static' (shot tracer) | 'free' (course-creator fly)
     this.orbit = { yaw: 0, dist: 14, height: 4.6 };
+    // free-roam "course creator" camera: a ground pivot (tx,ty,h) orbited by yaw/pitch at dist.
+    this.free = { tx: 0, ty: 0, h: 0, yaw: 0, pitch: -28, dist: 45, hOff: 0 };
+    this.freeKeys = {};
+    this._freeCamCb = null; // (on) => void — UI hook for the toggle/hint
     this.camPosT = new THREE.Vector3(0, 30, 60);
     this.lookT = new THREE.Vector3();
     this.lookCur = new THREE.Vector3();
@@ -986,6 +990,54 @@ export class GolfScene {
     this.lookT.copy(V(bx + dx * lookAhead * 0.45, by + dy * lookAhead * 0.45, bz + 2));
   }
 
+  // ---- free-roam "course creator" camera ----
+  // Toggle: seed a ground pivot at the current look point, facing the pin, then fly.
+  enterFreeCam(on) {
+    if (on && this.camMode !== 'free') {
+      if (this.anim) return false; // don't grab the camera mid shot-replay
+      this.free.tx = this.lookCur.x;
+      this.free.ty = -this.lookCur.z;          // three -> sim north
+      this.free.hOff = 0;
+      this.free.h = this.hAt(this.free.tx, this.free.ty) + 2;
+      this.free.yaw = Math.atan2(this.pinSim.x - this.free.tx, this.pinSim.y - this.free.ty) * 180 / Math.PI;
+      this.free.pitch = -28; this.free.dist = 45;
+      this.camMode = 'free';
+    } else if (!on && this.camMode === 'free') {
+      this.camMode = 'idle';
+      this.freeKeys = {};
+    }
+    if (this._freeCamCb) this._freeCamCb(this.camMode === 'free');
+    return this.camMode === 'free';
+  }
+
+  setFreeCamCallback(cb) { this._freeCamCb = cb; }
+
+  // held WASD/arrows pan the ground pivot (speed scales with zoom); Q/E nudge look height.
+  _freeStep(dt) {
+    const f = this.free, k = this.freeKeys;
+    const yaw = f.yaw * Math.PI / 180, fx = Math.sin(yaw), fy = Math.cos(yaw);
+    const rx = Math.cos(yaw), ry = -Math.sin(yaw);
+    const sp = Math.max(10, f.dist * 0.8) * dt;
+    let mx = 0, my = 0;
+    if (k.w || k.arrowup) { mx += fx; my += fy; }
+    if (k.s || k.arrowdown) { mx -= fx; my -= fy; }
+    if (k.d || k.arrowright) { mx += rx; my += ry; }
+    if (k.a || k.arrowleft) { mx -= rx; my -= ry; }
+    if (mx || my) { f.tx += mx * sp; f.ty += my * sp; }
+    if (k.e) f.hOff += 14 * dt;
+    if (k.q) f.hOff = Math.max(-3, f.hOff - 14 * dt);
+    f.h = this.hAt(f.tx, f.ty) + 2 + f.hOff;
+  }
+
+  _freeTargets() {
+    const f = this.free;
+    const yaw = f.yaw * Math.PI / 180, pitch = f.pitch * Math.PI / 180;
+    const horiz = Math.cos(pitch) * f.dist, up = -Math.sin(pitch) * f.dist;
+    const fx = Math.sin(yaw), fy = Math.cos(yaw); // forward (toward the look point)
+    this.camPosT.copy(V(f.tx - fx * horiz, f.ty - fy * horiz, f.h + up));
+    this.lookT.copy(V(f.tx, f.ty, f.h));
+  }
+
   _frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
 
@@ -994,6 +1046,7 @@ export class GolfScene {
     // 'idle' tracks the ball at address; 'static' (shot tracer) holds the
     // frozen camera that playShot parked behind the ball.
     if (this.camMode === 'idle') this._idleTargets();
+    else if (this.camMode === 'free') { this._freeStep(dt); this._freeTargets(); }
 
     const k = 1 - Math.exp(-4.2 * dt);
     this.camera.position.lerp(this.camPosT, k);
@@ -1026,14 +1079,34 @@ export class GolfScene {
     el.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; });
     window.addEventListener('pointerup', () => { dragging = false; });
     window.addEventListener('pointermove', (e) => {
-      if (!dragging || this.camMode !== 'idle') return;
-      this.orbit.yaw += (e.clientX - lx) * 0.25;
-      this.orbit.height = THREE.MathUtils.clamp(this.orbit.height + (e.clientY - ly) * 0.03, 1.6, 26);
+      if (!dragging) return;
+      const dx = e.clientX - lx, dy = e.clientY - ly;
       lx = e.clientX; ly = e.clientY;
+      if (this.camMode === 'idle') {
+        this.orbit.yaw += dx * 0.25;
+        this.orbit.height = THREE.MathUtils.clamp(this.orbit.height + dy * 0.03, 1.6, 26);
+      } else if (this.camMode === 'free') {
+        this.free.yaw += dx * 0.3;
+        this.free.pitch = THREE.MathUtils.clamp(this.free.pitch - dy * 0.3, -88, -4);
+      }
     });
     el.addEventListener('wheel', (e) => {
-      if (this.camMode !== 'idle') return;
-      this.orbit.dist = THREE.MathUtils.clamp(this.orbit.dist * (e.deltaY > 0 ? 1.12 : 0.89), 5, 60);
+      if (this.camMode === 'idle') {
+        this.orbit.dist = THREE.MathUtils.clamp(this.orbit.dist * (e.deltaY > 0 ? 1.12 : 0.89), 5, 60);
+      } else if (this.camMode === 'free') {
+        this.free.dist = THREE.MathUtils.clamp(this.free.dist * (e.deltaY > 0 ? 1.1 : 0.9), 4, 600);
+      }
     }, { passive: true });
+    // 'c' toggles the free course-creator camera; WASD/arrows + Q/E drive it while active.
+    window.addEventListener('keydown', (e) => {
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'c') { this.enterFreeCam(this.camMode !== 'free'); e.preventDefault(); return; }
+      if (this.camMode !== 'free') return;
+      if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e' || key.startsWith('arrow')) {
+        this.freeKeys[key] = true; e.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (e) => { this.freeKeys[e.key.toLowerCase()] = false; });
   }
 }

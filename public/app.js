@@ -390,6 +390,14 @@ $('btn-changecourse').onclick = () => { $('scorecard').classList.add('hidden'); 
 $('btn-practice').onclick = () => $('practice').classList.toggle('hidden');
 $('btn-course').onclick = () => openCourseModal();
 
+// Free course-creator camera: fly/orbit the hole to inspect surfaces against the aerial.
+scene.setFreeCamCallback((on) => {
+  $('btn-free').classList.toggle('active', on);
+  $('btn-free').textContent = on ? 'Exit free' : 'Free look';
+  $('freecam-hint').classList.toggle('hidden', !on);
+});
+$('btn-free').onclick = () => scene.enterFreeCam(scene.camMode !== 'free');
+
 let aimT = null;
 $('aim-slider').oninput = (e) => {
   const v = +e.target.value;
