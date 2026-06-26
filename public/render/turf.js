@@ -84,12 +84,10 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
               vec3 aerial = texture2D(uMacro, mUv).rgb;
               float macFar = smoothstep(14.0, 45.0, length(vViewPosition));
               float mw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, macFar);
-              // The aerial IS the real course — a registered satellite photo of the actual
-              // fairway/green/bunkers/dunes. Let it BE the ground colour, not a faint hue
-              // tint: the old luminance-preserving blend buried the photo under the pale
-              // procedural splat zones + synthetic mow stripes ("what is this" abstract
-              // blobs). Keep a sliver of tiled blade-detail grain (dl) so close-up turf
-              // still has micro-texture; the terrain normals still light it as 3D.
+              // The aerial IS the real course — a registered satellite photo. Let it BE the
+              // ground colour (raw RGB; a global de-light flattens real fairway/dune/sand
+              // albedo into milky grey — tried, reverted). Keep a sliver of tiled blade grain
+              // (dl) for close-up micro-texture; the terrain normals + our sun light it as 3D.
               vec3 photo = aerial * (0.86 + 0.30 * dl);
               grass = mix(grass, photo, mw);
             } }` : '';
@@ -212,9 +210,18 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float sgy = tNoise(snp + vec2(0.0, 0.12)) - tNoise(snp - vec2(0.0, 0.12));
           vec3 tiltV = (viewMatrix * vec4(-sgx, 0.0, -sgy, 0.0)).xyz;
           normal = normalize(normal + tiltV * 0.12); // tiny: gentle form only — strong tilt + low roughness was the wet-plastic glare
+          // Meso-relief (lever 3): procedural ~1.8 m hummocks BETWEEN the blade normalMap and
+          // the 22 m sheen rolls, so turf reads as an undulating surface, not a flat sheet.
+          // Distance-faded past ~18 m (no shimmer); modulates DIFFUSE only (roughness floor 0.9
+          // kills the specular sparkle that would otherwise glitter without TAA).
+          float me = 0.35, mh0 = tFbm(vec2(snwx, snwy) * 0.55);
+          float mhx = tFbm((vec2(snwx, snwy) + vec2(me, 0.0)) * 0.55);
+          float mhy = tFbm((vec2(snwx, snwy) + vec2(0.0, me)) * 0.55);
+          vec3 mTilt = (viewMatrix * vec4(-(mhx - mh0) / me, 0.0, -(mhy - mh0) / me, 0.0)).xyz;
+          normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v22-macro' : 'turf-grain-v22');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v23-macro' : 'turf-grain-v23');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
