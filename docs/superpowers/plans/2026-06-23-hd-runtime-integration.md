@@ -452,3 +452,29 @@ git commit -m "feat(hd): activate coherent course revisions"
 - [ ] Shots remain locked until the matching scene/physics revision is ready.
 - [ ] Repeated load/unload has no monotonically growing Three resource counts.
 - [ ] `npm test` passes.
+
+## Plan 4 — Discovery + first live render (result, 2026-06-25)
+
+The capstone ran for real. Outcome:
+
+- **Discovery command (the known Plan 2 gap).** `tools/hd-course/discover.mjs` `resolveManifest({manifest,
+  course, providers})` resolves a `pending` manifest: course fingerprint, snapped bounds, and each pinned
+  NAIP tile's live content-length + ETag. Wired as `cli.mjs discover` / `npm run discover:hd-hole --write`;
+  provider calls injected → unit-tested offline (`test/hd-discover.test.mjs`). The committed Bandon Hole 1
+  manifest is now **resolved** (fingerprint `5cc7fad9…`, both 2022 NAIP tiles pinned).
+- **First live build.** `build:hd-hole` against live 3DEP + NAIP published a valid bundle (terrain 156×216
+  @ 3 m, aerial 1550×2150). The previously untested `cli.mjs liveProviders()` path works.
+- **On-screen verification** (`node server.js` + headless WebGL capture via `toDataURL`→`.shots/` sink, since
+  `preview_screenshot` hangs on the SSE app). The server resolved the bundle by fingerprint; the browser
+  loaded all four assets and built the unified terrain Group (coarse cutout + 33 696-vert HD mesh, both on
+  the `turf-grain-v17-macro` program). Two render-wiring bugs surfaced and were fixed:
+  1. **Seam zero-ring.** The live `acquireElevation` passed `baseHeightAt: () => 0`, so terrain.mjs's edge
+     ring + NoData fallback blended the patch boundary to 0 instead of the coarse terrain → a 1-cell ring of
+     zeros baked into `terrain.f32` and a wall around the patch. Fixed: `coarseBaseHeight(course)` reuses the
+     runtime's exported `gridSampler` (`fix(hd): blend HD patch edges to the coarse terrain, not 0`).
+  2. **Green-patch crash.** `_addGreenPatches` threw on `baseMesh.material` because `_terrain` is now a
+     Group; skipped legacy greens when `_hdPatch` is set (`fix(hd): skip legacy green patches…`).
+- **Result:** real Bandon aerial (mow lines, green, gorse, waste bunkers) on continuous HD terrain; clean
+  console; 194 offline tests green. **Deferred (out of scope):** macro *color* edge-feathering so the aerial
+  blends into the surrounding procedural turf color (a visible texture boundary remains; heights are
+  continuous), deep macro tuning, and the matched HD↔procedural capture harness.
