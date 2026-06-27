@@ -34,8 +34,18 @@ test('WGS84 <-> UTM zone 10N (EPSG:26910) round-trips and lands in range', () =>
   assert.ok(Math.abs(back.lon - origin.lon) < 1e-6);
 });
 
+test('WGS84 <-> UTM zone 17N (EPSG:26917, Florida) round-trips — any US zone, not just Bandon', () => {
+  const tpc = { lat: 30.1991, lon: -81.3949 }; // TPC Sawgrass — registered on demand
+  const utm = wgs84ToUtm(tpc, 'EPSG:26917');
+  assert.ok(utm.x > 0 && utm.x < 1_000_000, `easting ${utm.x}`);
+  assert.ok(utm.y > 3_000_000 && utm.y < 3_600_000, `northing ${utm.y}`);
+  const back = utmToWgs84(utm, 'EPSG:26917');
+  assert.ok(Math.abs(back.lat - tpc.lat) < 1e-6 && Math.abs(back.lon - tpc.lon) < 1e-6);
+});
+
 test('an unknown CRS is rejected', () => {
   assert.throws(() => wgs84ToUtm(origin, 'EPSG:99999'), /HD_CRS_UNKNOWN/);
+  assert.throws(() => wgs84ToUtm(origin, 'EPSG:26999'), /HD_CRS_UNKNOWN/); // 269xx but zone 99 out of range
 });
 
 test('Web Mercator helpers match the lidar convention (R=6378137)', () => {
