@@ -107,13 +107,13 @@ The web-vs-native gap is **camera-dependent**, and Open-Birdie's documented came
 
 ## Scope gaps & open questions (the research came up empty here)
 
-These were explicitly requested but produced **no surviving verified claims** (fetched sources were blog/forum-tier and got filtered). A focused round-2 with narrower queries (UE5 docs, SIGGRAPH water/sky talks, sim-vendor engineering posts) could fill them:
+These were explicitly requested but produced **no surviving verified claims** (fetched sources were blog/forum-tier and got filtered). **Two focused follow-up passes (rounds 2 & 3) were run** — see [2026-06-27-golf-rendering-gapfill-rounds-2-3.md](./2026-06-27-golf-rendering-gapfill-rounds-2-3.md). They filled gaps 1, 2, and the GI/AO half of 4; partially filled 3; left the rest open:
 
-1. **Water** — planar reflections, SSR, refraction, foam, depth.
-2. **Sky & atmosphere** — physically-based sky models, HDRI, volumetric clouds, time-of-day.
-3. **Bunkers/sand & clubhouse/architecture assets.**
-4. **Lighting & GI specifics** — baked lightmaps vs realtime GI (Lumen/SSGI), GTAO/HBAO, PBR + mowing-stripe authoring.
-5. **A rigorous web-vs-UE5 fidelity head-to-head**, and the engines behind **TrackMan / Foresight / Full Swing / Uneekor** (only GSPro = Unity was verified here; Foresight = Unity is verified in the sibling doc).
+1. **Water** — planar reflections, SSR, refraction, foam, depth. ✅ **FILLED** (UE5 Single Layer Water + Unity Crest).
+2. **Sky & atmosphere** — physically-based sky models, HDRI, volumetric clouds, time-of-day. ✅ **FILLED** (Hillaire 2020 / UE5 Sky Atmosphere, Three.js Preetham Sky, Hosek-Wilkie, Guerrilla clouds).
+3. **Bunkers/sand & clubhouse/architecture assets.** ⚠️ **PARTIAL** (KitBash building polycounts only; sand authoring still open).
+4. **Lighting & GI specifics** — baked lightmaps vs realtime GI (Lumen/SSGI), GTAO/HBAO, PBR + mowing-stripe authoring. ✅ **GI + AO FILLED in round-3** (UE5 Lumen vs baked-lightmap tradeoff; GTAO = radiometrically-correct AO, Three.js ships `GTAOPass`). ❌ Mowing-stripe authoring **still open**.
+5. **A rigorous web-vs-UE5 fidelity head-to-head**, and the engines behind **TrackMan / Foresight / Full Swing / Uneekor** (only GSPro = Unity was verified here; Foresight = Unity is verified in the sibling doc). ❌ **Still open** — confirmed **no public web-vs-UE5 benchmark exists**; TrackMan posts multiple Unity jobs (strong lead, unverified).
 
 ---
 
