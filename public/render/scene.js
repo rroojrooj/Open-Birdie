@@ -274,6 +274,8 @@ export class GolfScene {
     this._terrain = terrain; // referenced by the water-foam depth pre-pass
     this._addWater(geo, group);
     this._addTrees(geo, group);
+    try { this._addBuildings(geo, group); }
+    catch (e) { console.warn('[render] buildings skipped:', e && e.message); }
     this._addGrass(geo, group);
     this._addFlowers(geo, group);
     this._addFairwayGrass(geo, group);
@@ -574,6 +576,48 @@ export class GolfScene {
     if (RENDER_CONFIG.pineStraw) {
       buildPineStraw(coreSpots, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
     }
+  }
+
+  // Extrude OSM building footprints into simple 3D massing — walls + a flat
+  // colored roof (ExtrudeGeometry yields two material groups: 0 = caps/roof,
+  // 1 = side walls). Buildings are the VERTICAL structure that makes a course
+  // read as a real place instead of a textured surface; the clubhouse gets a
+  // hero material. Each is seated at the lowest ground under its footprint
+  // (sunk 0.6 m) so walls meet a slope without floating. Scenery only
+  // (geo.buildings is non-fingerprinted), so a bad footprint must never break
+  // the load — guarded per building.
+  _addBuildings(geo, group) {
+    const list = geo.buildings || [];
+    if (!list.length || RENDER_CONFIG.buildings === false) return;
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xc8bda6, roughness: 0.92, metalness: 0 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x70604e, roughness: 0.85, metalness: 0 });
+    const heroWall = new THREE.MeshStandardMaterial({ color: 0xe9dec6, roughness: 0.82, metalness: 0 });
+    const heroRoof = new THREE.MeshStandardMaterial({ color: 0x8c3a2c, roughness: 0.7, metalness: 0 }); // terracotta
+    // ExtrudeGeometry wants a CCW (positive-area) contour for the cap to face up.
+    const ccw = (p) => { let a = 0; for (let i = 0; i < p.length; i += 1) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return a >= 0 ? p : p.slice().reverse(); };
+    let drawn = 0;
+    for (const bld of list) {
+      const poly0 = bld.poly;
+      if (!poly0 || poly0.length < 3) continue;
+      let minH = Infinity, bad = false;
+      for (const [x, y] of poly0) { const h = this.hAt(x, y); if (!Number.isFinite(h)) { bad = true; break; } if (h < minH) minH = h; }
+      if (bad || !Number.isFinite(minH)) continue;
+      const poly = ccw(poly0);
+      const shape = new THREE.Shape();
+      poly.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+      let g;
+      try { g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(2.5, bld.heightM || 5), bevelEnabled: false, steps: 1 }); }
+      catch (e) { continue; }
+      g.rotateX(-Math.PI / 2);      // extrude +Z -> world +Y (up); footprint (x,y) -> (x, h, -y)
+      g.translate(0, minH - 0.6, 0); // sink 0.6 m so walls meet the slope, no float
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, bld.clubhouse ? [heroRoof, heroWall] : [roofMat, wallMat]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      drawn += 1;
+    }
+    if (drawn) console.log(`[render] buildings: ${drawn}/${list.length}`);
   }
 
   // Clumped scatter across rough polygons. Real fescue grows in dense patches

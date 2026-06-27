@@ -227,9 +227,9 @@ const server = http.createServer(async (req, res) => {
 
 function courseGeometry() {
   if (!game.course) return null;
-  const { name, surfaces, boundary, holes, trees, woods, elevation } = game.course;
+  const { name, surfaces, boundary, holes, trees, woods, buildings, elevation } = game.course;
   // hd is sanitized metadata only (no absolute paths, no Float32 heights).
-  return { name, surfaces, boundary, holes, trees, woods, elevation, hd: publicHdMetadata(activeHd), courseRevision };
+  return { name, surfaces, boundary, holes, trees, woods, buildings, elevation, hd: publicHdMetadata(activeHd), courseRevision };
 }
 
 function json(res, obj, code = 200) {

@@ -1,5 +1,28 @@
 # Open-Birdie — TODO
 
+## 3D buildings — SHIPPED (2026-06-27), with one follow-up
+
+Buildings were the missing **vertical** structure ("still looks like paint on a
+paper" feedback). Now: OSM building footprints render as extruded 3D massing —
+walls + a colored roof (`scene.js _addBuildings`, flag `RENDER_CONFIG.buildings`),
+seated on the lowest ground under each footprint, casting shadows. The clubhouse
+gets a hero (terracotta-roof) material. Chambers Bay shows 185 buildings incl. the
+real "Chambers Bay Clubhouse". `buildings` is a non-fingerprinted scenery field
+(like `elevation.patches`), so attaching it never invalidates an HD bundle.
+Served via `courseGeometry()` (`server.js`).
+
+- **Data path today:** `node tools/add-buildings.mjs data/courses/<slug>.json`
+  fetches OSM buildings for a cached course and attaches `course.buildings`.
+- **FOLLOW-UP — auto-fetch on first load:** `lib/course.js` `FEATURES` still skips
+  buildings, so a *freshly fetched* course has none until the tool is run. Wire
+  `way/relation["building"]` into the Overpass query + parse in `parseOsm`. **Care:**
+  compute the projection origin from golf coords only (buildings must not shift it)
+  and do **not** bump `CACHE_VERSION` (both would change `courseFingerprint` and
+  break existing HD bundles). New courses get buildings; existing caches keep theirs.
+- **Polish:** roofs are flat massing blocks. Pitched/hipped roofs (esp. the
+  clubhouse) would read far more like real buildings. Optional: window strips,
+  merge into fewer draw calls if 185+ meshes ever costs FPS.
+
 ## QL1 gate — RESOLVED (2026-06-27)
 
 Built **Chambers Bay hole 9** at **1 m** (`tools/hd-course/manifests/chambers-bay-hole-09.json`,
