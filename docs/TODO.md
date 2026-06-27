@@ -1,5 +1,29 @@
 # Open-Birdie — TODO
 
+## QL1 gate — RESOLVED (2026-06-27)
+
+Built **Chambers Bay hole 9** at **1 m** (`tools/hd-course/manifests/chambers-bay-hole-09.json`,
+48 m relief, 32 m tee→green drop). Verdict: **real 1 m USGS 3DEP lidar fixes the
+"flat / ink-on-paper" terrain** — it was a *data* limit (Bandon's 3 m grid smoothing
+features < 6 m), not a shader limit. Dramatic, legible 3D relief at the player camera.
+→ **Phase-1 AI hero-course authoring is NOT needed for relief** (the data does it); keep
+it gated/unbuilt per the plan. The compiler is now course-general (3 courses, 3 UTM
+zones, latitudes 30–47°N).
+
+## Discovered — HD-hole ↔ coarse-course color seam (overhead views)
+
+From a high overhead angle the HD hole reads as a pale rectangular "relief-map tile" on
+the green coarse course. **The geometry is already seamless** — measured boundary seam
+≤ 0.5 m (the compiler's `coarseBaseHeight` edge-blend works; coarse grid carries the full
+71.9 m relief at 5 m). The "tile" is purely **color/texture**: the real pale NAIP
+fescue/sand orthophoto on the HD hole vs the default green turf on the coarse course
+(Chambers Bay has **no macro aerial** → flat green coarse turf). At the player/ground
+camera the seam nearly vanishes (reads like a natural fescue→green turf change), so this
+is overhead-view polish, low gameplay impact.
+- **Fix:** give the coarse course a macro aerial (NAIP at coarse res) so coarse turf
+  color matches the HD orthophoto, and/or feather orthophoto→turf *color* (not height) at
+  the HD rect edge. Mirrors the deferred Bandon "macro color edge-feathering" polish item.
+
 ## Deferred
 
 ### Vertical-exaggeration knob (render fidelity)
