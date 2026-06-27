@@ -198,6 +198,16 @@ const server = http.createServer(async (req, res) => {
       if (!m || !activeHd || activeHd.bundleId !== m[1]) { res.writeHead(404); return res.end('not found'); }
       return serveHdAsset(req, res, activeHd, m[2]);
     }
+    if (p === '/api/course-aerial' && (req.method === 'GET' || req.method === 'HEAD')) {
+      const a = game.course && game.course.aerial;
+      const fname = a && a.file ? path.basename(a.file) : null; // basename strips any path traversal
+      if (!fname) { res.writeHead(404); return res.end('not found'); }
+      try {
+        const buf = fs.readFileSync(path.join(DATA_DIR, 'courses', fname));
+        res.writeHead(200, { 'Content-Type': fname.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'no-cache' });
+        return res.end(req.method === 'HEAD' ? undefined : buf);
+      } catch (e) { res.writeHead(404); return res.end('not found'); }
+    }
     if (p === '/api/course-geometry') return json(res, courseGeometry());
 
     // three.js served from node_modules (keeps the app fully offline-capable)
@@ -228,8 +238,11 @@ const server = http.createServer(async (req, res) => {
 function courseGeometry() {
   if (!game.course) return null;
   const { name, surfaces, boundary, holes, trees, woods, buildings, elevation } = game.course;
+  // Course-wide aerial: bounds only (the image is fetched from /api/course-aerial);
+  // never leak the server file path. Drapes the whole course as the ground photo.
+  const aerial = game.course.aerial ? { bounds: game.course.aerial.bounds } : null;
   // hd is sanitized metadata only (no absolute paths, no Float32 heights).
-  return { name, surfaces, boundary, holes, trees, woods, buildings, elevation, hd: publicHdMetadata(activeHd), courseRevision };
+  return { name, surfaces, boundary, holes, trees, woods, buildings, aerial, elevation, hd: publicHdMetadata(activeHd), courseRevision };
 }
 
 function json(res, obj, code = 200) {

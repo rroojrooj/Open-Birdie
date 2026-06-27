@@ -264,6 +264,27 @@ export class GolfScene {
     } else {
       this._hdPatch = this._hdMacro = this._hdSampler = null;
     }
+    // Course-wide aerial drape: the real NAIP photo as the ground texture for the
+    // WHOLE course (bounds from geo.aerial), so the HD hole stops reading as a lone
+    // photographic tile on green felt — everything is the photo, the HD hole is just
+    // a sharper-relief region within it. Loaded async (auto-updates on first render
+    // after decode); white 1x1 coverage = valid everywhere. Preferred over _hdMacro.
+    if (geo.aerial && geo.aerial.bounds) {
+      const tex = new THREE.TextureLoader().load('/api/course-aerial');
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      if (!this._whiteTex) {
+        this._whiteTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+        this._whiteTex.needsUpdate = true;
+      }
+      this._macro = {
+        albedo: tex, coverage: this._whiteTex, surfaces: this._whiteTex, bounds: geo.aerial.bounds,
+        closeWeight: RENDER_CONFIG.courseAerialCloseWeight ?? 0.85, farWeight: RENDER_CONFIG.courseAerialFarWeight ?? 0.97,
+      };
+    } else {
+      this._macro = null;
+    }
     const group = new THREE.Group();
 
     const b = this._bounds(geo);
@@ -361,7 +382,7 @@ export class GolfScene {
 
     const turfMat = makeTurfMaterial({
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
-      macro: this._hdMacro || null,
+      macro: this._macro || this._hdMacro || null,
     });
     if (this._hdPatch) {
       // Unified terrain: coarse mesh with the HD rect cut out + the HD mesh filling it,

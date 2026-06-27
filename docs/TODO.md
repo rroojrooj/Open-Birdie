@@ -33,19 +33,23 @@ features < 6 m), not a shader limit. Dramatic, legible 3D relief at the player c
 it gated/unbuilt per the plan. The compiler is now course-general (3 courses, 3 UTM
 zones, latitudes 30–47°N).
 
-## Discovered — HD-hole ↔ coarse-course color seam (overhead views)
+## HD-hole ↔ coarse-course color seam — RESOLVED (2026-06-27)
 
-From a high overhead angle the HD hole reads as a pale rectangular "relief-map tile" on
-the green coarse course. **The geometry is already seamless** — measured boundary seam
-≤ 0.5 m (the compiler's `coarseBaseHeight` edge-blend works; coarse grid carries the full
-71.9 m relief at 5 m). The "tile" is purely **color/texture**: the real pale NAIP
-fescue/sand orthophoto on the HD hole vs the default green turf on the coarse course
-(Chambers Bay has **no macro aerial** → flat green coarse turf). At the player/ground
-camera the seam nearly vanishes (reads like a natural fescue→green turf change), so this
-is overhead-view polish, low gameplay impact.
-- **Fix:** give the coarse course a macro aerial (NAIP at coarse res) so coarse turf
-  color matches the HD orthophoto, and/or feather orthophoto→turf *color* (not height) at
-  the HD rect edge. Mirrors the deferred Bandon "macro color edge-feathering" polish item.
+The HD hole used to read as a pale rectangular "relief-map tile" on green felt (geometry
+was already seamless, ≤0.5 m — it was a color/texture mismatch). **Fixed by draping a
+course-wide aerial**: `tools/add-course-aerial.mjs` fetches one USGS NAIP image (public
+domain) for the whole course bbox and attaches `course.aerial = { file, bounds }`;
+`scene.js` builds a `_macro` from it (white 1×1 coverage = valid everywhere) and the turf
+shader drapes it over the ENTIRE course (preferred over the HD-rect `_hdMacro`). Served by
+`/api/course-aerial`. Registration is exact by construction (the export bbox is the course
+local bounds via the same origin/projection as `parseOsm`). Result: the whole course is the
+real photo, the HD hole is just a sharper-relief region within it — no square. Verified:
+`.shots/chambers-aerial-{topdown,h9pov}.jpg`.
+- **Follow-up (polish, optional):** option C drops the HD hole's crisp 0.6 m orthophoto in
+  favor of the uniform ~0.9 m course aerial (slightly soft underfoot at the HD hole). A
+  two-layer macro (course aerial base + HD orthophoto inset) would restore close-up crispness
+  there. Also: `add-course-aerial` is a manual tool like `add-buildings` — auto-fetch on first
+  course load is the same documented pipeline follow-up.
 
 ## Deferred
 
