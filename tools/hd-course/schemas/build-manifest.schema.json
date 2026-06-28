@@ -31,6 +31,8 @@
       "required": ["targetSpacingM", "crs"],
       "properties": {
         "targetSpacingM": { "type": "number", "minimum": 0.1, "maximum": 50 },
+        "nativeSpacingM": { "type": "number", "minimum": 0.1, "maximum": 50 },
+        "maxPx": { "type": "integer", "minimum": 8, "maximum": 20000 },
         "crs": { "type": "string", "enum": ["EPSG:3857", "EPSG:4326"] }
       }
     },

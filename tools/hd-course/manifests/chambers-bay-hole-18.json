@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "course": {
+    "name": "Chambers Bay Golf Course",
+    "cacheVersion": 3,
+    "fingerprint": "b593b5dc05617a41f56acfbcbe42fcc5c45c919f7004f8657243e9e16ddab258"
+  },
+  "hole": 18,
+  "padding": 120,
+  "terrain": {
+    "targetSpacingM": 1,
+    "nativeSpacingM": 1,
+    "maxPx": 2000,
+    "crs": "EPSG:3857"
+  },
+  "imagery": {
+    "collection": "naip",
+    "date": "2023-08-02",
+    "gsdM": 0.6,
+    "itemIds": [
+      "wa_m_4712252_nw_10_060_20230802_20240209"
+    ]
+  },
+  "providers": {
+    "elevation": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+    "imagery": "https://planetarycomputer.microsoft.com/api/stac/v1"
+  },
+  "limits": {
+    "maxPixels": 80000000,
+    "maxDownloadBytes": 3221225472,
+    "maxBundleBytes": 157286400
+  },
+  "normalization": {
+    "format": "webp",
+    "quality": 90
+  },
+  "discovered": {
+    "state": "resolved",
+    "bounds": {
+      "minX": -584.99,
+      "minY": -463.67999999999995,
+      "maxX": 195.01,
+      "maxY": -153.67999999999995
+    },
+    "assets": [
+      {
+        "url": "https://naipeuwest.blob.core.windows.net/naip/v002/wa/2023/wa_060cm_2023/47122/m_4712252_nw_10_060_20230802_20240209.tif",
+        "contentLength": 285292344,
+        "etag": "0x8DD335A27B7D3D9"
+      }
+    ]
+  }
+}

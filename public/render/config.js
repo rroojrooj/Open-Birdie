@@ -16,6 +16,11 @@ export const RENDER_CONFIG = {
   sunAzimuthDeg: null,
   sunAltitudeDeg: null,
   hdriFile: 'puresky_4k.hdr',
+  // HD bundle aerial macro weights (near / far): how strongly the real 0.6 m NAIP
+  // tint shows over the turf inside an HD rect. Raised from the 0.25 / 0.6 shader
+  // defaults to un-mute the sharp aerial on HD holes (Chambers Bay 1 m bundles).
+  hdMacroCloseWeight: 0.55,
+  hdMacroFarWeight: 0.65,
   // Tier 1
   foliageTrees: true, // card-foliage conifers (see tree-cards.js)
   grounding: true,    // contact-shadow decal blobs under trees (see grounding.js)

@@ -70,7 +70,12 @@ function liveProviders(manifest, course) {
     acquireElevation: async ({ bbox, origin }) => {
       const { patch, stats } = await liveAcquireElevation(bbox, {
         targetM: manifest.terrain.targetSpacingM,
-        nativeSpacingM: 3.4, // Gate 1.5 measured native ≈3.4 m at Bandon
+        // Manifest-driven so HD courses (e.g. Chambers Bay QL1 1 m) aren't pinned
+        // to Bandon's ~3.4 m. maxPx must clear widthMeters/targetM or long holes
+        // silently clamp coarser than targetM (default 600 → ~1.4 m on a ~850 m hole).
+        nativeSpacingM: manifest.terrain.nativeSpacingM ?? 3.4,
+        maxPx: manifest.terrain.maxPx ?? 600,
+        timeoutMs: 90000, // batch compile can wait on a slow 3DEP export (gameplay keeps the 12s default)
       });
       const sampler = lidar.makePatchSampler(patch);
       const baseM = course.elevation ? course.elevation.baseM : 0;
@@ -92,7 +97,11 @@ function liveProviders(manifest, course) {
         const px = (u, v) => [Math.floor((u - ox) / rx), Math.floor((v - oy) / ry)];
         const [x0, y0] = px(ext.minU, ext.maxV);
         const [x1, y1] = px(ext.maxU, ext.minV);
-        const win = [Math.max(0, x0), Math.max(0, y0), Math.min(image.getWidth(), x1 + 1), Math.min(image.getHeight(), y1 + 1)];
+        // Read a few extra px around the window: local->UTM is slightly rotated vs
+        // the axis-aligned corner extent, so reproject edge samples can land just
+        // outside a tight window and trip HD_IMAGERY_GAP on a sub-pixel sliver.
+        const MARGIN = 8;
+        const win = [Math.max(0, x0 - MARGIN), Math.max(0, y0 - MARGIN), Math.min(image.getWidth(), x1 + 1 + MARGIN), Math.min(image.getHeight(), y1 + 1 + MARGIN)];
         const data = await image.readRasters({ window: win, interleave: true, samples: [0, 1, 2] });
         sources.push({
           rgb: Buffer.from(data.buffer || data),
@@ -142,5 +151,9 @@ export async function main(argv) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(process.argv.slice(2)).catch((e) => { process.stderr.write(`${e.stack || e}\n`); process.exit(1); });
+  main(process.argv.slice(2)).catch((e) => {
+    if (e && e.context && Object.keys(e.context).length) process.stderr.write(`context: ${JSON.stringify(e.context)}\n`);
+    process.stderr.write(`${e.stack || e}\n`);
+    process.exit(1);
+  });
 }

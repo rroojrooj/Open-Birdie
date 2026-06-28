@@ -11,10 +11,10 @@ import { constants } from './coordinates.mjs';
 
 const isNoData = (v) => !Number.isFinite(v) || v < -1e30;
 
-export async function acquireElevation(bbox, { fetchImpl, targetM = 1, maxPx, nativeSpacingM }) {
+export async function acquireElevation(bbox, { fetchImpl, targetM = 1, maxPx, nativeSpacingM, timeoutMs }) {
   let patch;
   try {
-    patch = await lidar.fetchPatchStrict(bbox, { fetchImpl, targetM, maxPx });
+    patch = await lidar.fetchPatchStrict(bbox, { fetchImpl, targetM, maxPx, timeoutMs });
   } catch (e) {
     throw new HdCompileError('download-elevation', e.code || 'HD_3DEP_FETCH', { bbox }, e);
   }
