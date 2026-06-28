@@ -93,6 +93,7 @@ export class GolfScene {
     this.anim = null;         // active shot replay
     this.camMode = 'idle';
     this.orbit = { yaw: 0, dist: 14, height: 4.6 };
+    this.free = { yaw: 0, pitch: 0, speed: 14, keys: Object.create(null) }; // free-roam fly camera ('F')
     this.camPosT = new THREE.Vector3(0, 30, 60);
     this.lookT = new THREE.Vector3();
     this.lookCur = new THREE.Vector3();
@@ -992,12 +993,16 @@ export class GolfScene {
 
     // 'idle' tracks the ball at address; 'static' (shot tracer) holds the
     // frozen camera that playShot parked behind the ball.
-    if (this.camMode === 'idle') this._idleTargets();
-
-    const k = 1 - Math.exp(-4.2 * dt);
-    this.camera.position.lerp(this.camPosT, k);
-    this.lookCur.lerp(this.lookT, k);
-    this.camera.lookAt(this.lookCur);
+    if (this.camMode === 'free') {
+      this._freeStep(dt);
+    } else {
+      if (this._hintEl && this._hintEl.style.display !== 'none') this._freeHint(false);
+      if (this.camMode === 'idle') this._idleTargets();
+      const k = 1 - Math.exp(-4.2 * dt);
+      this.camera.position.lerp(this.camPosT, k);
+      this.lookCur.lerp(this.lookT, k);
+      this.camera.lookAt(this.lookCur);
+    }
 
     // keep ball & pin readable at distance
     const bd = this.camera.position.distanceTo(this.ball.position);
@@ -1022,7 +1027,10 @@ export class GolfScene {
   _inputs() {
     const el = this.renderer.domElement;
     let dragging = false, lx = 0, ly = 0;
-    el.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; });
+    el.addEventListener('pointerdown', (e) => {
+      if (this.camMode === 'free') { if (document.pointerLockElement !== el) el.requestPointerLock(); return; }
+      dragging = true; lx = e.clientX; ly = e.clientY;
+    });
     window.addEventListener('pointerup', () => { dragging = false; });
     window.addEventListener('pointermove', (e) => {
       if (!dragging || this.camMode !== 'idle') return;
@@ -1031,8 +1039,83 @@ export class GolfScene {
       lx = e.clientX; ly = e.clientY;
     });
     el.addEventListener('wheel', (e) => {
+      if (this.camMode === 'free') {
+        this.free.speed = THREE.MathUtils.clamp(this.free.speed * (e.deltaY > 0 ? 0.85 : 1.18), 2, 200);
+        return;
+      }
       if (this.camMode !== 'idle') return;
       this.orbit.dist = THREE.MathUtils.clamp(this.orbit.dist * (e.deltaY > 0 ? 1.12 : 0.89), 5, 60);
     }, { passive: true });
+
+    // Free-roam (fly) camera: 'F' toggles; WASD move, mouse look (pointer-lock),
+    // Space/E up, Shift/Q down, scroll = speed, Esc exits.
+    const typing = (t) => /^(input|textarea|select)$/i.test((t && t.tagName) || '');
+    window.addEventListener('keydown', (e) => {
+      if (typing(e.target)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'f') { e.preventDefault(); this.toggleFreeRoam(); return; }
+      if (this.camMode === 'free') { this.free.keys[key] = true; if (key === ' ') e.preventDefault(); }
+    });
+    window.addEventListener('keyup', (e) => { this.free.keys[e.key.toLowerCase()] = false; });
+    window.addEventListener('mousemove', (e) => {
+      if (this.camMode !== 'free' || document.pointerLockElement !== el) return;
+      this.free.yaw += e.movementX * 0.0025;
+      this.free.pitch = THREE.MathUtils.clamp(this.free.pitch - e.movementY * 0.0025, -1.45, 1.45);
+    });
+    document.addEventListener('pointerlockchange', () => {
+      if (this.camMode === 'free' && document.pointerLockElement !== el) this._exitFree();
+    });
+  }
+
+  // Toggle the free-roam fly camera. Seeds yaw/pitch from the current view so the
+  // transition is seamless, then takes pointer lock for mouse-look.
+  toggleFreeRoam() {
+    if (this.camMode === 'free') { this._exitFree(); return; }
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    this.free.yaw = Math.atan2(dir.x, -dir.z);
+    this.free.pitch = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1)), -1.45, 1.45);
+    this.free.keys = Object.create(null);
+    this.camMode = 'free';
+    this._freeHint(true);
+    const el = this.renderer.domElement;
+    if (el.requestPointerLock) el.requestPointerLock();
+  }
+
+  _exitFree() {
+    if (this.camMode !== 'free') return;
+    this.camMode = 'idle';
+    this.free.keys = Object.create(null);
+    this._freeHint(false);
+    if (document.pointerLockElement) document.exitPointerLock();
+    this._snapIdleCam();
+  }
+
+  _freeStep(dt) {
+    const f = this.free;
+    const cp = Math.cos(f.pitch), sp = Math.sin(f.pitch), cy = Math.cos(f.yaw), sy = Math.sin(f.yaw);
+    const fwd = new THREE.Vector3(sy * cp, sp, -cy * cp);
+    const right = new THREE.Vector3(cy, 0, sy);
+    const mv = new THREE.Vector3();
+    const k = f.keys;
+    if (k['w']) mv.add(fwd);
+    if (k['s']) mv.sub(fwd);
+    if (k['d']) mv.add(right);
+    if (k['a']) mv.sub(right);
+    if (k[' '] || k['e']) mv.y += 1;
+    if (k['shift'] || k['q']) mv.y -= 1;
+    if (mv.lengthSq() > 0) this.camera.position.add(mv.normalize().multiplyScalar(f.speed * dt));
+    this.camera.lookAt(this.camera.position.x + fwd.x, this.camera.position.y + fwd.y, this.camera.position.z + fwd.z);
+  }
+
+  _freeHint(show) {
+    if (!this._hintEl) {
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;background:rgba(10,22,14,.82);color:#cfe;padding:7px 14px;border-radius:8px;font:13px system-ui,sans-serif;pointer-events:none;letter-spacing:.2px';
+      d.textContent = 'Free-roam · WASD move · mouse look · Space/Shift up-down · scroll speed · Esc exit';
+      document.body.appendChild(d);
+      this._hintEl = d;
+    }
+    this._hintEl.style.display = show ? 'block' : 'none';
   }
 }
