@@ -103,6 +103,16 @@ body {
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); color: #fff; }
 .btn.big { font-size: 17px; padding: 13px 20px; width: 100%; margin-top: 12px; }
+.btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* free course-creator camera controls hint */
+#freecam-hint {
+  position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%); z-index: 11;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 9px; padding: 7px 14px; font-size: 13px; font-weight: 600;
+  box-shadow: var(--shadow); backdrop-filter: blur(10px); white-space: nowrap;
+}
+#freecam-hint b { color: var(--accent); }
 
 /* ---------- shot data cards ---------- */
 #shotpanel { position: fixed; left: 16px; top: 74px; z-index: 10; width: 234px; }
