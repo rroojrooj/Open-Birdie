@@ -27,6 +27,7 @@ export const RENDER_CONFIG = {
   treeScale: 1.0,     // base scale on the 12m reference card-tree (~12m trees)
   treeCap: 450,      // max instanced trees (perf); explicit trees prioritized
   horizonTrees: true, // jittered tree band around the course perimeter (distant tree-line)
+  buildings: true,    // extrude OSM building footprints (clubhouse + structures) — see scene.js _addBuildings
   // Later tiers / stretch — off until their tier lands
   pbrTurf: false,
   crispBunkers: true, // bunkers as their own crisp polygon meshes (sharp sand edges, real sand PBR)

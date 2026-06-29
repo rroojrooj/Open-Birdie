@@ -12,8 +12,17 @@ const M_PER_LAT = 111132.95;
 const mPerLon = (lat0) => 111319.49 * Math.cos((lat0 * Math.PI) / 180);
 const R = 6378137; // WGS84 radius, matching lib/lidar.js
 
-// EPSG:4326 / EPSG:3857 ship with proj4; register the NAIP UTM zone explicitly.
-proj4.defs('EPSG:26910', '+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
+// EPSG:4326 / EPSG:3857 ship with proj4; register NAIP UTM zones on demand so any
+// US course works, not just Bandon (zone 10N). NAIP is NAD83 UTM (EPSG:269ZZ, north
+// zones 1-23 cover CONUS); also accept WGS84 UTM north (EPSG:326ZZ).
+function ensureUtmZone(epsg) {
+  if (proj4.defs(epsg)) return true;
+  let m = /^EPSG:269(\d{2})$/.exec(epsg);
+  if (m && +m[1] >= 1 && +m[1] <= 23) { proj4.defs(epsg, `+proj=utm +zone=${+m[1]} +datum=NAD83 +units=m +no_defs`); return true; }
+  m = /^EPSG:326(\d{2})$/.exec(epsg);
+  if (m && +m[1] >= 1 && +m[1] <= 60) { proj4.defs(epsg, `+proj=utm +zone=${+m[1]} +datum=WGS84 +units=m +no_defs`); return true; }
+  return false;
+}
 
 function assertFinite(...vals) {
   for (const v of vals) {
@@ -33,14 +42,14 @@ export function wgs84ToLocal({ lat, lon }, origin) {
 
 export function wgs84ToUtm({ lat, lon }, epsg) {
   assertFinite(lat, lon);
-  if (!proj4.defs(epsg)) throw new HdCompileError('reproject', 'HD_CRS_UNKNOWN', { epsg });
+  if (!ensureUtmZone(epsg)) throw new HdCompileError('reproject', 'HD_CRS_UNKNOWN', { epsg });
   const [x, y] = proj4('EPSG:4326', epsg, [lon, lat]);
   return { x, y };
 }
 
 export function utmToWgs84({ x, y }, epsg) {
   assertFinite(x, y);
-  if (!proj4.defs(epsg)) throw new HdCompileError('reproject', 'HD_CRS_UNKNOWN', { epsg });
+  if (!ensureUtmZone(epsg)) throw new HdCompileError('reproject', 'HD_CRS_UNKNOWN', { epsg });
   const [lon, lat] = proj4(epsg, 'EPSG:4326', [x, y]);
   return { lat, lon };
 }

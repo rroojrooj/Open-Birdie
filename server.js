@@ -8,7 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { OpenConnectServer } = require('./lib/openconnect');
-const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/course');
+const { searchCourses, loadCourse, listCached, loadCached, applySurfaceOverride, loadSurfaceOverride } = require('./lib/course');
 const { Game, CLUB_FULL } = require('./lib/game');
 const { resolveHdBundle } = require('./lib/hd-bundle');
 const { serveHdAsset, publicHdMetadata } = require('./lib/hd-http');
@@ -45,6 +45,12 @@ function activateCourse(course) {
   activeHd = r.status === 'valid' ? r.descriptor : null;
   if (r.status === 'rejected') console.warn(`[hd] bundle rejected: ${r.code}`);
   courseRevision += 1;
+  // Per-course surface override (corrected greens/fairways/bunkers + relocated
+  // pins): applied here, AFTER the HD fingerprint match above (bundle stays
+  // valid) and BEFORE setCourse, so physics (surfaceAt) and the served geometry
+  // both use the corrected map. Absent sidecar = unchanged OSM behaviour.
+  const override = loadSurfaceOverride(course);
+  if (override) { applySurfaceOverride(course, override); console.log(`[override] applied surface override for ${course.name}`); }
   // An HD candidate holds physics (ready:false) until the primary client acks a
   // coherent scene; a plain course is immediately playable.
   game.setCourse(course, { ready: !activeHd });
@@ -192,6 +198,16 @@ const server = http.createServer(async (req, res) => {
       if (!m || !activeHd || activeHd.bundleId !== m[1]) { res.writeHead(404); return res.end('not found'); }
       return serveHdAsset(req, res, activeHd, m[2]);
     }
+    if (p === '/api/course-aerial' && (req.method === 'GET' || req.method === 'HEAD')) {
+      const a = game.course && game.course.aerial;
+      const fname = a && a.file ? path.basename(a.file) : null; // basename strips any path traversal
+      if (!fname) { res.writeHead(404); return res.end('not found'); }
+      try {
+        const buf = fs.readFileSync(path.join(DATA_DIR, 'courses', fname));
+        res.writeHead(200, { 'Content-Type': fname.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'no-cache' });
+        return res.end(req.method === 'HEAD' ? undefined : buf);
+      } catch (e) { res.writeHead(404); return res.end('not found'); }
+    }
     if (p === '/api/course-geometry') return json(res, courseGeometry());
 
     // three.js served from node_modules (keeps the app fully offline-capable)
@@ -221,9 +237,12 @@ const server = http.createServer(async (req, res) => {
 
 function courseGeometry() {
   if (!game.course) return null;
-  const { name, surfaces, boundary, holes, trees, woods, elevation } = game.course;
+  const { name, surfaces, boundary, holes, trees, woods, buildings, elevation } = game.course;
+  // Course-wide aerial: bounds only (the image is fetched from /api/course-aerial);
+  // never leak the server file path. Drapes the whole course as the ground photo.
+  const aerial = game.course.aerial ? { bounds: game.course.aerial.bounds } : null;
   // hd is sanitized metadata only (no absolute paths, no Float32 heights).
-  return { name, surfaces, boundary, holes, trees, woods, elevation, hd: publicHdMetadata(activeHd), courseRevision };
+  return { name, surfaces, boundary, holes, trees, woods, buildings, aerial, elevation, hd: publicHdMetadata(activeHd), courseRevision };
 }
 
 function json(res, obj, code = 200) {

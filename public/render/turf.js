@@ -53,7 +53,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
     map: splatTex,
     normalMap, normalScale: new THREE.Vector2(0.8, 0.8),
     roughnessMap, roughness: 1.0, metalness: 0,
-    envMapIntensity: 0.55, // cut the grazing-angle sky sheen that read cool/wet
+    envMapIntensity: 0.2, // turf is matte — keep sky/sun reflection low so lit slopes don't blow out white
   });
 
   mat.onBeforeCompile = (shader) => {
@@ -74,13 +74,22 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           { vec2 wXY = uCourseMin + vMapUv * uExt;
             vec2 mUv = (wXY - uMacroMin) / uMacroSize;
             if (mUv.x >= 0.0 && mUv.x <= 1.0 && mUv.y >= 0.0 && mUv.y <= 1.0) {
+              // Feather the aerial across the rect edge so it dissolves into the
+              // procedural turf instead of clipping at a hard rectangle. Distance (m)
+              // to the nearest edge, jittered by low-freq noise so the blend line is
+              // organic, not a clean contour.
+              vec2 edgeM = min(mUv, 1.0 - mUv) * uMacroSize;
+              float edgeW = smoothstep(0.0, 7.0, min(edgeM.x, edgeM.y) + (tNoise(wXY * 0.15) - 0.5) * 5.0);
               float mvalid = texture2D(uMacroCoverage, mUv).r;
               vec3 aerial = texture2D(uMacro, mUv).rgb;
               float macFar = smoothstep(14.0, 45.0, length(vViewPosition));
-              float mw = mvalid * mix(uMacroWeights.x, uMacroWeights.y, macFar);
-              float gl = max(dot(grass, vec3(0.299, 0.587, 0.114)), 0.04);
-              vec3 tint = aerial * (gl / max(dot(aerial, vec3(0.299, 0.587, 0.114)), 0.04));
-              grass = mix(grass, tint, mw);
+              float mw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, macFar);
+              // The aerial IS the real course — a registered satellite photo. Let it BE the
+              // ground colour (raw RGB; a global de-light flattens real fairway/dune/sand
+              // albedo into milky grey — tried, reverted). Keep a sliver of tiled blade grain
+              // (dl) for close-up micro-texture; the terrain normals + our sun light it as 3D.
+              vec3 photo = aerial * (0.86 + 0.30 * dl);
+              grass = mix(grass, photo, mw);
             } }` : '';
     if (macro) {
       shader.uniforms.uMacro = { value: macro.albedo };
@@ -139,8 +148,8 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // big regions also shift the grass CHARACTER — lush deep-green <-> dry
           // yellow-green — so different parts of the course read as different grass,
           // not one uniform tone stamped edge to edge.
-          grass *= mix(vec3(0.94, 1.01, 0.92), vec3(1.05, 1.02, 0.86),
-                       clamp(zone * 1.7 + 0.5, 0.0, 1.0)); // dry side kept GREEN — was tipping muddy yellow-brown
+          grass *= mix(vec3(0.93, 1.0, 0.9), vec3(1.13, 1.03, 0.74),
+                       clamp(zone * 1.7 + 0.5, 0.0, 1.0)); // lush green <-> golden tan-fescue patches
           grass.r *= 1.0 + 0.10 * broad;                        // finer warm/cool drift on top
           grass.b *= 1.0 - 0.07 * broad;
           // Mowing stripes — the dominant "manicured" signal, fairway/green only.
@@ -152,7 +161,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float stripe = smoothstep(-0.42, 0.42, band) * 2.0 - 1.0;
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
           float stripe2 = smoothstep(-0.5, 0.5, band2) * 2.0 - 1.0;
-          grass *= 1.0 + (0.27 * stripe + 0.12 * stripe2) * m;
+          grass *= 1.0 + (0.2 * stripe + 0.09 * stripe2) * m;
           // Procedural sun-play — directional shading from a low-frequency undulation
           // field so the sun visibly rakes across gentle rolls instead of lighting a
           // flat sheet. The DIRECTIONAL gradient (one flank of a roll lit, the other
@@ -164,8 +173,14 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           vec2 sunDir = normalize(vec2(0.55, -0.84));      // HDRI sun's horizontal bearing
           float rake = clamp((gx * sunDir.x + gy * sunDir.y) * 7.0, -0.6, 0.6);
           grass *= 1.0 + 0.09 * rake;                      // GENTLE — 0.22 was carving dark shade-bands into the hills
-          grass *= vec3(0.96, 1.0, 0.97);          // deepen the zone-green a touch
+          // Pull the radioactive kelly-green toward muted, warm tan-green fescue (Bandon
+          // links is firm golden-tan, not astroturf emerald). Desaturate + warm.
+          float gLum = dot(grass, vec3(0.299, 0.587, 0.114));
+          grass = mix(grass, vec3(gLum * 0.85) * vec3(1.1, 1.0, 0.8), 0.4); // *0.85 darkens so desaturating doesn't LIGHTEN the green to pale
           ${macroBlend}
+          // Soft highlight rolloff: light mown/aerial areas + mow-stripe peaks were
+          // washing out to pale rectangles. Compress grass values above ~0.66.
+          grass = grass / (1.0 + 0.5 * max(vec3(0.0), grass - 0.66));
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
           sand = mix(sand, vec3(1.0), 0.12) * 1.28;
@@ -174,17 +189,10 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
         }
         #endif`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        // Soften roughness on mown surfaces so a gentle specular lobe exists for the
-        // sheen to roll through — subtle, to stay clear of the plasticky/wet glow we
-        // de-glowed earlier. Mask recomputed here (the m in map_fragment is out of scope).
-        {
-          float rmm = texture2D(uMask, vMapUv).r;
-          // Distance-gate the sheen: NEAR turf stays MATTE (real close-up grass scatters
-          // diffusely — a spec lobe right under the camera read as wet vinyl). Only the
-          // far field gets a subtle lobe. specFar: 0 near -> 1 far.
-          float specFar = smoothstep(14.0, 45.0, length(vViewPosition));
-          roughnessFactor = mix(roughnessFactor, roughnessFactor * mix(1.0, 0.88, specFar), rmm);
-        }`)
+        // Turf is near-Lambertian — force it MATTE everywhere. The old mown-surface
+        // roughness reduction + sky reflection produced the wet-plastic specular blowout
+        // on sunlit slopes (the big white smear). A high roughness floor kills it.
+        roughnessFactor = clamp(roughnessFactor, 0.9, 1.0);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         // Specular sheen: tilt the shading normal by a low-frequency undulation field so
         // the sun glint + sky reflection ROLL across the turf as the camera moves (the
@@ -201,10 +209,19 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float sgx = tNoise(snp + vec2(0.12, 0.0)) - tNoise(snp - vec2(0.12, 0.0));
           float sgy = tNoise(snp + vec2(0.0, 0.12)) - tNoise(snp - vec2(0.0, 0.12));
           vec3 tiltV = (viewMatrix * vec4(-sgx, 0.0, -sgy, 0.0)).xyz;
-          normal = normalize(normal + tiltV * 0.4); // GENTLE — strong tilt over-shaded the undulating holes into mud
+          normal = normalize(normal + tiltV * 0.12); // tiny: gentle form only — strong tilt + low roughness was the wet-plastic glare
+          // Meso-relief (lever 3): procedural ~1.8 m hummocks BETWEEN the blade normalMap and
+          // the 22 m sheen rolls, so turf reads as an undulating surface, not a flat sheet.
+          // Distance-faded past ~18 m (no shimmer); modulates DIFFUSE only (roughness floor 0.9
+          // kills the specular sparkle that would otherwise glitter without TAA).
+          float me = 0.35, mh0 = tFbm(vec2(snwx, snwy) * 0.55);
+          float mhx = tFbm((vec2(snwx, snwy) + vec2(me, 0.0)) * 0.55);
+          float mhy = tFbm((vec2(snwx, snwy) + vec2(0.0, me)) * 0.55);
+          vec3 mTilt = (viewMatrix * vec4(-(mhx - mh0) / me, 0.0, -(mhy - mh0) / me, 0.0)).xyz;
+          normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v17-macro' : 'turf-grain-v17');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v23-macro' : 'turf-grain-v23');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];

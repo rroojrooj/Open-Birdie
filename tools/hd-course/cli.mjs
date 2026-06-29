@@ -70,7 +70,12 @@ function liveProviders(manifest, course) {
     acquireElevation: async ({ bbox, origin }) => {
       const { patch, stats } = await liveAcquireElevation(bbox, {
         targetM: manifest.terrain.targetSpacingM,
-        nativeSpacingM: 3.4, // Gate 1.5 measured native ≈3.4 m at Bandon
+        // Adaptive: a QL1 (~1 m) course sets these in its manifest so the gate admits fine
+        // lidar AND the raster isn't capped at 600 px (a 1 m large hole needs ~1200, else
+        // the service returns coarser pixels and the coarse-gate rejects them). Bandon's 2008
+        // 3DEP defaults stand (3.4 m gate, 600 px) when the manifest omits them.
+        nativeSpacingM: manifest.terrain.nativeSpacingM ?? 3.4,
+        maxPx: manifest.terrain.maxPx ?? 600,
       });
       const sampler = lidar.makePatchSampler(patch);
       const baseM = course.elevation ? course.elevation.baseM : 0;
@@ -92,7 +97,20 @@ function liveProviders(manifest, course) {
         const px = (u, v) => [Math.floor((u - ox) / rx), Math.floor((v - oy) / ry)];
         const [x0, y0] = px(ext.minU, ext.maxV);
         const [x1, y1] = px(ext.maxU, ext.minV);
-        const win = [Math.max(0, x0), Math.max(0, y0), Math.min(image.getWidth(), x1 + 1), Math.min(image.getHeight(), y1 + 1)];
+        // ext is the bbox of the 4 local-rect CORNERS in UTM, but localToWgs84 is
+        // equirectangular while the tile is UTM — a non-affine transform — so the
+        // projected EDGES bulge a little past the straight corner quad (the bulge
+        // grows with latitude and offset from the zone's central meridian). Reading
+        // only the corner bbox leaves those edge pixels uncovered → HD_IMAGERY_GAP
+        // (first seen at Chambers Bay, 47°N). Pad the read window ~4 m on every side
+        // to swallow the bulge; the clamp below keeps it inside the tile.
+        const marginPx = Math.max(2, Math.ceil(4 / Math.min(Math.abs(rx), Math.abs(ry))));
+        const win = [
+          Math.max(0, x0 - marginPx),
+          Math.max(0, y0 - marginPx),
+          Math.min(image.getWidth(), x1 + 1 + marginPx),
+          Math.min(image.getHeight(), y1 + 1 + marginPx),
+        ];
         const data = await image.readRasters({ window: win, interleave: true, samples: [0, 1, 2] });
         sources.push({
           rgb: Buffer.from(data.buffer || data),

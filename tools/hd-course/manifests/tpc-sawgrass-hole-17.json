@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "course": {
+    "name": "TPC Sawgrass",
+    "cacheVersion": 3,
+    "fingerprint": "7437eb3e900da72624e3ef4875b99ab431cb075cabadc86bb725ada71abe3ee5"
+  },
+  "hole": 17,
+  "padding": 50,
+  "terrain": {
+    "targetSpacingM": 1,
+    "nativeSpacingM": 1,
+    "maxPx": 1200,
+    "crs": "EPSG:3857"
+  },
+  "imagery": {
+    "collection": "naip",
+    "date": "2023-01-27",
+    "gsdM": 0.3,
+    "itemIds": [
+      "fl_m_3008153_ne_17_030_20230127_20230530"
+    ]
+  },
+  "providers": {
+    "elevation": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+    "imagery": "https://planetarycomputer.microsoft.com/api/stac/v1"
+  },
+  "limits": {
+    "maxPixels": 80000000,
+    "maxDownloadBytes": 3221225472,
+    "maxBundleBytes": 157286400
+  },
+  "normalization": {
+    "format": "webp",
+    "quality": 90
+  },
+  "discovered": {
+    "state": "resolved",
+    "bounds": {
+      "minX": 332.53,
+      "minY": -660.98,
+      "maxX": 512.53,
+      "maxY": -440.98
+    },
+    "assets": [
+      {
+        "url": "https://naipeuwest.blob.core.windows.net/naip/v002/fl/2023/fl_030cm_2023/30081/m_3008153_ne_17_030_20230127_20230530.tif",
+        "contentLength": 1808048272,
+        "etag": "0x8DD33A9299A5E34"
+      }
+    ]
+  }
+}

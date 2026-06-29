@@ -6,7 +6,24 @@
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": ["server.js"],
       "port": 8222,
-      "autoPort": false
+      "autoPort": false,
+      "env": {
+        "BIRDIE_DATA_DIR": "C:/Users/USER/Documents/GitHub/Open-Birdie/data",
+        "BIRDIE_NO_WATCH": "1"
+      }
+    },
+    {
+      "name": "open-birdie-verify",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["server.js"],
+      "port": 8223,
+      "autoPort": false,
+      "env": {
+        "BIRDIE_DATA_DIR": "C:/Users/USER/Documents/GitHub/Open-Birdie/data",
+        "BIRDIE_NO_WATCH": "1",
+        "BIRDIE_PORT": "8223",
+        "BIRDIE_OC_PORT": "9211"
+      }
     }
   ]
 }

@@ -27,7 +27,7 @@ function applyState(s) {
   state = s;
   if (!s.loaded) { openCourseModal(); return; }
   $('course-name').textContent = s.courseName.split(',')[0];
-  $('hud-hole').textContent = `${s.hole}/${s.holeCount}`;
+  $('hud-hole').textContent = `${s.holeRef ?? s.hole}`; // real course hole number (1,9,10,18…), not play index
   $('hud-par').textContent = s.par;
   $('hud-len').textContent = `${s.lengthYd}y`;
   const pinTxt = s.distToPinYd > 45
@@ -209,19 +209,20 @@ function updateHolePills(s) {
     el.innerHTML = '';
     for (let i = 1; i <= s.holeCount; i++) {
       const p = document.createElement('button');
-      p.className = 'pill'; p.textContent = i; p.dataset.h = i; p.type = 'button';
+      p.className = 'pill'; p.textContent = (s.holeRefs && s.holeRefs[i - 1]) ?? i; p.dataset.h = i; p.type = 'button';
       p.onclick = () => reviewHoleOnCard(+p.dataset.h);
       el.appendChild(p);
     }
   }
   for (const p of el.children) {
     const h = +p.dataset.h;
+    const ref = (s.holeRefs && s.holeRefs[h - 1]) ?? h; // real hole number for labels
     const done = s.scores[h - 1] != null;
     p.classList.toggle('active', h === s.hole);
     p.classList.toggle('done', done);
     p.classList.toggle('pickedup', !!(s.pickedUp && s.pickedUp[h - 1]));
     p.disabled = !done && h !== s.hole; // only played holes (and the current one) are reachable
-    p.setAttribute('aria-label', done ? `Hole ${h}, score ${s.scores[h - 1]}` : `Hole ${h}`);
+    p.setAttribute('aria-label', done ? `Hole ${ref}, score ${s.scores[h - 1]}` : `Hole ${ref}`);
     if (h === s.hole) p.setAttribute('aria-current', 'true'); else p.removeAttribute('aria-current');
   }
 }
@@ -298,7 +299,7 @@ function drawMinimap(s) {
   ctx.beginPath(); ctx.arc(bx, by, 3.6, 0, 7); ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  $('mm-title').textContent = `HOLE ${s.hole} · PAR ${s.par} · ${s.lengthYd}y`;
+  $('mm-title').textContent = `HOLE ${s.holeRef ?? s.hole} · PAR ${s.par} · ${s.lengthYd}y`;
   $('mm-topin').textContent = s.distToPinYd > 45 ? `${Math.round(s.distToPinYd)}y` : `${Math.round(s.distToPinYd * 3)}ft`;
 }
 
@@ -389,6 +390,14 @@ $('btn-restart').onclick = () => { reviewHole = null; fetch('/api/reset', { meth
 $('btn-changecourse').onclick = () => { $('scorecard').classList.add('hidden'); openCourseModal(); };
 $('btn-practice').onclick = () => $('practice').classList.toggle('hidden');
 $('btn-course').onclick = () => openCourseModal();
+
+// Free course-creator camera: fly/orbit the hole to inspect surfaces against the aerial.
+scene.setFreeCamCallback((on) => {
+  $('btn-free').classList.toggle('active', on);
+  $('btn-free').textContent = on ? 'Exit free' : 'Free look';
+  $('freecam-hint').classList.toggle('hidden', !on);
+});
+$('btn-free').onclick = () => scene.enterFreeCam(scene.camMode !== 'free');
 
 let aimT = null;
 $('aim-slider').oninput = (e) => {

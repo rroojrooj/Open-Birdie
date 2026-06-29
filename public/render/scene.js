@@ -91,8 +91,12 @@ export class GolfScene {
     this.geo = null;          // course geometry payload
     this.elev = null;         // elevation grid
     this.anim = null;         // active shot replay
-    this.camMode = 'idle';
+    this.camMode = 'idle'; // 'idle' (orbit ball) | 'static' (shot tracer) | 'free' (course-creator fly)
     this.orbit = { yaw: 0, dist: 14, height: 4.6 };
+    // free-roam "course creator" camera: a ground pivot (tx,ty,h) orbited by yaw/pitch at dist.
+    this.free = { tx: 0, ty: 0, h: 0, yaw: 0, pitch: -28, dist: 45, hOff: 0 };
+    this.freeKeys = {};
+    this._freeCamCb = null; // (on) => void — UI hook for the toggle/hint
     this.camPosT = new THREE.Vector3(0, 30, 60);
     this.lookT = new THREE.Vector3();
     this.lookCur = new THREE.Vector3();
@@ -254,11 +258,32 @@ export class GolfScene {
       this._hdPatch = { minX: t.bounds.minX, minY: t.bounds.minY, cellM: t.cellM, nx: t.nx, ny: t.ny, heights: t.heights, edgeBlendM: 0 };
       this._hdMacro = {
         albedo: hdAssets.orthophoto, surfaces: hdAssets.surfaces, coverage: hdAssets.coverage, bounds: t.bounds,
-        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.25, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.6,
+        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.78, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.96,
       };
       this._hdSampler = makeTerrainSampler(this.elev, [this._hdPatch]);
     } else {
       this._hdPatch = this._hdMacro = this._hdSampler = null;
+    }
+    // Course-wide aerial drape: the real NAIP photo as the ground texture for the
+    // WHOLE course (bounds from geo.aerial), so the HD hole stops reading as a lone
+    // photographic tile on green felt — everything is the photo, the HD hole is just
+    // a sharper-relief region within it. Loaded async (auto-updates on first render
+    // after decode); white 1x1 coverage = valid everywhere. Preferred over _hdMacro.
+    if (geo.aerial && geo.aerial.bounds) {
+      const tex = new THREE.TextureLoader().load('/api/course-aerial');
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      if (!this._whiteTex) {
+        this._whiteTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+        this._whiteTex.needsUpdate = true;
+      }
+      this._macro = {
+        albedo: tex, coverage: this._whiteTex, surfaces: this._whiteTex, bounds: geo.aerial.bounds,
+        closeWeight: RENDER_CONFIG.courseAerialCloseWeight ?? 0.85, farWeight: RENDER_CONFIG.courseAerialFarWeight ?? 0.97,
+      };
+    } else {
+      this._macro = null;
     }
     const group = new THREE.Group();
 
@@ -270,6 +295,8 @@ export class GolfScene {
     this._terrain = terrain; // referenced by the water-foam depth pre-pass
     this._addWater(geo, group);
     this._addTrees(geo, group);
+    try { this._addBuildings(geo, group); }
+    catch (e) { console.warn('[render] buildings skipped:', e && e.message); }
     this._addGrass(geo, group);
     this._addFlowers(geo, group);
     this._addFairwayGrass(geo, group);
@@ -355,7 +382,7 @@ export class GolfScene {
 
     const turfMat = makeTurfMaterial({
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
-      macro: this._hdMacro || null,
+      macro: this._macro || this._hdMacro || null,
     });
     if (this._hdPatch) {
       // Unified terrain: coarse mesh with the HD rect cut out + the HD mesh filling it,
@@ -533,10 +560,11 @@ export class GolfScene {
     const inWater = (x, y) => { for (const w of water) if (pointInPoly(x, y, w.poly)) return true; return false; };
     const rnd = mulberry32(424242);
     const spots = [];
-    const step = 30, rows = 2, rowGap = 24, inset = 40;
+    const step = 55, rows = 2, rowGap = 26, inset = 40;
     const place = (x, y) => {
       if (x < b.minX || x > b.maxX || y < b.minY || y > b.maxY || inWater(x, y)) return;
-      spots.push({ x, y, s: 1.3 + rnd() * 0.95 }); // taller + denser -> an enclosing forest wall
+      if (rnd() < 0.35) return; // random gaps -> a broken, sparse tree-line, not an enclosing wall
+      spots.push({ x, y, s: 0.8 + rnd() * 1.5 }); // wide scale variation -> not a uniform cardboard ring
     };
     for (let r = 0; r < rows; r++) {
       const d = inset + r * rowGap;
@@ -569,6 +597,48 @@ export class GolfScene {
     if (RENDER_CONFIG.pineStraw) {
       buildPineStraw(coreSpots, (x, y) => this.hAt(x, y), V).meshes.forEach((m) => group.add(m));
     }
+  }
+
+  // Extrude OSM building footprints into simple 3D massing — walls + a flat
+  // colored roof (ExtrudeGeometry yields two material groups: 0 = caps/roof,
+  // 1 = side walls). Buildings are the VERTICAL structure that makes a course
+  // read as a real place instead of a textured surface; the clubhouse gets a
+  // hero material. Each is seated at the lowest ground under its footprint
+  // (sunk 0.6 m) so walls meet a slope without floating. Scenery only
+  // (geo.buildings is non-fingerprinted), so a bad footprint must never break
+  // the load — guarded per building.
+  _addBuildings(geo, group) {
+    const list = geo.buildings || [];
+    if (!list.length || RENDER_CONFIG.buildings === false) return;
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xc8bda6, roughness: 0.92, metalness: 0 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x70604e, roughness: 0.85, metalness: 0 });
+    const heroWall = new THREE.MeshStandardMaterial({ color: 0xe9dec6, roughness: 0.82, metalness: 0 });
+    const heroRoof = new THREE.MeshStandardMaterial({ color: 0x8c3a2c, roughness: 0.7, metalness: 0 }); // terracotta
+    // ExtrudeGeometry wants a CCW (positive-area) contour for the cap to face up.
+    const ccw = (p) => { let a = 0; for (let i = 0; i < p.length; i += 1) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return a >= 0 ? p : p.slice().reverse(); };
+    let drawn = 0;
+    for (const bld of list) {
+      const poly0 = bld.poly;
+      if (!poly0 || poly0.length < 3) continue;
+      let minH = Infinity, bad = false;
+      for (const [x, y] of poly0) { const h = this.hAt(x, y); if (!Number.isFinite(h)) { bad = true; break; } if (h < minH) minH = h; }
+      if (bad || !Number.isFinite(minH)) continue;
+      const poly = ccw(poly0);
+      const shape = new THREE.Shape();
+      poly.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+      let g;
+      try { g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(2.5, bld.heightM || 5), bevelEnabled: false, steps: 1 }); }
+      catch (e) { continue; }
+      g.rotateX(-Math.PI / 2);      // extrude +Z -> world +Y (up); footprint (x,y) -> (x, h, -y)
+      g.translate(0, minH - 0.6, 0); // sink 0.6 m so walls meet the slope, no float
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, bld.clubhouse ? [heroRoof, heroWall] : [roofMat, wallMat]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      drawn += 1;
+    }
+    if (drawn) console.log(`[render] buildings: ${drawn}/${list.length}`);
   }
 
   // Clumped scatter across rough polygons. Real fescue grows in dense patches
@@ -985,6 +1055,54 @@ export class GolfScene {
     this.lookT.copy(V(bx + dx * lookAhead * 0.45, by + dy * lookAhead * 0.45, bz + 2));
   }
 
+  // ---- free-roam "course creator" camera ----
+  // Toggle: seed a ground pivot at the current look point, facing the pin, then fly.
+  enterFreeCam(on) {
+    if (on && this.camMode !== 'free') {
+      if (this.anim) return false; // don't grab the camera mid shot-replay
+      this.free.tx = this.lookCur.x;
+      this.free.ty = -this.lookCur.z;          // three -> sim north
+      this.free.hOff = 0;
+      this.free.h = this.hAt(this.free.tx, this.free.ty) + 2;
+      this.free.yaw = Math.atan2(this.pinSim.x - this.free.tx, this.pinSim.y - this.free.ty) * 180 / Math.PI;
+      this.free.pitch = -28; this.free.dist = 45;
+      this.camMode = 'free';
+    } else if (!on && this.camMode === 'free') {
+      this.camMode = 'idle';
+      this.freeKeys = {};
+    }
+    if (this._freeCamCb) this._freeCamCb(this.camMode === 'free');
+    return this.camMode === 'free';
+  }
+
+  setFreeCamCallback(cb) { this._freeCamCb = cb; }
+
+  // held WASD/arrows pan the ground pivot (speed scales with zoom); Q/E nudge look height.
+  _freeStep(dt) {
+    const f = this.free, k = this.freeKeys;
+    const yaw = f.yaw * Math.PI / 180, fx = Math.sin(yaw), fy = Math.cos(yaw);
+    const rx = Math.cos(yaw), ry = -Math.sin(yaw);
+    const sp = Math.max(10, f.dist * 0.8) * dt;
+    let mx = 0, my = 0;
+    if (k.w || k.arrowup) { mx += fx; my += fy; }
+    if (k.s || k.arrowdown) { mx -= fx; my -= fy; }
+    if (k.d || k.arrowright) { mx += rx; my += ry; }
+    if (k.a || k.arrowleft) { mx -= rx; my -= ry; }
+    if (mx || my) { f.tx += mx * sp; f.ty += my * sp; }
+    if (k.e) f.hOff += 14 * dt;
+    if (k.q) f.hOff = Math.max(-3, f.hOff - 14 * dt);
+    f.h = this.hAt(f.tx, f.ty) + 2 + f.hOff;
+  }
+
+  _freeTargets() {
+    const f = this.free;
+    const yaw = f.yaw * Math.PI / 180, pitch = f.pitch * Math.PI / 180;
+    const horiz = Math.cos(pitch) * f.dist, up = -Math.sin(pitch) * f.dist;
+    const fx = Math.sin(yaw), fy = Math.cos(yaw); // forward (toward the look point)
+    this.camPosT.copy(V(f.tx - fx * horiz, f.ty - fy * horiz, f.h + up));
+    this.lookT.copy(V(f.tx, f.ty, f.h));
+  }
+
   _frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
 
@@ -993,6 +1111,7 @@ export class GolfScene {
     // 'idle' tracks the ball at address; 'static' (shot tracer) holds the
     // frozen camera that playShot parked behind the ball.
     if (this.camMode === 'idle') this._idleTargets();
+    else if (this.camMode === 'free') { this._freeStep(dt); this._freeTargets(); }
 
     const k = 1 - Math.exp(-4.2 * dt);
     this.camera.position.lerp(this.camPosT, k);
@@ -1025,14 +1144,34 @@ export class GolfScene {
     el.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; });
     window.addEventListener('pointerup', () => { dragging = false; });
     window.addEventListener('pointermove', (e) => {
-      if (!dragging || this.camMode !== 'idle') return;
-      this.orbit.yaw += (e.clientX - lx) * 0.25;
-      this.orbit.height = THREE.MathUtils.clamp(this.orbit.height + (e.clientY - ly) * 0.03, 1.6, 26);
+      if (!dragging) return;
+      const dx = e.clientX - lx, dy = e.clientY - ly;
       lx = e.clientX; ly = e.clientY;
+      if (this.camMode === 'idle') {
+        this.orbit.yaw += dx * 0.25;
+        this.orbit.height = THREE.MathUtils.clamp(this.orbit.height + dy * 0.03, 1.6, 26);
+      } else if (this.camMode === 'free') {
+        this.free.yaw += dx * 0.3;
+        this.free.pitch = THREE.MathUtils.clamp(this.free.pitch - dy * 0.3, -88, -4);
+      }
     });
     el.addEventListener('wheel', (e) => {
-      if (this.camMode !== 'idle') return;
-      this.orbit.dist = THREE.MathUtils.clamp(this.orbit.dist * (e.deltaY > 0 ? 1.12 : 0.89), 5, 60);
+      if (this.camMode === 'idle') {
+        this.orbit.dist = THREE.MathUtils.clamp(this.orbit.dist * (e.deltaY > 0 ? 1.12 : 0.89), 5, 60);
+      } else if (this.camMode === 'free') {
+        this.free.dist = THREE.MathUtils.clamp(this.free.dist * (e.deltaY > 0 ? 1.1 : 0.9), 4, 600);
+      }
     }, { passive: true });
+    // 'c' toggles the free course-creator camera; WASD/arrows + Q/E drive it while active.
+    window.addEventListener('keydown', (e) => {
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'c') { this.enterFreeCam(this.camMode !== 'free'); e.preventDefault(); return; }
+      if (this.camMode !== 'free') return;
+      if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e' || key.startsWith('arrow')) {
+        this.freeKeys[key] = true; e.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (e) => { this.freeKeys[e.key.toLowerCase()] = false; });
   }
 }
