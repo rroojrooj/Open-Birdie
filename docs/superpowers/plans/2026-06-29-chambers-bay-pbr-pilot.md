@@ -12,6 +12,18 @@
 
 ---
 
+## Review revisions (from /plan-eng-review, 2026-06-29) — these supersede the tasks below where they conflict
+
+- **D1 — PBR stays in one plan.** No phasing; build PBR (Tasks 8-10) then the Task 11 clay gate, which still blocks scaling to 8/10 and allows the per-surface photo-first fallback.
+- **D2 — Commit the reconstructed sidecar to git as a curated fixture.** Add `data/curated/chambers-bay.surfaces.json` (committed, NOT gitignored). Extend `loadSurfaceOverride` (lib/course.js): if the data-dir `<slug>.surfaces.json` is absent, fall back to `data/curated/<slug>.surfaces.json`. The data-dir file (if present) still wins, so local edits override the committed baseline. Add a test for the fallback. Tasks 7 & 12 write the reconstruction here (not just provenance notes), so a fresh checkout renders the holes.
+- **D3 — Test the full data-correctness path** (not just the forward transform):
+  - `aerial-xform.mjs` also exports the **inverse** `localToFullPx` / `localToCropPx`; add a **round-trip** test `px → local → px` (catches the y-axis flip the overlay currently catches only by eye).
+  - Extract the sidecar **merge** out of the CLI into a pure `mergeTrace(sidecar, traceLocal)` (new `tools/trace/merge.mjs`); unit-test append-surfaces / set-pin / set-boundary / idempotent re-merge.
+  - The **physics asserts** (`surfaceAt(pin)==='green'`, tee→pin ≈ yardage) become **committed tests** (`test/chambers-pilot-physics.test.js`) run against the committed curated fixture, reusing the `test/course-override.test.js` pattern. Not a REPL step.
+- **Step-0 YAGNI — `simplify.mjs` is now OPTIONAL.** The trace prompt caps rings at ≤40 points, so Task 5 (Douglas-Peucker) is conditional: build it only if the Task 7 overlay-verify shows jagged rings. Otherwise replace with a point-count guard in the schema validator (Task 4).
+
+---
+
 ## §12 decisions (resolved here, per the spec handoff)
 
 1. **Trace-agent output schema** — one JSON object per hole (Task 4). Each surface is a **single closed ring**; multi-part features (e.g. two bunkers) are **separate entries** of the same `kind`; **nested** features (a bunker inside the fairway) are just both emitted — `makeSurfaceLookup`'s priority (`water>bunker>green>tee>fairway`) resolves overlap, so **no hole-punching**. Pixel origin = **crop top-left, +x right, +y down**.
@@ -453,3 +465,59 @@ Each factory matches the `_addSurfacePatches` contract `makeMat(bounds, aniso) �
 - **Flat-hole bunkers** (8 & 10, no lidar hollow) — expected finding, micro-depression is the likely follow-up.
 - **Aerial y-orientation** — the overlay-verify (Task 7.3) is the catch; flip in one place if mirrored.
 - **Trace edge precision** — eyeballed; overlay + reference cross-check + `confidence` provenance are the controls.
+
+## NOT in scope (deferred, with rationale)
+
+- **Phasing PBR into a separate PR** — considered (D1); user kept one plan. Task 11 gate is the guard.
+- **All 18 holes** — pilot proves 3 first; scale via the hybrid algorithmic proposer afterward.
+- **Terrain sculpting (level 2)** — bunker micro-depressions on coarse holes 8/10 are an expected *finding*, deferred to a follow-up unless trivial.
+- **Hybrid algorithmic proposer** — only built if the pilot succeeds and we scale.
+- **Auto-fetch of aerial/buildings, two-layer aerial, 3D props (trees/flagstick/rakes)** — separate tracks.
+- **`simplify.mjs`** — optional (D3/Step-0); build only if overlay-verify shows jagged rings.
+
+## What already exists (reused, not rebuilt)
+
+- Override sidecar + `applySurfaceOverride`/`loadSurfaceOverride` (`lib/course.js`) — physics + render seam.
+- `makeSurfaceLookup` (priority water>bunker>green>tee>fairway, course-wide OB `boundary`).
+- Surface-patch draping (`drape.js` `densifyRing`/`drapeRing`, `scene.js _addSurfacePatches`), `buildRakes`.
+- Course-wide aerial (`/api/course-aerial`, `course.aerial{file,bounds}`) — local-metre bounds (px↔local is linear).
+- Animated water (`water.js buildWater`). The vision/segmentation spikes (`tools/spike-*.mjs`) as references.
+
+## Failure modes (per new codepath)
+
+| Codepath | Realistic failure | Test? | Error handling? | Visible? |
+|---|---|---|---|---|
+| px↔local transform | y-axis flip → all features mirrored | YES (D3 round-trip) | n/a | overlay + test |
+| sidecar merge | off-by-one / dup append → wrong/overlapping surfaces | YES (D3 merge test) | malformed entries already ignored | test + overlay |
+| vision trace | mislabel waste-area as fairway | NO (human control) | schema-validate drops bad shapes | overlay + coursepreview |
+| loader fallback (D2) | curated fixture missing/corrupt | YES (D2 test) | `loadSurfaceOverride` try/catch returns null | log line |
+| PBR materials | clay / specular blowout | NO (screenshot gate) | try/catch keeps load working | Task 11 gate |
+
+No critical gaps (no failure that is silent AND untested AND unhandled — D3 closed the transform/merge silent-corruption risk).
+
+## Parallelization strategy
+
+| Workstream | Modules | Depends on |
+|---|---|---|
+| Pure helpers (xform, schema, merge, simplify?) | `tools/trace/` | Task 0 |
+| Boundary + loader fallback | `lib/course.js`, `test/` | Task 0 |
+| PBR materials + assets | `public/render/`, assets | Task 0 |
+| Trace execution (holes 8/9/10) | data + `tools/trace-features.mjs` | helpers done |
+
+- **Lane A:** pure helpers → trace CLI → trace execution (sequential, shared `tools/trace/`).
+- **Lane B:** boundary + loader fallback (independent, `lib/course.js`).
+- **Lane C:** PBR materials + assets (independent, `public/render/`).
+- Launch A, B, C in parallel worktrees; merge; then run trace execution + the Task 11 gate. The 3 per-hole traces (Task 12) run in parallel.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 3 decisions resolved, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **UNRESOLVED:** 0
+- **VERDICT:** ENG CLEARED — ready to implement (decisions D1-D3 folded into the plan above).
