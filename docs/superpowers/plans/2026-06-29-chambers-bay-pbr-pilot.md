@@ -21,6 +21,25 @@
 
 ---
 
+## Progress (as of 2026-06-29)
+
+**Done — the deterministic foundation (8/12 tasks, 236 tests green):**
+- [x] Task 0 — converged onto plan4 (clean merge, 202 baseline green)
+- [x] Task 2 — per-hole boundary (`applySurfaceOverride` → `holes[].boundary`)
+- [x] Task 3 — px↔local transform + inverse + round-trip test
+- [x] Task 4 — trace schema validator (≤40-pt precision cap)
+- [x] Task 5 — NDVI + texture segment (lifted from `spike-segment`)
+- [x] Task 6 — mask → ring vectorizer (components + Moore trace + DP)
+- [x] Task 7 — pure idempotent `mergeTrace`
+- [x] Task 8 — curated-fixture fallback in `loadSurfaceOverride`
+
+**Remaining — the live reconstruction (needs the runtime + external data):**
+- [ ] Task 1 — LOCATE 8/9/10 (live server + `BIRDIE_DATA_DIR` + vision + coursepreview.golf)
+- [ ] Task 9 — `trace-features.mjs` CLI glue (COG fetch via `naip.mjs`/`cog-source.mjs`, needs network)
+- [ ] Task 10 — reconstruct 8/9/10 (segment → vectorize → vision-label → merge → overlay-verify, iterate)
+- [ ] Task 11 — committed physics tests against the reconstructed fixture
+- [ ] Task 12 — docs (HANDOFF / TODO / sidecar)
+
 ## File structure (created / modified)
 
 | File | Responsibility |
