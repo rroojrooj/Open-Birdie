@@ -183,3 +183,22 @@ fresh worktree on plan4). This spec + the resulting plan travel with that conver
 Hole **9** first (HD anchor): locate via coursepreview, trace green + greenside bunkers + fairway +
 pin, override, build the PBR materials, pass the clay gate. If it reads PGA-real, do 8 & 10, then
 decide on scaling to 18 via the hybrid pipeline.
+
+## 12. Decisions the plan must resolve first (from spec review)
+
+Intentionally left to the plan, not the spec — listed here so the spec→plan handoff is clean:
+
+1. **Trace-agent output schema (§4c).** Pin the exact JSON each parallel trace subagent returns
+   *before* dispatch: ring winding + closure convention, single-ring vs multi-polygon per surface,
+   how nested rings are expressed (e.g. a bunker inside the fairway), and the pixel-coordinate
+   origin. Three agents returning subtly different shapes is the classic fan-out failure — define it
+   once, up front.
+2. **Boundary storage (§5).** Decide whether the per-hole boundary lives *in* the override sidecar
+   (extend its documented contract with a `boundary` field) or alongside it; update
+   `docs/surface-override-sidecar.md` if the sidecar.
+3. **Contiguity gate (§6).** Plan step 1 = confirm 8-9-10 are physically adjacent from the live
+   `/api/course-geometry` routing; the result can change the pilot set, so treat it as a gating
+   sub-task, not an assumption.
+4. **Convergence mechanic (§10).** Choose merge-plan4-into-branch vs re-anchor-fresh-worktree
+   consciously — they differ in blast radius for the HD-bundle fingerprint coupling. Decide before
+   building.
