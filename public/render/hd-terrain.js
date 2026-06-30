@@ -43,22 +43,36 @@ function gridGeometry(grid, skip, uvBounds) {
   return geom;
 }
 
-export function buildHdTerrain({ grid, material, uvBounds }) {
-  const mesh = new THREE.Mesh(gridGeometry(grid, null, uvBounds), material);
+// True when grid cell (i,j)'s WHOLE footprint lies inside any of `rects`. HD rects
+// are snapped to coarse cell lines, so a cell is fully in or fully out — no partial
+// cells. Shared by the coarse cutout (drop cells under any HD patch) and the HD
+// skip-overlap clip (drop cells already covered by an earlier patch).
+export function cellInAnyRect(grid, i, j, rects) {
+  if (!rects || !rects.length) return false;
+  const { minX, minY, cellM } = grid;
+  const eps = cellM * 1e-6;
+  const x0 = minX + i * cellM; const x1 = minX + (i + 1) * cellM;
+  const y0 = minY + j * cellM; const y1 = minY + (j + 1) * cellM;
+  for (const r of rects) {
+    if (x0 >= r.minX - eps && x1 <= r.maxX + eps && y0 >= r.minY - eps && y1 <= r.maxY + eps) return true;
+  }
+  return false;
+}
+
+// One HD patch mesh. `skipBounds` (rects of EARLIER patches) drops cells already
+// covered upstream, so overlapping padded hole rects don't double-cover / z-fight;
+// the kept patch matches the sampler's first-match order (visuals == physics).
+export function buildHdTerrain({ grid, material, uvBounds, skipBounds }) {
+  const skip = (skipBounds && skipBounds.length) ? (i, j) => cellInAnyRect(grid, i, j, skipBounds) : null;
+  const mesh = new THREE.Mesh(gridGeometry(grid, skip, uvBounds), material);
   mesh.receiveShadow = true;
   return mesh;
 }
 
-export function buildCoarseTerrain({ grid, cutout, material }) {
-  const { minX, minY, cellM } = grid;
-  const eps = cellM * 1e-6;
-  // Remove a coarse cell only if its WHOLE footprint lies inside the HD rect.
-  // (The HD rect is snapped to cell lines, so cells are fully in or fully out.)
-  const inCutout = cutout ? (i, j) => {
-    const x0 = minX + i * cellM; const x1 = minX + (i + 1) * cellM;
-    const y0 = minY + j * cellM; const y1 = minY + (j + 1) * cellM;
-    return x0 >= cutout.minX - eps && x1 <= cutout.maxX + eps && y0 >= cutout.minY - eps && y1 <= cutout.maxY + eps;
-  } : null;
+export function buildCoarseTerrain({ grid, cutouts, material }) {
+  // Remove a coarse cell if its whole footprint lies inside ANY HD patch rect, so
+  // the HD meshes fill the union of cutouts with zero positive-area overlap.
+  const inCutout = (cutouts && cutouts.length) ? (i, j) => cellInAnyRect(grid, i, j, cutouts) : null;
   const mesh = new THREE.Mesh(gridGeometry(grid, inCutout), material);
   mesh.receiveShadow = true;
   return mesh;

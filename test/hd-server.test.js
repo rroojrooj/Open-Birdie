@@ -5,7 +5,7 @@ const http = require('node:http');
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
-const { serveHdAsset, publicHdMetadata, ASSET_KEYS } = require('../lib/hd-http');
+const { serveHdAsset, publicHdMetadata, pickDescriptor, ASSET_KEYS } = require('../lib/hd-http');
 
 function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hd-srv-'));
@@ -96,4 +96,45 @@ test('publicHdMetadata exposes only sanitized fields (no paths)', () => {
   const meta = publicHdMetadata(descriptor);
   assert.deepEqual(meta.assetKeys, ASSET_KEYS);
   assert.ok(!JSON.stringify(meta).includes('assetPaths'));
+});
+
+// --- multi-patch: route an asset request to one of N active bundles ---
+
+test('pickDescriptor selects the matching bundle among many (else null)', () => {
+  const a = { bundleId: 'a'.repeat(64) };
+  const b = { bundleId: 'b'.repeat(64) };
+  assert.equal(pickDescriptor([a, b], 'b'.repeat(64)), b);
+  assert.equal(pickDescriptor([a, b], 'a'.repeat(64)), a);
+  assert.equal(pickDescriptor([a, b], 'z'.repeat(64)), null);
+  assert.equal(pickDescriptor([], 'a'.repeat(64)), null);
+  assert.equal(pickDescriptor(undefined, 'a'.repeat(64)), null);
+});
+
+test('multi-bundle routing serves each bundle by id and 404s unknown ids', async () => {
+  const mk = (id, bytes) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hd-srv-'));
+    const p = path.join(dir, 'terrain.f32');
+    fs.writeFileSync(p, bytes);
+    return { bundleId: id, metadata: { bundleId: id, hole: 1, assetKeys: ASSET_KEYS.slice() }, assetPaths: { terrain: p } };
+  };
+  const active = [mk('8'.repeat(64), Buffer.from([1, 1, 1, 1])), mk('9'.repeat(64), Buffer.from([2, 2, 2, 2, 2, 2]))];
+  const server = http.createServer((req, res) => {
+    const m = /^\/api\/hd-assets\/([^/]+)\/([^/]+)$/.exec(req.url);
+    const d = m && pickDescriptor(active, m[1]);
+    if (!d) { res.writeHead(404); res.end(); return; }
+    serveHdAsset(req, res, d, m[2]);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const r8 = await fetch(`${base}/api/hd-assets/${'8'.repeat(64)}/terrain`);
+    assert.equal(r8.status, 200);
+    assert.equal((await r8.arrayBuffer()).byteLength, 4);
+    const r9 = await fetch(`${base}/api/hd-assets/${'9'.repeat(64)}/terrain`);
+    assert.equal(r9.status, 200);
+    assert.equal((await r9.arrayBuffer()).byteLength, 6);
+    assert.equal((await fetch(`${base}/api/hd-assets/${'c'.repeat(64)}/terrain`)).status, 404);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
 });

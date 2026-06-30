@@ -5,6 +5,20 @@ All notable changes to Open-Birdie are documented here.
 ## [Unreleased]
 
 ### Added
+- **Real 3D terrain on every pixel (course-wide 1 m lidar)** — the base terrain now fetches USGS
+  3DEP 1 m lidar across the WHOLE course (tiled + mosaicked, with a per-node fall back to the coarse
+  ~9.5 m grid over water / outside the US), so every hole, fairway, and rough renders as genuinely
+  sculpted landform — mounds, bunker pits, green contours — not an aerial draped on a smooth sheet.
+  Chambers Bay goes from a 217×363 @ 5 m grid to 1081×1816 @ 1 m (~2 M nodes). Physics samples the
+  finer relief too. (`lib/elevation.js` `fetch3depBase`/`planLidarTiles`; `CACHE_VERSION` 4.)
+- **Multi-patch HD rendering** — the runtime renders every built hole's 1 m HD bundle at once
+  (`resolveHdBundles` scans the bundles dir; server `activeHd` is an array; `/api/course-geometry`
+  `hd` + the readiness handshake are plural; the client builds one HD mesh per patch with
+  overlap-clipping). Previously only `active.json`'s single hole rendered.
+- **Sharper course aerial (0.6 m → 0.3 m, USGS NAIPPlus)** — the course-wide ground photo now comes
+  from High-Resolution Orthoimagery (~0.3 m over urban areas), tiled past the export-size cap and
+  mosaicked, so greens / sand / bunkers / cart paths read distinctly; the turf shader leans more on
+  the real photo (course-aerial weight 0.90 close / 0.99 far). (`tools/add-course-aerial.mjs`, `scene.js`.)
 - **HD hole compiler — foundation (Plan 1)** — the offline contract layer for compiling real
   public geodata (USGS 3DEP elevation + USDA NAIP imagery + cached OSM) into versioned, immutable
   hole bundles the runtime loads with no network. This phase is scaffolding only — no data is
