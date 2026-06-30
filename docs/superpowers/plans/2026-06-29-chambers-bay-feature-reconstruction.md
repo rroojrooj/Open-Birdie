@@ -1,5 +1,12 @@
 # Plan: Chambers Bay per-hole feature reconstruction (course-creator)
 
+> ⚠️ **SUPERSEDED (2026-06-30).** This plan's core premise — "OpenStreetMap mis-PLACES whole holes at
+> Chambers Bay" — is **FALSE**. Verified data-driven on the live course: 18/18 pins return
+> `surfaceAt(pin)==='green'`, and tee→pin distances + elevations match the real course. The "satellite image
+> painted on a smooth surface" complaint was **low-res base terrain (SRTM ~9.5 m)**, not surface placement.
+> The fix that shipped instead is **multi-patch 1 m 3DEP lidar on every built hole** — see
+> [`2026-06-30-multipatch-hd-terrain.md`](2026-06-30-multipatch-hd-terrain.md). Do **not** execute this plan.
+
 **Branch:** claude/hd-discovery-plan4 (the realism trunk)
 **Date:** 2026-06-29
 **Status:** PLANNED — next focused build. Continues the realism arc after the course-wide aerial drape landed.

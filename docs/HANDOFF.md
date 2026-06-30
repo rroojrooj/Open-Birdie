@@ -4,6 +4,15 @@
 **Read with:** [`docs/TODO.md`](TODO.md) (live backlog), the `~/.claude` memory files (machine-local),
 and the plan summarized in §7 below. This file is the single source of truth for resuming.
 
+> **UPDATE 2026-06-30 — multi-patch HD terrain SHIPPED.** The runtime now renders **every built hole's 1 m
+> lidar bundle at once** (was one at a time). `resolveHdBundles` scans the `bundles/` dir; `server.js`
+> `activeHd` is an array; `/api/course-geometry` `hd` is an array; the client builds one HD mesh per patch.
+> Branch `claude/hd-multipatch-terrain` (off `claude/musing-ritchie-ebb288`), 249 tests green. Only holes 8 & 9
+> have bundles so far — batch-build the rest (see TODO + plan
+> [`2026-06-30-multipatch-hd-terrain.md`](superpowers/plans/2026-06-30-multipatch-hd-terrain.md)). The old
+> per-hole "feature reconstruction" / "PBR pilot" plans are superseded (OSM placement was verified correct;
+> the smooth look was low-res base terrain, now fixed by 1 m lidar everywhere).
+
 ---
 
 ## 0. Resume in 2 minutes
