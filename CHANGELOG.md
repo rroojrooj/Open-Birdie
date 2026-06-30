@@ -5,6 +5,11 @@ All notable changes to Open-Birdie are documented here.
 ## [Unreleased]
 
 ### Added
+- **Volumetric trees + pitched building roofs (Phase 2 — above-ground objects)** — trees now render a
+  solid low-poly canopy core (cone for conifers, jittered blob for broadleaf) behind the foliage cards,
+  so they read as real 3D volume from the overhead/orbit camera instead of thin cards; buildings get
+  pitched hip roofs (each footprint fans up to a peak) instead of flat caps. The remaining gap that
+  1 m lidar can't fill — objects above the ground. (`public/render/tree-cards.js`, `scene.js _addBuildings`.)
 - **Real 3D terrain on every pixel (course-wide 1 m lidar)** — the base terrain now fetches USGS
   3DEP 1 m lidar across the WHOLE course (tiled + mosaicked, with a per-node fall back to the coarse
   ~9.5 m grid over water / outside the US), so every hole, fairway, and rough renders as genuinely
