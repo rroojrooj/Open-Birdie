@@ -1,5 +1,12 @@
 # Chambers Bay Surface Reconstruction — Phase A (physics-first) Implementation Plan
 
+> ⚠️ **RE-SCOPED (2026-06-30).** The driving premise "OSM mis-places holes here" is **false** (placement
+> verified correct — 18/18 pins on greens). The **deterministic foundation already built** (Tasks 0, 2–8:
+> `tools/trace/*`, the per-hole boundary override, the curated-fixture fallback, 236 tests) **stays** as
+> harmless infra. The remaining **live-reconstruction tasks (1, 9–12) are RETIRED** — they chase the false
+> premise. The real "real 3D everywhere" complaint was **low-res base terrain**, fixed by multi-patch 1 m
+> lidar — see [`2026-06-30-multipatch-hd-terrain.md`](2026-06-30-multipatch-hd-terrain.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reconstruct correct playing-surface polygons (green / bunker / fairway + per-hole boundary) for 3 Chambers Bay holes (8, 9, 10) from registered imagery, written to the override sidecar so **physics is correct** (the ball reacts to sand/green/rough). No new rendering — surfaces use the existing render path. Authored-PBR rendering is **Phase B** (separate plan).

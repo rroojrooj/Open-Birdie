@@ -28,7 +28,7 @@ test('buildHdTerrain: nx*ny verts, (nx-1)(ny-1)*2 triangles, north-up', () => {
 
 test('buildCoarseTerrain removes whole cells inside the HD rect — no positive-area overlap', () => {
   const cutout = { minX: 10, minY: 10, maxX: 30, maxY: 30 }; // aligned to 5 m cell lines
-  const m = buildCoarseTerrain({ grid: base, cutout, material: new THREE.MeshStandardMaterial() });
+  const m = buildCoarseTerrain({ grid: base, cutouts: [cutout], material: new THREE.MeshStandardMaterial() });
   const pos = m.geometry.getAttribute('position').array;
   const idx = m.geometry.getIndex().array;
   for (let t = 0; t < idx.length; t += 3) {
@@ -43,7 +43,7 @@ test('buildCoarseTerrain removes whole cells inside the HD rect — no positive-
 
 test('coarse cutout boundary vertices sit exactly on the snapped HD edge', () => {
   const cutout = { minX: 10, minY: 10, maxX: 30, maxY: 30 };
-  const m = buildCoarseTerrain({ grid: base, cutout, material: null });
+  const m = buildCoarseTerrain({ grid: base, cutouts: [cutout], material: null });
   const pos = m.geometry.getAttribute('position').array;
   const k = 2 * 11 + 2; // (i=2,j=2) -> world (10, h, -10)
   assert.equal(pos[k * 3], 10);

@@ -65,30 +65,31 @@ function applyState(s) {
 async function loadGeometry() {
   const geo = await (await fetch('/api/course-geometry')).json();
   if (!geo || !geo.name) return;
-  let hdAssets = null;
-  let mode = 'procedural';
-  if (geo.hd) {
-    try {
-      hdAssets = await loadHdBundle(geo.hd, {
+  // geo.hd is an ARRAY of bundle metadata (one per built hole) or null. Load each;
+  // a single failed bundle just drops that one hole's HD relief, not the rest.
+  const metas = Array.isArray(geo.hd) ? geo.hd : (geo.hd ? [geo.hd] : []);
+  let hdAssets = [];
+  if (metas.length) {
+    const loaded = await Promise.all(metas.map((meta) =>
+      loadHdBundle(meta, {
         imageDecoder: (bytes, opts) => createImageBitmap(new Blob([bytes]), opts),
         expectedRevision: geo.courseRevision,
-      });
-      mode = 'hd';
-    } catch (e) {
-      console.warn('[hd] bundle load failed — procedural fallback:', e && e.message);
-      hdAssets = null;
-    }
+      }).catch((e) => { console.warn('[hd] bundle load failed — skipping hole', meta && meta.hole, e && e.message); return null; })));
+    hdAssets = loaded.filter(Boolean);
   }
+  const mode = hdAssets.length ? 'hd' : 'procedural';
   scene.loadCourse(geo, { hdAssets });
   lastHoleKey = '';
   if (state) applyState(state);
   // Acknowledge readiness so the server activates the matching physics. HD courses are
-  // held at runtimeReady:false until this; plain courses are already ready.
-  if (geo.hd) {
+  // held at runtimeReady:false until this; plain courses are already ready. The ack
+  // names the FULL advertised bundle set (the server requires the exact active set);
+  // physics is server-side, so it stays HD even if a client texture decode failed.
+  if (metas.length) {
     try {
       await fetch('/api/course-runtime-ready', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courseRevision: geo.courseRevision, bundleId: geo.hd.bundleId, mode, primaryNonce }),
+        body: JSON.stringify({ courseRevision: geo.courseRevision, bundleIds: metas.map((m) => m.bundleId), mode, primaryNonce }),
       });
     } catch (e) { /* LAN mirror / transient — the server's readiness timeout covers it */ }
   }

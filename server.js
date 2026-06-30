@@ -10,8 +10,8 @@ const path = require('path');
 const { OpenConnectServer } = require('./lib/openconnect');
 const { searchCourses, loadCourse, listCached, loadCached, applySurfaceOverride, loadSurfaceOverride } = require('./lib/course');
 const { Game, CLUB_FULL } = require('./lib/game');
-const { resolveHdBundle } = require('./lib/hd-bundle');
-const { serveHdAsset, publicHdMetadata } = require('./lib/hd-http');
+const { resolveHdBundles } = require('./lib/hd-bundle');
+const { serveHdAsset, publicHdMetadata, pickDescriptor } = require('./lib/hd-http');
 const { makeNonce, verifyReadinessAck } = require('./lib/hd-readiness');
 
 const HTTP_PORT = +(process.env.BIRDIE_PORT || 8222);
@@ -30,8 +30,9 @@ const DATA_DIR = process.env.BIRDIE_DATA_DIR || path.join(__dirname, 'data');
 const game = new Game();
 const sseClients = new Set();
 // HD bundle runtime state, kept OUTSIDE the serializable course object so absolute
-// paths + Float32 heights never leak through course JSON.
-let activeHd = null;     // resolved descriptor (server-only paths) or null
+// paths + Float32 heights never leak through course JSON. An ARRAY — one descriptor
+// per built hole — so the whole course renders real 1 m relief, not just one hole.
+let activeHd = [];       // resolved descriptors (server-only paths); [] when none
 let courseRevision = 0;  // bumped on each course activation
 // Per-process secret handed only to the loopback Electron primary client; an HD
 // revision activates only on a nonce-matched ack from it.
@@ -41,9 +42,9 @@ let readyTimer = null;
 const isLoopbackAddr = (a) => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 
 function activateCourse(course) {
-  const r = resolveHdBundle(course, { dataDir: DATA_DIR });
-  activeHd = r.status === 'valid' ? r.descriptor : null;
-  if (r.status === 'rejected') console.warn(`[hd] bundle rejected: ${r.code}`);
+  const r = resolveHdBundles(course, { dataDir: DATA_DIR });
+  activeHd = r.status === 'valid' ? r.descriptors : [];
+  if (activeHd.length) console.log(`[hd] ${activeHd.length} bundle(s) active: hole(s) ${activeHd.map((d) => d.hole).join(', ')}`);
   courseRevision += 1;
   // Per-course surface override (corrected greens/fairways/bunkers + relocated
   // pins): applied here, AFTER the HD fingerprint match above (bundle stays
@@ -53,9 +54,9 @@ function activateCourse(course) {
   if (override) { applySurfaceOverride(course, override); console.log(`[override] applied surface override for ${course.name}`); }
   // An HD candidate holds physics (ready:false) until the primary client acks a
   // coherent scene; a plain course is immediately playable.
-  game.setCourse(course, { ready: !activeHd });
+  game.setCourse(course, { ready: !activeHd.length });
   if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
-  if (activeHd) {
+  if (activeHd.length) {
     const rev = courseRevision;
     readyTimer = setTimeout(() => {
       if (!game.runtimeReady && courseRevision === rev) {
@@ -172,13 +173,13 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/course-runtime-ready') {
         const v = verifyReadinessAck(body, {
           currentRevision: courseRevision,
-          currentBundleId: activeHd ? activeHd.bundleId : null,
+          currentBundleIds: activeHd.map((d) => d.bundleId),
           serverNonce: PRIMARY_NONCE,
           isLoopback: isLoopbackAddr(req.socket.remoteAddress),
         });
         if (!v.ok) return json(res, { ok: false, code: v.code }, 403); // nonce never echoed
         if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
-        game.activateRuntimeTerrain(v.mode === 'hd' && activeHd ? [activeHd.grid] : []);
+        game.activateRuntimeTerrain(v.mode === 'hd' ? activeHd.map((d) => d.grid) : []);
         broadcast('state', game.state());
         return json(res, { ok: true, mode: v.mode });
       }
@@ -195,8 +196,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (p.startsWith('/api/hd-assets/') && (req.method === 'GET' || req.method === 'HEAD')) {
       const m = /^\/api\/hd-assets\/([^/]+)\/([^/]+)$/.exec(p);
-      if (!m || !activeHd || activeHd.bundleId !== m[1]) { res.writeHead(404); return res.end('not found'); }
-      return serveHdAsset(req, res, activeHd, m[2]);
+      const d = m && pickDescriptor(activeHd, m[1]);
+      if (!d) { res.writeHead(404); return res.end('not found'); }
+      return serveHdAsset(req, res, d, m[2]);
     }
     if (p === '/api/course-aerial' && (req.method === 'GET' || req.method === 'HEAD')) {
       const a = game.course && game.course.aerial;
@@ -241,8 +243,10 @@ function courseGeometry() {
   // Course-wide aerial: bounds only (the image is fetched from /api/course-aerial);
   // never leak the server file path. Drapes the whole course as the ground photo.
   const aerial = game.course.aerial ? { bounds: game.course.aerial.bounds } : null;
-  // hd is sanitized metadata only (no absolute paths, no Float32 heights).
-  return { name, surfaces, boundary, holes, trees, woods, buildings, aerial, elevation, hd: publicHdMetadata(activeHd), courseRevision };
+  // hd is an ARRAY of sanitized metadata (one per built hole; no absolute paths,
+  // no Float32 heights), or null when the course has no HD bundles.
+  const hd = activeHd.length ? activeHd.map(publicHdMetadata) : null;
+  return { name, surfaces, boundary, holes, trees, woods, buildings, aerial, elevation, hd, courseRevision };
 }
 
 function json(res, obj, code = 200) {

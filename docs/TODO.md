@@ -1,5 +1,24 @@
 # Open-Birdie — TODO
 
+## Multi-patch HD terrain — SHIPPED (2026-06-30), with a batch-build follow-up
+
+The runtime rendered only **one** 1 m lidar hole at a time (`active.json` → singular `activeHd`), so the rest
+of the course stayed smooth SRTM ("satellite image on a smooth surface"). Now it renders **every built hole's
+bundle at once**: `resolveHdBundles` scans `data/hd-courses/<slug>/bundles/` and returns one descriptor per
+hole; `server.js` `activeHd` is an array (readiness verifies the bundle-id **set**, `/api/hd-assets` routes by
+id via `pickDescriptor`, `/api/course-geometry` `hd` is an array); the client builds one HD mesh per patch,
+cutting every rect out of the coarse mesh and skipping overlap (`buildCoarseTerrain({cutouts})` +
+`buildHdTerrain({skipBounds})`). The sampler/physics were already array-native. Plan + full detail:
+[`docs/superpowers/plans/2026-06-30-multipatch-hd-terrain.md`](superpowers/plans/2026-06-30-multipatch-hd-terrain.md).
+Verified: 249 tests green, live `/api/course-geometry` returns 2 patches (holes 8+9), `.shots/multipatch-relief.png`.
+
+- **FOLLOW-UP — batch-build the rest at 1 m.** Only holes 8 & 9 have bundles. For each remaining hole N (do 10
+  first to finish the 8/9/10 trio, then 1–7, 11–18): copy `tools/hd-course/manifests/chambers-bay-hole-08.json`,
+  set `"hole": N` + `"discovered": {"state": "pending"}`, then `cli.mjs discover --write` then `cli.mjs build`.
+  Each build pulls ~285 MB NAIP + 3DEP (~30 s) and resets `active.json` (harmless now). Bundles ~350 KB each.
+- **Note:** `active.json` is now vestigial for rendering (still written per build for single-hole verify /
+  rollback). Between-hole/perimeter areas remain coarse SRTM (per-hole patches, by design).
+
 ## 3D buildings — SHIPPED (2026-06-27), with one follow-up
 
 Buildings were the missing **vertical** structure ("still looks like paint on a

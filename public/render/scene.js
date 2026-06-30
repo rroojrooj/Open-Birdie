@@ -232,8 +232,13 @@ export class GolfScene {
   loadCourse(geo, { hdAssets = null } = {}) {
     this._treeWind = this._grassWind = this._waterUpdate = this._waterMeshList = this._terrain = null; // drop stale per-course refs
     this._fairwayGrassMesh = this._fairwayGrassWind = this._fairwayGrassCenter = this._fgGeo = this._fgGroup = this._fairwayZoneColorFn = null;
-    // A previous HD bundle owns its textures — free them before swapping.
-    if (this._hdAssets && this._hdAssets !== hdAssets) { try { this._hdAssets.dispose?.(); } catch (e) { /* already gone */ } }
+    // HD bundles (one per built hole) each own their textures. hdAssets may be an
+    // array, a single legacy bundle, or null — normalize, then free any bundle from
+    // the previous course that isn't being kept.
+    const hdList = Array.isArray(hdAssets) ? hdAssets : (hdAssets ? [hdAssets] : []);
+    for (const a of (Array.isArray(this._hdAssets) ? this._hdAssets : [])) {
+      if (!hdList.includes(a)) { try { a.dispose?.(); } catch (e) { /* already gone */ } }
+    }
     if (this.courseGroup) {
       this.scene.remove(this.courseGroup);
       this.courseGroup.traverse((o) => {
@@ -252,23 +257,25 @@ export class GolfScene {
     this.elev = geo.elevation || null;
     // HD bundle: a high-res terrain patch + aerial macro within its rect. Sets up the
     // unified sampler (placement) + macro (turf shader) consumed below.
-    this._hdAssets = hdAssets;
-    if (hdAssets && this.elev) {
-      const t = hdAssets.terrain;
-      this._hdPatch = { minX: t.bounds.minX, minY: t.bounds.minY, cellM: t.cellM, nx: t.nx, ny: t.ny, heights: t.heights, edgeBlendM: 0 };
-      this._hdMacro = {
-        albedo: hdAssets.orthophoto, surfaces: hdAssets.surfaces, coverage: hdAssets.coverage, bounds: t.bounds,
+    this._hdAssets = hdList;
+    if (hdList.length && this.elev) {
+      this._hdPatches = hdList.map((a) => ({
+        minX: a.terrain.bounds.minX, minY: a.terrain.bounds.minY, cellM: a.terrain.cellM,
+        nx: a.terrain.nx, ny: a.terrain.ny, heights: a.terrain.heights, edgeBlendM: 0,
+      }));
+      this._hdMacros = hdList.map((a) => ({
+        albedo: a.orthophoto, surfaces: a.surfaces, coverage: a.coverage, bounds: a.terrain.bounds,
         closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.78, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.96,
-      };
-      this._hdSampler = makeTerrainSampler(this.elev, [this._hdPatch]);
+      }));
+      this._hdSampler = makeTerrainSampler(this.elev, this._hdPatches);
     } else {
-      this._hdPatch = this._hdMacro = this._hdSampler = null;
+      this._hdPatches = []; this._hdMacros = []; this._hdSampler = null;
     }
     // Course-wide aerial drape: the real NAIP photo as the ground texture for the
     // WHOLE course (bounds from geo.aerial), so the HD hole stops reading as a lone
     // photographic tile on green felt — everything is the photo, the HD hole is just
     // a sharper-relief region within it. Loaded async (auto-updates on first render
-    // after decode); white 1x1 coverage = valid everywhere. Preferred over _hdMacro.
+    // after decode); white 1x1 coverage = valid everywhere. Preferred over _hdMacros.
     if (geo.aerial && geo.aerial.bounds) {
       const tex = new THREE.TextureLoader().load('/api/course-aerial');
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -304,7 +311,7 @@ export class GolfScene {
     // the course load (the picker, physics, base render must still work). With an
     // HD bundle the high-res terrain + aerial already supply the greens, and
     // `terrain` is a Group (no single material), so skip the legacy patches.
-    if (!this._hdPatch) {
+    if (!this._hdPatches.length) {
       try { this._addGreenPatches(group, terrain); }
       catch (e) { console.warn('[render] green patches skipped:', e && e.message); }
     }
@@ -382,17 +389,21 @@ export class GolfScene {
 
     const turfMat = makeTurfMaterial({
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
-      macro: this._macro || this._hdMacro || null,
+      macro: this._macro || this._hdMacros[0] || null,
     });
-    if (this._hdPatch) {
-      // Unified terrain: coarse mesh with the HD rect cut out + the HD mesh filling it,
-      // sharing the boundary with zero positive-area overlap. Both use the same turf
-      // material (the macro tints only inside the HD rect); course-relative UVs (uvBounds)
-      // keep the splat/masks aligned over the HD sub-mesh.
-      const coarse = buildCoarseTerrain({ grid: this.elev, cutout: this._hdMacro.bounds, material: turfMat });
-      const hd = buildHdTerrain({ grid: this._hdPatch, material: turfMat, uvBounds: b });
+    if (this._hdPatches.length) {
+      // Unified terrain: a coarse mesh with EVERY HD rect cut out + one HD mesh per
+      // patch filling the cutouts, sharing boundaries with zero positive-area overlap.
+      // All share the turf material (the course-wide aerial macro + splat/masks use
+      // course-relative UVs, so they align across patches). Each HD mesh skips cells
+      // already covered by an earlier patch, so overlapping padded hole rects don't
+      // z-fight — same precedence the height sampler uses.
+      const cutouts = this._hdMacros.map((m) => m.bounds);
       const grp = new THREE.Group();
-      grp.add(coarse, hd);
+      grp.add(buildCoarseTerrain({ grid: this.elev, cutouts, material: turfMat }));
+      this._hdPatches.forEach((patch, k) => {
+        grp.add(buildHdTerrain({ grid: patch, material: turfMat, uvBounds: b, skipBounds: cutouts.slice(0, k) }));
+      });
       return grp;
     }
     const mesh = new THREE.Mesh(geom, turfMat);
