@@ -6,7 +6,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { makeTerrain, resampleToLocal } = require('../lib/elevation');
+const { makeTerrain, resampleToLocal, planLidarTiles, combineSamplers, fetch3depBase } = require('../lib/elevation');
+const { lonToMerc, latToMerc } = require('../lib/lidar');
 
 const approx = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
@@ -72,4 +73,68 @@ test('smooth:true reduces gradient magnitude from sub-cell noise (physics path)'
     return Math.hypot(g.dx, g.dy);
   };
   assert.ok(gm({ smooth: true }) < gm({ smooth: false }), 'smoothing must reduce jitter');
+});
+
+// ---- course-wide 1m base: tiling + sampler combine + offline assembly ----
+
+test('planLidarTiles tiles a bbox into <= tileM chunks that cover it', () => {
+  const tiles = planLidarTiles(0, 0, 250, 250, 100);
+  assert.equal(tiles.length, 9); // 3 cols x 3 rows (0-100,100-200,200-250)
+  for (const t of tiles) {
+    assert.ok(t.maxX - t.minX <= 100 + 1e-9);
+    assert.ok(t.maxY - t.minY <= 100 + 1e-9);
+  }
+  assert.deepEqual(tiles[0], { minX: 0, minY: 0, maxX: 100, maxY: 100 });
+  const last = tiles[tiles.length - 1];
+  assert.equal(last.maxX, 250); // clamped to the bbox edge
+  assert.equal(last.maxY, 250);
+});
+
+test('planLidarTiles is a single tile when the bbox fits', () => {
+  assert.deepEqual(planLidarTiles(0, 0, 50, 50, 1400), [{ minX: 0, minY: 0, maxX: 50, maxY: 50 }]);
+});
+
+test('combineSamplers returns the first covering sampler value, else null', () => {
+  const s1 = (x) => (x < 10 ? 1 : null);
+  const s2 = (x) => (x >= 10 ? 2 : null);
+  const c = combineSamplers([s1, s2]);
+  assert.equal(c(5, 0), 1);
+  assert.equal(c(15, 0), 2);
+  assert.equal(combineSamplers([])(5, 0), null);
+});
+
+// A fake 3DEP fetch: meta returns a mercator extent covering the whole course,
+// the image is a w*h little-endian F32 raster filled with `fillM` metres.
+function fake3dep(lat0, lon0, mPerLat, mPerLon, fillM, w = 64, h = 64) {
+  const xmin = lonToMerc(lon0 - 0.01), xmax = lonToMerc(lon0 + 0.01);
+  const ymin = latToMerc(lat0 - 0.01), ymax = latToMerc(lat0 + 0.01);
+  return async (url) => {
+    if (url.includes('f=json')) return { ok: true, json: async () => ({ width: w, height: h, extent: { xmin, ymin, xmax, ymax } }) };
+    const buf = Buffer.alloc(w * h * 4);
+    for (let k = 0; k < w * h; k++) buf.writeFloatLE(fillM, k * 4);
+    return { ok: true, arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length) };
+  };
+}
+
+test('fetch3depBase assembles a 1m grid from 3DEP tiles (offline)', async () => {
+  const lat0 = 47.2, lon0 = -122.6, mPerLat = 111132, mPerLon = 111319 * Math.cos((lat0 * Math.PI) / 180);
+  const grid = await fetch3depBase({
+    lat0, lon0, mPerLat, mPerLon, minX: 0, minY: 0, maxX: 50, maxY: 50, cellM: 1,
+    baseM: 30, baseH: () => -999, fetchImpl: fake3dep(lat0, lon0, mPerLat, mPerLon, 100),
+  });
+  assert.ok(grid, 'grid built');
+  assert.equal(grid.cellM, 1);
+  assert.equal(grid.nx, 51);
+  assert.equal(grid.ny, 51);
+  // every covered node = abs 100 - baseM 30 = rel 70 (NOT the -999 baseH fallback)
+  assert.ok(grid.heights.every((v) => approx(v, 70, 1e-3)), `got ${grid.heights[0]}`);
+});
+
+test('fetch3depBase returns null when every tile fetch fails (caller uses coarse)', async () => {
+  const failFetch = async () => ({ ok: false, status: 500 });
+  const grid = await fetch3depBase({
+    lat0: 47, lon0: -122, mPerLat: 111132, mPerLon: 75000, minX: 0, minY: 0, maxX: 50, maxY: 50, cellM: 1,
+    baseM: 30, baseH: () => 0, fetchImpl: failFetch,
+  });
+  assert.equal(grid, null);
 });

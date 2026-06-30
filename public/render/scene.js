@@ -287,7 +287,7 @@ export class GolfScene {
       }
       this._macro = {
         albedo: tex, coverage: this._whiteTex, surfaces: this._whiteTex, bounds: geo.aerial.bounds,
-        closeWeight: RENDER_CONFIG.courseAerialCloseWeight ?? 0.85, farWeight: RENDER_CONFIG.courseAerialFarWeight ?? 0.97,
+        closeWeight: RENDER_CONFIG.courseAerialCloseWeight ?? 0.90, farWeight: RENDER_CONFIG.courseAerialFarWeight ?? 0.99,
       };
     } else {
       this._macro = null;
