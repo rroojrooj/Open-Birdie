@@ -5,6 +5,13 @@ All notable changes to Open-Birdie are documented here.
 ## [Unreleased]
 
 ### Added
+- **Auto-fetch the course aerial on load (turnkey for any US course)** — the ground photo now downloads
+  automatically during course load (like the 1 m terrain already does), so a freshly loaded US course
+  renders real imagery over its 1 m relief with zero manual steps. Runtime path uses a single USGS NAIPPlus
+  request (no image deps, ~0.3 m up to ~1.2 km courses, ~0.45 m for larger), written to the course cache and
+  served by the existing `/api/course-aerial`. Best-effort: a failed/non-US fetch just falls back to
+  procedural turf, never blocking load. The tiled max-quality 0.3 m mosaic stays in
+  `tools/add-course-aerial.mjs`. (`lib/aerial.js`, `lib/course.js loadCourse`.)
 - **Volumetric trees + pitched building roofs (Phase 2 — above-ground objects)** — trees now render a
   solid low-poly canopy core (cone for conifers, jittered blob for broadleaf) behind the foliage cards,
   so they read as real 3D volume from the overhead/orbit camera instead of thin cards; buildings get
