@@ -625,6 +625,10 @@ export class GolfScene {
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x70604e, roughness: 0.85, metalness: 0 });
     const heroWall = new THREE.MeshStandardMaterial({ color: 0xe9dec6, roughness: 0.82, metalness: 0 });
     const heroRoof = new THREE.MeshStandardMaterial({ color: 0x8c3a2c, roughness: 0.7, metalness: 0 }); // terracotta
+    // Pitched (hip) roofs sit on the wall extrusion — double-sided so we don't have
+    // to fuss over triangle winding for arbitrary OSM footprints.
+    const roofPitch = new THREE.MeshStandardMaterial({ color: 0x6b4f3a, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
+    const heroRoofPitch = new THREE.MeshStandardMaterial({ color: 0x8c3a2c, roughness: 0.7, metalness: 0, side: THREE.DoubleSide });
     // ExtrudeGeometry wants a CCW (positive-area) contour for the cap to face up.
     const ccw = (p) => { let a = 0; for (let i = 0; i < p.length; i += 1) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return a >= 0 ? p : p.slice().reverse(); };
     let drawn = 0;
@@ -647,6 +651,24 @@ export class GolfScene {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       group.add(mesh);
+      // Pitched hip roof: fan each footprint edge up to a raised centroid so
+      // buildings read as real peaked structures, not flat boxes.
+      const topY = (minH - 0.6) + Math.max(2.5, bld.heightM || 5);
+      let cx = 0, cyc = 0, bw0 = Infinity, bw1 = -Infinity, bh0 = Infinity, bh1 = -Infinity;
+      for (const [x, y] of poly) { cx += x; cyc += y; if (x < bw0) bw0 = x; if (x > bw1) bw1 = x; if (y < bh0) bh0 = y; if (y > bh1) bh1 = y; }
+      cx /= poly.length; cyc /= poly.length;
+      const roofH = Math.min(6, Math.max(1.6, 0.30 * Math.min(bw1 - bw0, bh1 - bh0)));
+      const rp = [];
+      for (let i = 0; i < poly.length; i += 1) {
+        const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length];
+        rp.push(x0, topY, -y0, x1, topY, -y1, cx, topY + roofH, -cyc);
+      }
+      const rg = new THREE.BufferGeometry();
+      rg.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
+      rg.computeVertexNormals();
+      const roof = new THREE.Mesh(rg, bld.clubhouse ? heroRoofPitch : roofPitch);
+      roof.castShadow = true; roof.receiveShadow = true;
+      group.add(roof);
       drawn += 1;
     }
     if (drawn) console.log(`[render] buildings: ${drawn}/${list.length}`);

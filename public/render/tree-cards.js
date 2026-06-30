@@ -121,6 +121,31 @@ function broadleafGeometry(H, rnd) {
   return finalize(acc);
 }
 
+// Solid low-poly canopy CORE rendered behind the foliage cards. Cards alone are
+// thin planes that vanish edge-on from the elevated/orbit camera; this opaque
+// shell gives every tree real volume + silhouette from any angle, while the cards
+// still supply the lush sprig detail in front. Untextured (the per-instance tint +
+// volume shader sell it); slight vertex jitter so it's not a clean cone/sphere.
+function canopyCoreGeometry(kind, H, rnd) {
+  let g;
+  if (kind === 'conifer') {
+    const yBase = H * 0.08, yTop = H * 0.97, r = H * 0.40 * 0.82;
+    g = new THREE.ConeGeometry(r, yTop - yBase, 8, 3);
+    g.translate(0, yBase + (yTop - yBase) / 2, 0);
+  } else {
+    const cy = H * 0.74, ry = H * 0.30, rxz = H * 0.48 * 0.88;
+    g = new THREE.IcosahedronGeometry(1, 1);
+    g.scale(rxz, ry * 1.05, rxz);
+    g.translate(0, cy, 0);
+  }
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    p.setXYZ(i, p.getX(i) * (0.88 + rnd() * 0.24), p.getY(i) + (rnd() - 0.5) * H * 0.05, p.getZ(i) * (0.88 + rnd() * 0.24));
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
 function addFoliageShader(material, windRef, canopyTop) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
@@ -154,9 +179,9 @@ function addFoliageShader(material, windRef, canopyTop) {
 }
 
 const SPECIES = {
-  conifer: { geom: coniferGeometry, H: 12, trunk: [0.10, 0.34], key: 'conifer',
+  conifer: { geom: coniferGeometry, H: 12, trunk: [0.10, 0.34], key: 'conifer', coreColor: 0x3f5e34,
     diff: () => ASSETS.trees.foliageDiff, alpha: () => ASSETS.trees.foliageAlpha, bark: () => ASSETS.trees.bark, alphaTest: 0.42 },
-  broadleaf: { geom: broadleafGeometry, H: 10, trunk: [0.16, 0.46], key: 'broadleaf',
+  broadleaf: { geom: broadleafGeometry, H: 10, trunk: [0.16, 0.46], key: 'broadleaf', coreColor: 0x55763e,
     diff: () => ASSETS.trees.broadleafDiff, alpha: () => ASSETS.trees.broadleafAlpha, bark: () => ASSETS.trees.broadleafBark, alphaTest: 0.38 },
 };
 
@@ -169,16 +194,21 @@ function buildSpecies(spots, hAt, V, sp, windRef) {
     roughness: 0.92, metalness: 0, envMapIntensity: 0.5,
   });
   addFoliageShader(foliageMat, windRef, sp.H);
+  const coreMat = new THREE.MeshStandardMaterial({ color: sp.coreColor, roughness: 0.95, metalness: 0, envMapIntensity: 0.35 });
+  addFoliageShader(coreMat, windRef, sp.H);
   const trunkMat = new THREE.MeshStandardMaterial({ map: bark, roughness: 0.95, metalness: 0 });
 
   const fGeo = sp.geom(sp.H, rnd);
   const tGeo = new THREE.CylinderGeometry(sp.trunk[0], sp.trunk[1], sp.H, 6, 1);
   tGeo.translate(0, sp.H / 2, 0);
+  const cGeo = canopyCoreGeometry(sp.key, sp.H, rnd);
 
   const foliage = new THREE.InstancedMesh(fGeo, foliageMat, spots.length);
   const trunk = new THREE.InstancedMesh(tGeo, trunkMat, spots.length);
+  const core = new THREE.InstancedMesh(cGeo, coreMat, spots.length);
   foliage.castShadow = foliage.receiveShadow = true;
   trunk.castShadow = trunk.receiveShadow = true;
+  core.castShadow = core.receiveShadow = true;
   foliage.customDepthMaterial = new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking, map: diff, alphaMap: alpha, alphaTest: sp.alphaTest,
   });
@@ -192,15 +222,17 @@ function buildSpecies(spots, hAt, V, sp, windRef) {
     const w = s * (0.82 + rnd() * 0.42), ht = s * (0.92 + rnd() * 0.5);
     scv.set(w, ht, w);
     m4.compose(V(s0.x, s0.y, h), q, scv);
-    foliage.setMatrixAt(i, m4); trunk.setMatrixAt(i, m4);
+    foliage.setMatrixAt(i, m4); trunk.setMatrixAt(i, m4); core.setMatrixAt(i, m4);
     const b = 0.72 + rnd() * 0.5;
     col.setRGB(b * (0.92 + rnd() * 0.12), b, b * (0.82 + rnd() * 0.12));
-    foliage.setColorAt(i, col);
+    foliage.setColorAt(i, col); core.setColorAt(i, col);
   }
   foliage.instanceMatrix.needsUpdate = true;
   trunk.instanceMatrix.needsUpdate = true;
+  core.instanceMatrix.needsUpdate = true;
   if (foliage.instanceColor) foliage.instanceColor.needsUpdate = true;
-  return [trunk, foliage];
+  if (core.instanceColor) core.instanceColor.needsUpdate = true;
+  return [trunk, core, foliage];
 }
 
 // spots: [{x,y,s}], hAt(x,y)->z, V: sim->three. ~30% of stands are broadleaf for
