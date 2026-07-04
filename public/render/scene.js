@@ -50,7 +50,10 @@ const COLORS = {
   wood: '#2b4124',
   range: '#52883f',
   fairwayA: '#5aa848', fairwayB: '#4f9a40', // vivid lush fairway (mow stripes added in shader)
-  greenA: '#5cab4f', greenB: '#519c45', // lush, ~fairway brightness, a touch cooler — distinct by hue, never by glow
+  // Greens: muted since material-first (v25) — the splat is now the ACTUAL albedo, not a
+  // 10% residue under the photo drape; #5cab4f read as a neon decal. The fine mow, sheen,
+  // and collar carry "putting surface"; the color stays in the fairway family.
+  greenA: '#4c8f42', greenB: '#447f38',
   tee: '#63a84f',
   bunker: '#cbb583',
   water: '#2f6d97',
@@ -418,17 +421,24 @@ export class GolfScene {
     const tex = new THREE.CanvasTexture(this._paintSplat(b));
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    const maskTex = new THREE.CanvasTexture(this._paintMask(b, ['fairway', 'green', 'tee']));
+    // Packed channels: .r = mown (fairway/tee/green — semantics unchanged), .g = green
+    // only. One canvas, no extra texture (~67 MB saved at the 4096 cap); kinds paint
+    // in order so greens land last and keep their G channel.
+    const maskTex = new THREE.CanvasTexture(this._paintMask(
+      b, ['fairway', 'tee', 'green'], { default: '#ff0000', green: '#ffff00' }));
     maskTex.colorSpace = THREE.NoColorSpace;
     maskTex.anisotropy = tex.anisotropy;
     const bunkerMaskTex = new THREE.CanvasTexture(this._paintMask(b, ['bunker']));
     bunkerMaskTex.colorSpace = THREE.NoColorSpace;
     bunkerMaskTex.anisotropy = tex.anisotropy;
 
-    const turfMat = makeTurfMaterial({
+    // Stashed so _addGreenPatches can build a second, polygon-offset instance of the
+    // SAME shader (shared texture/macro objects — in-place tint updates reach both).
+    this._turfInputs = {
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
       macro: this._macro || this._hdMacros[0] || null,
-    });
+    };
+    const turfMat = makeTurfMaterial(this._turfInputs);
     if (this._hdPatches.length) {
       // Unified terrain: a coarse mesh with EVERY HD rect cut out + one HD mesh per
       // patch filling the cutouts, sharing boundaries with zero positive-area overlap.
@@ -607,10 +617,12 @@ export class GolfScene {
     return cv;
   }
 
-  // Black/white mask over the terrain for the given surface kinds — white inside
-  // those polygons, black elsewhere. Sampled in the turf shader to gate per-zone
-  // effects (mow stripes on mown surfaces, sand on bunkers).
-  _paintMask(b, kinds) {
+  // Channel mask over the terrain for the given surface kinds — black elsewhere.
+  // Default: white inside the polygons (the shipping single-channel behavior).
+  // With a `colors` map, each kind fills with its own color so one canvas can pack
+  // several gates (e.g. .r = mown, .g = green). Kinds paint in the ORDER GIVEN —
+  // later kinds overpaint earlier ones where polygons touch.
+  _paintMask(b, kinds, colors = null) {
     const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
     const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
     const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
@@ -620,15 +632,17 @@ export class GolfScene {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     const px = (x) => (x - b.minX) * ppm, py = (y) => (b.maxY - y) * ppm;
-    ctx.fillStyle = '#fff';
     ctx.filter = 'blur(1px)';
-    for (const s of this.geo.surfaces) {
-      if (!kinds.includes(s.kind)) continue;
-      ctx.beginPath();
-      ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
-      for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
-      ctx.closePath();
-      ctx.fill();
+    for (const kind of kinds) {
+      ctx.fillStyle = colors ? (colors[kind] || colors.default || '#fff') : '#fff';
+      for (const s of this.geo.surfaces) {
+        if (s.kind !== kind) continue;
+        ctx.beginPath();
+        ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
+        for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
+        ctx.closePath();
+        ctx.fill();
+      }
     }
     return cv;
   }
@@ -934,13 +948,25 @@ export class GolfScene {
     if (!patches || !patches.length || !baseMesh) return;
     const b = this.bounds, extX = b.maxX - b.minX, extY = b.maxY - b.minY;
     const FEATHER = 4; // m — matches the physics feather in makeTerrain
-    const bm = baseMesh.material;
-    const mat = new THREE.MeshStandardMaterial({
-      map: bm.map, normalMap: bm.normalMap, roughnessMap: bm.roughnessMap,
-      normalScale: bm.normalScale ? bm.normalScale.clone() : new THREE.Vector2(0.8, 0.8),
-      roughness: bm.roughness, metalness: 0, envMapIntensity: bm.envMapIntensity,
-      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-    });
+    // The patch mesh must run the FULL turf shader (tint, fescue desat, the uMask.g
+    // green treatment) — a plain slot-clone renders the raw kelly-green splat with
+    // none of it, which read as a neon decal once material-first ground landed
+    // (invisible before, when the photo drape covered everything at 90%+). Patch UVs
+    // are course-relative, so every mask/macro gate lines up with the ground below.
+    const mat = this._turfInputs
+      ? makeTurfMaterial(this._turfInputs)
+      : (() => {
+        const bm = baseMesh.material;
+        return new THREE.MeshStandardMaterial({
+          map: bm.map, normalMap: bm.normalMap, roughnessMap: bm.roughnessMap,
+          normalScale: bm.normalScale ? bm.normalScale.clone() : new THREE.Vector2(0.8, 0.8),
+          roughness: bm.roughness, metalness: 0, envMapIntensity: bm.envMapIntensity,
+        });
+      })();
+    mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -1;
+    // second material instance -> its own texture registrations would double-dispose;
+    // the primary turf material owns them (loadCourse traverse dedupes by object, but
+    // dispose() on an already-disposed texture is a safe no-op in three anyway)
     for (const p of patches) {
       const { minX, minY, cellM, nx, ny, heights } = p;
       const maxX = minX + (nx - 1) * cellM, maxY = minY + (ny - 1) * cellM;

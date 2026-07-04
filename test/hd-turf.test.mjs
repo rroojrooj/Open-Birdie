@@ -19,7 +19,12 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   mat.onBeforeCompile(s);
   for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v24');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v25');
+  // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
+  // the roughness sheen samples it directly, the map block via the mk swizzle
+  assert.match(s.fragmentShader, /texture2D\(uMask, vMapUv\)\.g/);
+  assert.match(s.fragmentShader, /roughnessFactor = mix\(roughnessFactor/);
+  assert.match(s.fragmentShader, /float g = mk\.g/);
 });
 
 test('macro turf material: adds aerial tint uniforms + a distinct program', () => {
@@ -35,7 +40,7 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.equal(s.uniforms.uMacroLow.value, macro.low);
   assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
   assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v24-macro');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v25-macro');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
   // the v23 photo-REPLACEMENT blend is gone — a bad merge restoring it must fail here
