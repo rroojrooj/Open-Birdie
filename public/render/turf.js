@@ -64,37 +64,54 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
     shader.uniforms.uSand = { value: sand };
     shader.uniforms.uExt = { value: new THREE.Vector2(extX, extY) };
     shader.uniforms.uStripeM = { value: 7.0 }; // mow-band width (m) — a touch wider reads better from the orbit cam
-    // HD aerial macro layer (optional): real low-frequency color tint inside the HD rect.
-    // Aerial RGB shifts the grass HUE/VALUE only — the tiled PBR detail, mow stripes, and
-    // grass geometry all survive. Coverage R gates it; near/far weighted; tuned in Plan 4.
+    // Aerial macro layer (optional) — MATERIAL-FIRST since v24: the photo no longer
+    // replaces the lit turf. Its blurred low-frequency copy (uMacroLow / uMacroAvg)
+    // TINTS the material's hue/value, and the raw photo only crossfades in at TRUE
+    // far range where 0.3 m/px beats screen texel density. The tiled PBR detail,
+    // mow stripes, grain, and light response all survive at play distance.
     const macroDecl = macro ? `
         uniform sampler2D uMacro; uniform sampler2D uMacroSurfaces; uniform sampler2D uMacroCoverage;
+        uniform sampler2D uMacroLow; uniform vec3 uMacroAvg; uniform float uMacroPhotoFar;
         uniform vec2 uMacroMin; uniform vec2 uMacroSize; uniform vec2 uMacroWeights; uniform vec2 uCourseMin;` : '';
     const macroBlend = macro ? `
           { vec2 wXY = uCourseMin + vMapUv * uExt;
             vec2 mUv = (wXY - uMacroMin) / uMacroSize;
             if (mUv.x >= 0.0 && mUv.x <= 1.0 && mUv.y >= 0.0 && mUv.y <= 1.0) {
-              // Feather the aerial across the rect edge so it dissolves into the
-              // procedural turf instead of clipping at a hard rectangle. Distance (m)
-              // to the nearest edge, jittered by low-freq noise so the blend line is
-              // organic, not a clean contour.
+              // Feather across the rect edge so the layer dissolves into procedural
+              // turf instead of clipping at a hard rectangle.
               vec2 edgeM = min(mUv, 1.0 - mUv) * uMacroSize;
               float edgeW = smoothstep(0.0, 7.0, min(edgeM.x, edgeM.y) + (tNoise(wXY * 0.15) - 0.5) * 5.0);
               float mvalid = texture2D(uMacroCoverage, mUv).r;
-              vec3 aerial = texture2D(uMacro, mUv).rgb;
-              float macFar = smoothstep(14.0, 45.0, length(vViewPosition));
-              float mw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, macFar);
-              // The aerial IS the real course — a registered satellite photo. Let it BE the
-              // ground colour (raw RGB; a global de-light flattens real fairway/dune/sand
-              // albedo into milky grey — tried, reverted). Keep a sliver of tiled blade grain
-              // (dl) for close-up micro-texture; the terrain normals + our sun light it as 3D.
-              vec3 photo = aerial * (0.86 + 0.30 * dl);
-              grass = mix(grass, photo, mw);
+              // Two separate distance curves: the tint ramps over the mid-range and owns
+              // it; the RAW photo only crossfades in past the aiming corridor (at the
+              // default framing the player reads the ground at ~25-150 m, so the photo
+              // band starts at 60 m — 0.3 m/px only beats screen texels ~100 m+ out).
+              float tintFar  = smoothstep(20.0, 60.0, length(vViewPosition));
+              float photoFar = smoothstep(60.0, 150.0, length(vViewPosition));
+              // CHROMATIC TRANSFER — the photo's low-frequency hue/value modulates the
+              // LIT turf instead of replacing it. uMacroLow is a blurred copy (baked
+              // capture-day shadows and sub-30cm detail are gone), normalized by the
+              // playable-ground mean so the tint averages ~1.0; the material keeps its
+              // own value structure, stripes, and light response.
+              vec3 tint = clamp(texture2D(uMacroLow, mUv).rgb / max(uMacroAvg, vec3(0.03)), 0.45, 1.7);
+              float tw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, tintFar);
+              grass *= mix(vec3(1.0), tint, tw);
+              // FAR PHOTO CROSSFADE — keeps the shipped "real place" overview (raw RGB;
+              // a global de-light flattens real fairway/dune/sand albedo into milky grey
+              // — tried, reverted). A sliver of blade grain (dl) for micro-texture.
+              vec3 photo = texture2D(uMacro, mUv).rgb * (0.86 + 0.30 * dl);
+              grass = mix(grass, photo, mvalid * edgeW * uMacroPhotoFar * photoFar);
             } }` : '';
     if (macro) {
       shader.uniforms.uMacro = { value: macro.albedo };
       shader.uniforms.uMacroSurfaces = { value: macro.surfaces };
       shader.uniforms.uMacroCoverage = { value: macro.coverage };
+      // HD-bundle macros have no low/avg — fall back to the ortho itself + a neutral
+      // grey mean so the vec3 uniform upload never dereferences undefined (a per-frame
+      // TypeError that kills the scene on HD courses whose course aerial failed).
+      shader.uniforms.uMacroLow = { value: macro.low ?? macro.albedo };
+      shader.uniforms.uMacroAvg = { value: macro.avg ?? new THREE.Vector3(0.2159, 0.2159, 0.2159) };
+      shader.uniforms.uMacroPhotoFar = { value: macro.photoFar ?? 0.88 };
       shader.uniforms.uMacroMin = { value: new THREE.Vector2(macro.bounds.minX, macro.bounds.minY) };
       shader.uniforms.uMacroSize = { value: new THREE.Vector2(macro.bounds.maxX - macro.bounds.minX, macro.bounds.maxY - macro.bounds.minY) };
       shader.uniforms.uMacroWeights = { value: new THREE.Vector2(macro.closeWeight ?? 0.25, macro.farWeight ?? 0.6) };
@@ -221,7 +238,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v23-macro' : 'turf-grain-v23');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v24-macro' : 'turf-grain-v24');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
