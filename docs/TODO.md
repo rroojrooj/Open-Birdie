@@ -1,6 +1,26 @@
 # Open-Birdie — TODO
 
-## Multi-patch HD terrain — SHIPPED (2026-06-30), with a batch-build follow-up
+## Chambers Bay HD bundles vs CACHE_VERSION 4 — RESOLVED (2026-07-04), with a v3-cache follow-up
+
+The warned-about break happened: PR #23 (`c9eb14d`, v0.9.0) bumped `CACHE_VERSION` 3→4 and re-fetched
+`chambers-bay.json` with the course-wide 1 m 3DEP base (`elevation` 217×363@5m → 1081×1816@1m, patches baked
+in, `version: 4`) — both fields are fingerprinted, so `courseFingerprint` moved `92067899…` → `bd4fce5f…` and
+`resolveHdBundles` rejected both hole 8/9 bundles (status `absent`, coarse fallback). The v4 migration was
+intentional, so the fix was **rebuild, not restore** (restoring `chambers-bay.v3.bak.json` would just re-fetch
+v4 on the next non-cached load). Done:
+
+- Compiler now accepts course cache **v3 and v4** (`tools/hd-course/course-source.mjs` + `compiler.mjs` gates;
+  test in `test/hd-fingerprint.test.mjs`). v4 is shape-identical everywhere the compiler reads.
+- Both manifests re-pinned via `cli.mjs discover --write` (fingerprint `bd4fce5f…`, bounds re-snapped for the
+  1 m coarse grid, same NAIP COG/ETag) and rebuilt (~30 s each): hole 8 → `c4da699e…`, hole 9 → `a0bb8060…`.
+  Old `92067899…` bundles left on disk (harmless — fingerprint-filtered; delete or keep for rollback).
+- Verified live: `[hd] 2 bundle(s) active: hole(s) 8, 9` on `/api/load-course {cached: "chambers-bay.json"}`.
+
+- **FOLLOW-UP — every still-v3 cached course breaks its bundles on re-search.** `bandon-…json` (has the hole-1
+  bundle), `st-andrews…json`, `tpc-sawgrass.json` (hole-17 manifest in flight) are still `version: 3`. Cached
+  loads (`/api/load-course {cached}`) skip the version check, so they keep working — but a **search-path load**
+  (`loadCourse`) sees `version !== CACHE_VERSION` and re-fetches v4 with a new fingerprint, killing that
+  course's bundles. Remedy per course after it migrates: `discover --write` + `build` (the runbook above).
 
 The runtime rendered only **one** 1 m lidar hole at a time (`active.json` → singular `activeHd`), so the rest
 of the course stayed smooth SRTM ("satellite image on a smooth surface"). Now it renders **every built hole's

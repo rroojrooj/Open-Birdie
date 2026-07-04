@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalCourseFingerprint } from '../tools/hd-course/course-source.mjs';
+import { canonicalCourseFingerprint, loadCourseFile } from '../tools/hd-course/course-source.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const course = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'hd-course', 'course.json'), 'utf8'));
@@ -48,4 +49,23 @@ test('fingerprint ignores generated HD green patches', () => {
     },
   };
   assert.equal(canonicalCourseFingerprint(withPatches), a);
+});
+
+test('loadCourseFile accepts cache v3 and v4, rejects others', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hd-course-version-'));
+  try {
+    const write = (version) => {
+      const f = path.join(dir, `course-v${version}.json`);
+      fs.writeFileSync(f, JSON.stringify({ ...course, version }));
+      return f;
+    };
+    for (const version of [3, 4]) {
+      assert.equal(loadCourseFile(write(version)).version, version);
+    }
+    for (const version of [2, 5]) {
+      assert.throws(() => loadCourseFile(write(version)), (e) => e.code === 'HD_COURSE_VERSION');
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

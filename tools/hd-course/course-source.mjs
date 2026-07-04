@@ -64,7 +64,9 @@ export function loadCourseFile(filePath) {
   let course;
   try { course = JSON.parse(raw); }
   catch (cause) { throw new HdCompileError('resolve-course', 'HD_COURSE_JSON', { path: filePath }, cause); }
-  if (course.version !== 3) {
+  // v3 (coarse terrarium base) and v4 (course-wide 1 m 3DEP base — CACHE_VERSION
+  // in lib/course.js) have the same shape everywhere the compiler reads.
+  if (course.version !== 3 && course.version !== 4) {
     throw new HdCompileError('resolve-course', 'HD_COURSE_VERSION', { version: course.version });
   }
   if (!Array.isArray(course.holes) || course.holes.length === 0) {

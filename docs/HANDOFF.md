@@ -96,7 +96,9 @@ buildings are flat-roof massing blocks (pitched roofs would read more real); (c)
 | `ca81041` | **course-wide aerial drape** — kills the HD "square" |
 
 Plus the QL1 build itself: `tools/hd-course/manifests/chambers-bay-hole-09.json` (1 m, fingerprint `92067899…`,
-published bundle `516339c7…`).
+published bundle `516339c7…`). *(2026-07-04: the v0.9.0 `CACHE_VERSION` 3→4 migration moved the fingerprint to
+`bd4fce5f…`; both hole manifests were re-pinned and rebuilt — holes 8/9 are now `c4da699e…`/`a0bb8060…`. See
+`docs/TODO.md` top section.)*
 
 ---
 
