@@ -1,5 +1,29 @@
 # Open-Birdie — TODO
 
+## Material-first ground — SHIPPED (2026-07-04), with follow-ups
+
+The aerial is demoted from albedo (was 90–99 % of the ground color = "satellite photo
+painted on the surface") to a playable-mean-normalized **tint** over the PBR turf + a
+true-far-field layer (60–150 m crossfade); greens get their own treatment via the packed
+`uMask.g` channel. Plan + embedded review record:
+[`superpowers/plans/2026-07-04-material-first-ground.md`](superpowers/plans/2026-07-04-material-first-ground.md).
+
+- **FOLLOW-UP — runtime NDVI sand (dunes/waste OSM misses).** Build **runtime-first** on the
+  `lib/aerial.js` pattern: one more NAIPPlus `exportImage` request with the NIR band
+  (`bandIds`) + `pngjs` decode + the pure `tools/trace/segment.mjs` math → feed
+  `uMacroSurfaces` (bound, black-defaulted, never sampled today). **Never a manual per-course
+  dev tool** (the review killed that: it re-introduces the manual-step debt v0.9.2 removed).
+  **Mandatory safeguards (CEO-review):** NDVI sand only *outside* OSM mown polys (bright +
+  low-NDVI is exactly dry links fescue — Chambers fairways would classify as sand), plus a
+  coverage-sanity abort (implausible sand % → refuse loudly). Trigger: captures showing OSM
+  bunker/waste coverage is visibly insufficient.
+- **Polish:** fringe collar reads thin/subtle at grazing angles (4-tap axis-aligned dilation
+  ≈ 1.06 m effective on diagonals — go 8-tap if it matters); tint/photo band constants
+  (`20/60`, `60/150` in `turf.js`) tuned on two courses only; mow-checkerboard contrast 0.15.
+- **Observed (pre-existing, not this arc):** tpc-sawgrass plants rough-fescue tufts across
+  green approaches (OSM labeling/placement quirk — `groundGrass` uses zone data);
+  chambers-bay HD bundles fingerprint-stale (separate task, CACHE_VERSION 3→4).
+
 ## Multi-patch HD terrain — SHIPPED (2026-06-30), with a batch-build follow-up
 
 The runtime rendered only **one** 1 m lidar hole at a time (`active.json` → singular `activeHd`), so the rest
