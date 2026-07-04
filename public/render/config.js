@@ -16,6 +16,15 @@ export const RENDER_CONFIG = {
   sunAzimuthDeg: null,
   sunAltitudeDeg: null,
   hdriFile: 'puresky_4k.hdr',
+  // Material-first ground (2026-07-04 plan): the aerial TINTS the lit turf instead of
+  // replacing it; the raw photo only crossfades in at TRUE far range. Weights are the
+  // mix factors for each layer (0 = pure procedural turf, 1 = full effect).
+  courseAerialTintClose: 0.85, // low-freq photo tint weight near the camera
+  courseAerialTintFar: 0.92,   // ... at far range
+  courseAerialPhotoFar: 0.88,  // RAW photo weight at TRUE far range — keeps the shipped
+                               // overview look near-intact (diff-gated); tint owns mid-range
+  macroTintMPerPx: 4,          // tint copy resolution: fixed metres/px (course-size-independent), px cap 512
+  macroTintBlurPx: 2,          // canvas blur applied when downsampling the tint copy
   // Tier 1
   foliageTrees: true, // card-foliage conifers (see tree-cards.js)
   grounding: true,    // contact-shadow decal blobs under trees (see grounding.js)
