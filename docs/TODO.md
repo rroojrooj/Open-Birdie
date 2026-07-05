@@ -1,5 +1,31 @@
 # Open-Birdie — TODO
 
+## Overview realism — DONE (2026-07-06, branch `claude/overview-realism`)
+
+Kills the last facet of the "satellite photo painted on terrain" complaint: the OVERVIEW /
+survey shot reading as a flat re-projected aerial. Went through `/plan-eng-review` + an
+independent outside voice FIRST, which caught the plan's original thesis was wrong (verified in
+code) and re-scoped it — then a Task-0 diagnostic gate measured the real lever before any build:
+
+- **Eng-review + outside voice killed the shadow epic before it was built.** The first plan bet on
+  "extend hole-scoped shadow coverage to the whole course." The outside voice found (and I verified):
+  terrain meshes **never set `castShadow`** (`scene.js:474`, `hd-terrain.js:68/77` receive-only) so
+  the dune relief can't self-shadow at all; and the far field is 88% raw photo that washes out
+  lighting regardless. A live Task-0 A/B confirmed it: enabling terrain castShadow + a course-wide
+  frustum changed the overview by **nothing**; dropping `courseAerialPhotoFar` **transformed** it. So
+  the entire shadow-casting / camera-adaptive-frustum / CSM plan was **dropped as unnecessary** —
+  the diffuse-lit HD relief already carries the 3D form once the photo stops drowning it.
+- **The fix = one config knob + a small shader fade.** `courseAerialPhotoFar` **0.88 → 0.62** (the
+  dominant lever — lets the lit relief read as 3D while keeping real albedo; play view unchanged
+  since the far photo only applies past 60 m). Plus `turf.js` **v30** distance-fade on the mow
+  stripes + green checker (`sFade = 1 - smoothstep(120, 280, dist)`) so the grooming grid doesn't
+  over-read at altitude now the photo no longer hides it. Cache key v29→v30.
+- **Verified:** Chambers overview flat-photo → lit 3D dune landscape; play frame **pixel-unchanged**
+  (bold stripes intact); Sawgrass (flat) overview unregressed. 291 tests. Plan +full review record:
+  [`superpowers/plans/2026-07-06-overview-realism.md`](superpowers/plans/2026-07-06-overview-realism.md).
+- **Still open (assessor's remaining):** 3D green complexes / lidar relief (phase B); flat billboard
+  trees at distance; a full impostor forest. The overview now reads as a lit landscape, not a photo.
+
 ## Greens polish + class-map feather — DONE (2026-07-06, branch `claude/greens-polish`)
 
 Phase-A of the greens arc (assessor's #2, "flat green blobs with hard edges") — **shader-only,
