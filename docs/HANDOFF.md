@@ -1,5 +1,17 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-06 — CLASSMAP SPECKLE + BROADLEAF TREE FIXED** (branch
+> `claude/classmap-speckle-fix`). Fast-follow after an independent assessor scored the shipped
+> realism 4.5/10. (1) The per-pixel NDVI class-map scattered false-positive `sand`/`fairway` specks
+> that rendered as blocky tan/striped tiles — fixed with a 3×3 majority denoise (`DENOISE_MIN=5`)
+> before encode in `lib/classify-surfaces.js` (encode-only; S2 stats stay on raw classes). Sawgrass
+> overview: speckle-smeared → clean bunkers (sand −36.5%; Chambers contiguous sand only −9.4%).
+> (2) `broadleafGeometry` (`tree-cards.js`) shattered into glass shards from a low camera — fixed
+> with shorter/denser cards (N 160→340) + a smaller darker canopy core → solid tree; conifers
+> untouched. **Diagnosis nuance:** a live classmap-OFF toggle proved the Chambers green-cam "tan" is
+> the aerial tint + hard green edge (the greens gap #2), NOT the classmap. Full record + remaining
+> ranked gaps: [`docs/TODO.md`](TODO.md) top section. 290 tests green.
+
 > **UPDATE 2026-07-05 — RUNTIME NDVI SURFACE CLASSIFICATION IMPLEMENTED** (branch
 > `claude/ndvi-classification`, not yet PR'd). Auto-classifies mown fairway + sand OSM missed
 > from the NAIP infrared band at course load (zero new deps — a 2nd `format=png&bandIds=3,0,1`
