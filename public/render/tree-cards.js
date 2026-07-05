@@ -101,7 +101,7 @@ function broadleafGeometry(H, rnd) {
   const acc = { pos: [], uv: [], nor: [], idx: [], v: 0 };
   const up = V3(0, 1, 0);
   const cy = H * 0.74, ry = H * 0.30, rxz = H * 0.48; // canopy ellipsoid
-  const N = 160;
+  const N = 340;
   for (let i = 0; i < N; i++) {
     const th = rnd() * Math.PI * 2, z = 2 * rnd() - 1, r2 = Math.sqrt(Math.max(0, 1 - z * z));
     const ds = V3(r2 * Math.cos(th), z, r2 * Math.sin(th)); // unit sphere dir
@@ -111,7 +111,10 @@ function broadleafGeometry(H, rnd) {
     const rad = 0.5 + 0.5 * Math.cbrt(rnd()); // fill interior
     const inner = V3(ds.x * rxz * rad * 0.4, cy + ds.y * ry * rad * 0.4, ds.z * rxz * rad * 0.4);
     const across = V3(-outward.z, 0, outward.x).normalize();
-    const L = (rxz * 0.55 + 1.4) * (0.8 + rnd() * 0.4), W = L * (0.75 + rnd() * 0.3);
+    // Smaller fronds than before (was rxz*0.55+1.4): big radial cards protruded far
+    // past the canopy shell and, seen edge-on from a low camera, read as "shattered
+    // glass" slivers. Shorter cards + a denser N overlap into a solid leafy blob.
+    const L = (rxz * 0.34 + 1.0) * (0.75 + rnd() * 0.35), W = L * (0.7 + rnd() * 0.3);
     const sp = SPRIGS_BROADLEAF[(rnd() * SPRIGS_BROADLEAF.length) | 0];
     const normal = up.clone().multiplyScalar(0.55).add(outward.clone().multiplyScalar(0.45)).normalize();
     pushCard(acc, inner, outward, across, L, W, sp, normal);
@@ -133,9 +136,9 @@ function canopyCoreGeometry(kind, H, rnd) {
     g = new THREE.ConeGeometry(r, yTop - yBase, 8, 3);
     g.translate(0, yBase + (yTop - yBase) / 2, 0);
   } else {
-    const cy = H * 0.74, ry = H * 0.30, rxz = H * 0.48 * 0.88;
+    const cy = H * 0.74, ry = H * 0.30, rxz = H * 0.48 * 0.72; // smaller shell — foliage cards cover it instead of the core reading as a faceted ball
     g = new THREE.IcosahedronGeometry(1, 1);
-    g.scale(rxz, ry * 1.05, rxz);
+    g.scale(rxz, ry * 0.9, rxz);
     g.translate(0, cy, 0);
   }
   const p = g.attributes.position;
@@ -181,7 +184,7 @@ function addFoliageShader(material, windRef, canopyTop) {
 const SPECIES = {
   conifer: { geom: coniferGeometry, H: 12, trunk: [0.10, 0.34], key: 'conifer', coreColor: 0x3f5e34,
     diff: () => ASSETS.trees.foliageDiff, alpha: () => ASSETS.trees.foliageAlpha, bark: () => ASSETS.trees.bark, alphaTest: 0.42 },
-  broadleaf: { geom: broadleafGeometry, H: 10, trunk: [0.16, 0.46], key: 'broadleaf', coreColor: 0x55763e,
+  broadleaf: { geom: broadleafGeometry, H: 10, trunk: [0.16, 0.46], key: 'broadleaf', coreColor: 0x3f5730,
     diff: () => ASSETS.trees.broadleafDiff, alpha: () => ASSETS.trees.broadleafAlpha, bark: () => ASSETS.trees.broadleafBark, alphaTest: 0.38 },
 };
 

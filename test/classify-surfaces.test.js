@@ -225,6 +225,30 @@ test('f: a sand pixel OUTSIDE the inside-course mask is ZEROED in the PNG (R=0,B
   assert.equal(img.data[o + 2], 255, 'in-course sand still emits B=255');
 });
 
+test('denoise: a lone 1px sand speck is dropped; a solid sand block survives (encode-only)', () => {
+  const W = 32, H = 32;
+  // Rows 0..7 fairway (clears the mown floor). A solid 8x8 sand block at cols 4..11,
+  // rows 20..27 (survives the 3x3 majority). A LONE sand pixel at (25,25) with only
+  // rough neighbors (the exact per-pixel false-positive speckle the filter targets).
+  // Everything else rough; whole window in-course.
+  const inBlock = (px, py) => px >= 4 && px <= 11 && py >= 20 && py <= 27;
+  const bands = buildBands(W, H, (px, py) => {
+    if (py < 8) return 'fairway';
+    if (inBlock(px, py)) return 'sand';
+    if (px === 25 && py === 25) return 'sand';
+    return 'rough';
+  });
+  const bounds = unitBounds(W, H);
+  const surfaces = [{ kind: 'rough', poly: rectPoly(0, 0, W, H) }];
+  const boundary = rectPoly(0, 0, W, H);
+  const { pngBuffer, aborted } = classifyToClassmap({ bands, width: W, height: H, bounds, boundary, surfaces });
+  assert.equal(aborted, false, 'realistic mown -> not aborted');
+  const img = PNG.sync.read(pngBuffer);
+  const at = (px, py) => (py * W + px) * 4;
+  assert.equal(img.data[at(25, 25) + 2], 0, 'isolated sand speck denoised away (B=0)');
+  assert.equal(img.data[at(7, 23) + 2], 255, 'solid sand block interior survives (B=255)');
+});
+
 test('bad input (missing bands / surfaces) returns {pngBuffer:null, aborted:true, stats:{}} without throwing', () => {
   assert.deepEqual(
     classifyToClassmap({ width: 8, height: 8, bounds: unitBounds(8, 8), boundary: null, surfaces: [] }),

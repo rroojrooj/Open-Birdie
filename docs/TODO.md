@@ -1,5 +1,33 @@
 # Open-Birdie — TODO
 
+## Classmap speckle + broadleaf tree — FIXED (2026-07-06, branch `claude/classmap-speckle-fix`)
+
+Fast-follow after an independent visual-QA assessor scored the shipped realism **4.5/10** and
+flagged two artifacts. Both fixed at the source, verified on the real render:
+
+- **Classmap "tan speckle" (assessor #1 critical).** The NDVI classifier is per-pixel, so
+  bright-but-low-NDVI false positives (dry links fescue, tree-shadow on parkland) scattered lone
+  `sand`/`fairway` pixels that render as blocky tan/striped specks. Fix: a **3×3 majority denoise**
+  (`majorityDenoise`, `DENOISE_MIN=5`) on the class rasters **before encode** in
+  `lib/classify-surfaces.js` — drops any class pixel not backed by ≥5 of its 9-neighborhood, fills
+  pinholes, keeps solid bunkers/fairways. **Encode-only:** S2 stats still run on the raw classes so
+  the calibrated abort thresholds are unchanged. **Verified:** TPC Sawgrass overview went from
+  speckle-smeared to clean solid bunkers (sand 8646→5493 px, −36.5%; Chambers contiguous sand only
+  −9.4%, i.e. mostly edge cleanup — adaptive by construction). Demo classmaps regenerated on disk
+  (post-processing the PNG == re-running the classifier, since denoise is on the final masks).
+- **Broadleaf tree "shattered glass" (assessor bug).** `broadleafGeometry` built 160 big (~4 m)
+  radial frond cards that protruded past the canopy shell and read as edge-on slivers + dark
+  `DoubleSide` back-faces from a low camera. Fix (`public/render/tree-cards.js`): shorter cards +
+  denser N (160→340), a smaller (`0.72×`) darker (`0x3f5730`) canopy core so foliage covers it
+  instead of the core reading as a faceted ball → a solid, believable deciduous tree. Conifers are a
+  separate code path, untouched (verified intact on Chambers).
+- **Honest scoping note (from the diagnosis):** a live classmap-OFF toggle proved the class-map does
+  **not** drive Chambers' green-cam look — the "tan" the assessor saw there is the **aerial tint of
+  Chambers' real fescue + the green's hard cookie-cutter edge**, i.e. the **greens gap (#2)**, a
+  separate authored-greens arc — NOT the classmap. The denoise's real win is parkland / sparse-OSM
+  courses (Sawgrass). Remaining ranked gaps from the assessment: greens as 3D complexes (hard edge +
+  blocky checker), milky mid-distance far-field, HD-patch seams / doll-house buildings.
+
 ## Runtime NDVI surface classification — IMPLEMENTED (2026-07-05, branch `claude/ndvi-classification`)
 
 Closes the material-first "sparse stripes" gap the DATA way: at course load (cache-miss,
