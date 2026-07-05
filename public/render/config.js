@@ -21,7 +21,11 @@ export const RENDER_CONFIG = {
   // mix factors for each layer (0 = pure procedural turf, 1 = full effect).
   courseAerialTintClose: 0.85, // low-freq photo tint weight near the camera
   courseAerialTintFar: 0.92,   // ... at far range
-  courseAerialPhotoFar: 0.88,  // RAW photo weight at TRUE far range — keeps the shipped
+  courseAerialPhotoFar: 0.62,  // RAW photo weight at TRUE far range. Was 0.88 = a flat "satellite
+                               // photo" overview (it drowned the lit HD relief). Task-0 diagnostic
+                               // proved the far-photo WEIGHT is the dominant overview-realism lever
+                               // (terrain cast-shadows added ~nothing); 0.62 lets the diffuse-lit dune
+                               // relief read as 3D while keeping enough real albedo. Keeps the shipped
                                // overview look near-intact (diff-gated); tint owns mid-range
   macroTintMPerPx: 2.5,        // tint copy resolution: fixed metres/px (course-size-independent), px cap 1024.
                                // Sharper than the eye-of-address material band needs, but it fills the

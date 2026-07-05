@@ -238,7 +238,12 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // Bolder primary set — the photo tint no longer washes it flat (pulled back on
           // mown ground above), so the grooming cue can carry. Fairway only (green +
           // collar suppressed; the green has its own tighter checker below).
-          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
+          // DISTANCE-FADE (v30): mow stripes are a PLAY-scale grooming cue — full near the
+          // player, gone by survey/overview range. Without this the grid over-reads as an
+          // artificial pattern at altitude now that the lowered courseAerialPhotoFar lets
+          // the lit relief (and the stripes) show through instead of a flat far photo.
+          float sFade = 1.0 - smoothstep(120.0, 280.0, length(vViewPosition));
+          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr) * sFade;
           // GREEN (v29): calm fine grain + a SUBTLE checker mow + a gentle contour roll,
           // all gated by the SOFT edge (gEdge) so the putting-surface character fades
           // across the collar instead of at a hard line. Checker dropped 0.15 -> 0.09 (the
@@ -249,7 +254,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           grass = mix(grass, grass * (0.92 + 0.16 * dlF), gEdge);
           float gb1 = sin((wx * 0.94 + wy * 0.34) * (3.14159265 / (uStripeM * 0.30)));
           float gb2 = sin((wx * -0.34 + wy * 0.94) * (3.14159265 / (uStripeM * 0.30)));
-          grass *= 1.0 + 0.09 * ((smoothstep(-0.6, 0.6, gb1) - 0.5) + (smoothstep(-0.6, 0.6, gb2) - 0.5)) * gEdge;
+          grass *= 1.0 + 0.09 * ((smoothstep(-0.6, 0.6, gb1) - 0.5) + (smoothstep(-0.6, 0.6, gb2) - 0.5)) * gEdge * sFade;
           float gRoll = tFbm(vec2(wx, wy) * 0.06 + 7.0) - 0.5;   // ~16 m gentle undulation
           grass *= 1.0 + 0.05 * gRoll * gEdge;                  // shaped green, not a flat disc
           grass *= 1.0 - 0.16 * fr;                             // graded darker collar ring
@@ -320,7 +325,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v29-macro' : 'turf-grain-v29');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v30-macro' : 'turf-grain-v30');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
