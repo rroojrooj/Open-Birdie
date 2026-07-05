@@ -184,24 +184,27 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // Union the NDVI class-map into the mown gate BEFORE the stripe block (see
           // macroPre): widens the mown gate onto NDVI-detected fairway OSM missed; cls is
           // also reused by the sand union below (kept inside #ifdef USE_MAP, GTAO-safe).${macroPre}
-          // Fringe collar: dilate the green channel ~1.5 m and take the ring (dilated
-          // minus green). Derived in-shader from a coverage mask — no encoded magic
-          // values, so nothing breaks under bilinear/mip filtering. Distance-faded:
-          // a 1.5 m collar is sub-pixel past ~60 m anyway.
-          // 8-tap dilation (axes + diagonals) — a 4-tap axis-only ring reads ~30%
-          // thinner on diagonal green edges (~1.06 m vs 1.5 m) and the collar vanished
-          // in review. Diagonals fill the ring so it's a uniform ~1.3 m band.
-          vec2 fo = vec2(1.3) / uExt;
-          float gN = g;
-          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, 0.0)).g);
-          gN = max(gN, texture2D(uMask, vMapUv - vec2(fo.x, 0.0)).g);
-          gN = max(gN, texture2D(uMask, vMapUv + vec2(0.0, fo.y)).g);
-          gN = max(gN, texture2D(uMask, vMapUv - vec2(0.0, fo.y)).g);
-          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, fo.y)).g);
-          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, -fo.y)).g);
-          gN = max(gN, texture2D(uMask, vMapUv + vec2(-fo.x, fo.y)).g);
-          gN = max(gN, texture2D(uMask, vMapUv - vec2(fo.x, fo.y)).g);
-          float fr = clamp(gN - g, 0.0, 1.0) * (1.0 - smoothstep(45.0, 70.0, length(vViewPosition)));
+          // Soft fringe/collar (v29): an AVERAGED (not max) 8-tap dilation of the green
+          // channel gives a smooth membership gBlur that ramps 1->0 across ~1.8 m at the
+          // green edge. gEdge (a smoothstep of it) gates the green CHARACTER so the putting
+          // surface fades into a mown collar band instead of stopping at a stamped
+          // cookie-cutter edge (the assessor's "hard green edge"); fr is the graded collar
+          // ring OUTSIDE the green. Both distance-faded (sub-pixel past ~60 m). Derived
+          // from a coverage mask — no encoded magic values, safe under bilinear/mip.
+          vec2 fo = vec2(1.8) / uExt;
+          float gBlur = g
+            + texture2D(uMask, vMapUv + vec2(fo.x, 0.0)).g
+            + texture2D(uMask, vMapUv - vec2(fo.x, 0.0)).g
+            + texture2D(uMask, vMapUv + vec2(0.0, fo.y)).g
+            + texture2D(uMask, vMapUv - vec2(0.0, fo.y)).g
+            + texture2D(uMask, vMapUv + vec2(fo.x, fo.y)).g
+            + texture2D(uMask, vMapUv + vec2(fo.x, -fo.y)).g
+            + texture2D(uMask, vMapUv + vec2(-fo.x, fo.y)).g
+            + texture2D(uMask, vMapUv - vec2(fo.x, fo.y)).g;
+          gBlur *= (1.0 / 9.0);
+          float gDistFade = 1.0 - smoothstep(45.0, 70.0, length(vViewPosition));
+          float gEdge = smoothstep(0.12, 0.9, gBlur);            // soft green membership
+          float fr = clamp(gBlur - g, 0.0, 1.0) * gDistFade;     // graded collar ring
           float wx = vMapUv.x * uExt.x, wy = vMapUv.y * uExt.y;
           // procedural grain: fine "tooth" (~0.5-4m) + broad patches (~8-20m), so the
           // turf reads as real grass at the orbit camera instead of a flat plastic
@@ -236,16 +239,20 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // mown ground above), so the grooming cue can carry. Fairway only (green +
           // collar suppressed; the green has its own tighter checker below).
           grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
-          // GREEN: tighter, calmer grain + a fine checkerboard mow — the putting
-          // surface must read manicured at close range, not share the fairway's 7 m
-          // bands (suppressed above; fr is the collar ring, mutually exclusive with g).
+          // GREEN (v29): calm fine grain + a SUBTLE checker mow + a gentle contour roll,
+          // all gated by the SOFT edge (gEdge) so the putting-surface character fades
+          // across the collar instead of at a hard line. Checker dropped 0.15 -> 0.09 (the
+          // bold grid read as a blocky checkerboard from the orbit cam); a low-freq value
+          // roll gives the green a shaped, non-uniform read instead of a flat disc.
           vec3 gdF = texture2D(uDetail, vMapUv * uDetailRepeat * 3.0).rgb;
           float dlF = dot(gdF, vec3(0.299, 0.587, 0.114));
-          grass = mix(grass, grass * (0.90 + 0.20 * dlF), g);
+          grass = mix(grass, grass * (0.92 + 0.16 * dlF), gEdge);
           float gb1 = sin((wx * 0.94 + wy * 0.34) * (3.14159265 / (uStripeM * 0.30)));
           float gb2 = sin((wx * -0.34 + wy * 0.94) * (3.14159265 / (uStripeM * 0.30)));
-          grass *= 1.0 + 0.15 * ((smoothstep(-0.6, 0.6, gb1) - 0.5) + (smoothstep(-0.6, 0.6, gb2) - 0.5)) * g;
-          grass *= 1.0 - 0.14 * fr; // collar: darker tight-mown ring (was invisible at 0.09)
+          grass *= 1.0 + 0.09 * ((smoothstep(-0.6, 0.6, gb1) - 0.5) + (smoothstep(-0.6, 0.6, gb2) - 0.5)) * gEdge;
+          float gRoll = tFbm(vec2(wx, wy) * 0.06 + 7.0) - 0.5;   // ~16 m gentle undulation
+          grass *= 1.0 + 0.05 * gRoll * gEdge;                  // shaped green, not a flat disc
+          grass *= 1.0 - 0.16 * fr;                             // graded darker collar ring
           // Procedural sun-play — directional shading from a low-frequency undulation
           // field so the sun visibly rakes across gentle rolls instead of lighting a
           // flat sheet. The DIRECTIONAL gradient (one flank of a roll lit, the other
@@ -313,7 +320,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v28-macro' : 'turf-grain-v28');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v29-macro' : 'turf-grain-v29');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
