@@ -64,37 +64,69 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
     shader.uniforms.uSand = { value: sand };
     shader.uniforms.uExt = { value: new THREE.Vector2(extX, extY) };
     shader.uniforms.uStripeM = { value: 7.0 }; // mow-band width (m) — a touch wider reads better from the orbit cam
-    // HD aerial macro layer (optional): real low-frequency color tint inside the HD rect.
-    // Aerial RGB shifts the grass HUE/VALUE only — the tiled PBR detail, mow stripes, and
-    // grass geometry all survive. Coverage R gates it; near/far weighted; tuned in Plan 4.
+    // Aerial macro layer (optional) — MATERIAL-FIRST since v24: the photo no longer
+    // replaces the lit turf. Its blurred low-frequency copy (uMacroLow / uMacroAvg)
+    // TINTS the material's hue/value, and the raw photo only crossfades in at TRUE
+    // far range where 0.3 m/px beats screen texel density. The tiled PBR detail,
+    // mow stripes, grain, and light response all survive at play distance.
     const macroDecl = macro ? `
         uniform sampler2D uMacro; uniform sampler2D uMacroSurfaces; uniform sampler2D uMacroCoverage;
+        uniform sampler2D uMacroLow; uniform vec3 uMacroAvg; uniform float uMacroPhotoFar;
         uniform vec2 uMacroMin; uniform vec2 uMacroSize; uniform vec2 uMacroWeights; uniform vec2 uCourseMin;` : '';
     const macroBlend = macro ? `
           { vec2 wXY = uCourseMin + vMapUv * uExt;
             vec2 mUv = (wXY - uMacroMin) / uMacroSize;
             if (mUv.x >= 0.0 && mUv.x <= 1.0 && mUv.y >= 0.0 && mUv.y <= 1.0) {
-              // Feather the aerial across the rect edge so it dissolves into the
-              // procedural turf instead of clipping at a hard rectangle. Distance (m)
-              // to the nearest edge, jittered by low-freq noise so the blend line is
-              // organic, not a clean contour.
+              // Feather across the rect edge so the layer dissolves into procedural
+              // turf instead of clipping at a hard rectangle.
               vec2 edgeM = min(mUv, 1.0 - mUv) * uMacroSize;
               float edgeW = smoothstep(0.0, 7.0, min(edgeM.x, edgeM.y) + (tNoise(wXY * 0.15) - 0.5) * 5.0);
               float mvalid = texture2D(uMacroCoverage, mUv).r;
-              vec3 aerial = texture2D(uMacro, mUv).rgb;
-              float macFar = smoothstep(14.0, 45.0, length(vViewPosition));
-              float mw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, macFar);
-              // The aerial IS the real course — a registered satellite photo. Let it BE the
-              // ground colour (raw RGB; a global de-light flattens real fairway/dune/sand
-              // albedo into milky grey — tried, reverted). Keep a sliver of tiled blade grain
-              // (dl) for close-up micro-texture; the terrain normals + our sun light it as 3D.
-              vec3 photo = aerial * (0.86 + 0.30 * dl);
-              grass = mix(grass, photo, mw);
+              // Two separate distance curves: the tint ramps over the mid-range and owns
+              // it; the RAW photo only crossfades in past the aiming corridor (at the
+              // default framing the player reads the ground at ~25-150 m, so the photo
+              // band starts at 60 m — 0.3 m/px only beats screen texels ~100 m+ out).
+              float tintFar  = smoothstep(20.0, 60.0, length(vViewPosition));
+              float photoFar = smoothstep(60.0, 150.0, length(vViewPosition));
+              // CHROMATIC TRANSFER — the photo's low-frequency hue/value modulates the
+              // LIT turf instead of replacing it. uMacroLow is a blurred copy (baked
+              // capture-day shadows and sub-30cm detail are gone), normalized by the
+              // playable-ground mean so the tint averages ~1.0; the material keeps its
+              // own value structure, stripes, and light response.
+              vec3 tRaw = texture2D(uMacroLow, mUv).rgb / max(uMacroAvg, vec3(0.03));
+              // CHROMA-LIMITED LUMA-LEAN: take the photo's VALUE fully, but its HUE only
+              // in proportion to how far it strays from neutral. OSM-unmapped water /
+              // cart paths / roofs print their saturated colour straight onto the grass
+              // (a teal 'lake' painted on turf, white 'fog' smears in the corridor); they
+              // are HIGH-chroma outliers, so a soft limiter crushes them to value shifts
+              // while normal fairway-vs-dune tan/green drift (LOW chroma) passes through.
+              float tL = dot(tRaw, vec3(0.299, 0.587, 0.114));
+              vec3 chroma = tRaw - tL;
+              float keep = 0.62 / (1.0 + 2.4 * length(chroma));
+              vec3 tint = clamp(tL + chroma * keep, 0.62, 1.32);
+              float tw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, tintFar);
+              // Greens keep their authored colour; mown fairway keeps its mow structure —
+              // pull the tint back on BOTH so the manicured signal (stripes, green
+              // treatment) isn't washed flat by the photo. The photo PLACES the surface;
+              // the material grooms it.
+              tw *= 1.0 - 0.5 * g - 0.35 * m;
+              grass *= mix(vec3(1.0), tint, tw);
+              // FAR PHOTO CROSSFADE — keeps the shipped "real place" overview (raw RGB;
+              // a global de-light flattens real fairway/dune/sand albedo into milky grey
+              // — tried, reverted). A sliver of blade grain (dl) for micro-texture.
+              vec3 photo = texture2D(uMacro, mUv).rgb * (0.86 + 0.30 * dl);
+              grass = mix(grass, photo, mvalid * edgeW * uMacroPhotoFar * photoFar);
             } }` : '';
     if (macro) {
       shader.uniforms.uMacro = { value: macro.albedo };
       shader.uniforms.uMacroSurfaces = { value: macro.surfaces };
       shader.uniforms.uMacroCoverage = { value: macro.coverage };
+      // HD-bundle macros have no low/avg — fall back to the ortho itself + a neutral
+      // grey mean so the vec3 uniform upload never dereferences undefined (a per-frame
+      // TypeError that kills the scene on HD courses whose course aerial failed).
+      shader.uniforms.uMacroLow = { value: macro.low ?? macro.albedo };
+      shader.uniforms.uMacroAvg = { value: macro.avg ?? new THREE.Vector3(0.2159, 0.2159, 0.2159) };
+      shader.uniforms.uMacroPhotoFar = { value: macro.photoFar ?? 0.88 };
       shader.uniforms.uMacroMin = { value: new THREE.Vector2(macro.bounds.minX, macro.bounds.minY) };
       shader.uniforms.uMacroSize = { value: new THREE.Vector2(macro.bounds.maxX - macro.bounds.minX, macro.bounds.maxY - macro.bounds.minY) };
       shader.uniforms.uMacroWeights = { value: new THREE.Vector2(macro.closeWeight ?? 0.25, macro.farWeight ?? 0.6) };
@@ -130,7 +162,27 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // inject a little of the blade's own chroma so a zone isn't one flat tint
           // (green/yellow flecks); clamped so dark blade pixels can't blow up the hue
           grass *= mix(vec3(1.0), clamp(gd / max(dl, 0.1), 0.6, 1.5), 0.16);
-          float m = texture2D(uMask, vMapUv).r;
+          vec4 mk = texture2D(uMask, vMapUv);
+          float m = mk.r;                 // mown gate — semantics unchanged
+          float g = mk.g;                 // green gate — packed channel (.g = greens only)
+          // Fringe collar: dilate the green channel ~1.5 m and take the ring (dilated
+          // minus green). Derived in-shader from a coverage mask — no encoded magic
+          // values, so nothing breaks under bilinear/mip filtering. Distance-faded:
+          // a 1.5 m collar is sub-pixel past ~60 m anyway.
+          // 8-tap dilation (axes + diagonals) — a 4-tap axis-only ring reads ~30%
+          // thinner on diagonal green edges (~1.06 m vs 1.5 m) and the collar vanished
+          // in review. Diagonals fill the ring so it's a uniform ~1.3 m band.
+          vec2 fo = vec2(1.3) / uExt;
+          float gN = g;
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, 0.0)).g);
+          gN = max(gN, texture2D(uMask, vMapUv - vec2(fo.x, 0.0)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(0.0, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv - vec2(0.0, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, -fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(-fo.x, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv - vec2(fo.x, fo.y)).g);
+          float fr = clamp(gN - g, 0.0, 1.0) * (1.0 - smoothstep(45.0, 70.0, length(vViewPosition)));
           float wx = vMapUv.x * uExt.x, wy = vMapUv.y * uExt.y;
           // procedural grain: fine "tooth" (~0.5-4m) + broad patches (~8-20m), so the
           // turf reads as real grass at the orbit camera instead of a flat plastic
@@ -161,7 +213,20 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float stripe = smoothstep(-0.42, 0.42, band) * 2.0 - 1.0;
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
           float stripe2 = smoothstep(-0.5, 0.5, band2) * 2.0 - 1.0;
-          grass *= 1.0 + (0.2 * stripe + 0.09 * stripe2) * m;
+          // Bolder primary set — the photo tint no longer washes it flat (pulled back on
+          // mown ground above), so the grooming cue can carry. Fairway only (green +
+          // collar suppressed; the green has its own tighter checker below).
+          grass *= 1.0 + (0.28 * stripe + 0.13 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
+          // GREEN: tighter, calmer grain + a fine checkerboard mow — the putting
+          // surface must read manicured at close range, not share the fairway's 7 m
+          // bands (suppressed above; fr is the collar ring, mutually exclusive with g).
+          vec3 gdF = texture2D(uDetail, vMapUv * uDetailRepeat * 3.0).rgb;
+          float dlF = dot(gdF, vec3(0.299, 0.587, 0.114));
+          grass = mix(grass, grass * (0.90 + 0.20 * dlF), g);
+          float gb1 = sin((wx * 0.94 + wy * 0.34) * (3.14159265 / (uStripeM * 0.30)));
+          float gb2 = sin((wx * -0.34 + wy * 0.94) * (3.14159265 / (uStripeM * 0.30)));
+          grass *= 1.0 + 0.15 * ((smoothstep(-0.6, 0.6, gb1) - 0.5) + (smoothstep(-0.6, 0.6, gb2) - 0.5)) * g;
+          grass *= 1.0 - 0.14 * fr; // collar: darker tight-mown ring (was invisible at 0.09)
           // Procedural sun-play — directional shading from a low-frequency undulation
           // field so the sun visibly rakes across gentle rolls instead of lighting a
           // flat sheet. The DIRECTIONAL gradient (one flank of a roll lit, the other
@@ -192,7 +257,13 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
         // Turf is near-Lambertian — force it MATTE everywhere. The old mown-surface
         // roughness reduction + sky reflection produced the wet-plastic specular blowout
         // on sunlit slopes (the big white smear). A high roughness floor kills it.
-        roughnessFactor = clamp(roughnessFactor, 0.9, 1.0);`)
+        roughnessFactor = clamp(roughnessFactor, 0.9, 1.0);
+        // GREEN sheen: putting surfaces are the one turf with a real (subtle) specular
+        // read. Explicit USE_MAP guard — this chunk has none of its own, and GTAO's
+        // normal-pass recompile must never see vMapUv unguarded.
+        #ifdef USE_MAP
+        roughnessFactor = mix(roughnessFactor, 0.84, texture2D(uMask, vMapUv).g);
+        #endif`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         // Specular sheen: tilt the shading normal by a low-frequency undulation field so
         // the sun glint + sky reflection ROLL across the turf as the camera moves (the
@@ -221,7 +292,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v23-macro' : 'turf-grain-v23');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v26-macro' : 'turf-grain-v26');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];

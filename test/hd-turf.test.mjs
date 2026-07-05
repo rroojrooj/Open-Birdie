@@ -19,22 +19,48 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   mat.onBeforeCompile(s);
   for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v23');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v26');
+  // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
+  // the roughness sheen samples it directly, the map block via the mk swizzle
+  assert.match(s.fragmentShader, /texture2D\(uMask, vMapUv\)\.g/);
+  assert.match(s.fragmentShader, /roughnessFactor = mix\(roughnessFactor/);
+  assert.match(s.fragmentShader, /float g = mk\.g/);
 });
 
-test('macro turf material: adds aerial uniforms + a distinct program', () => {
-  const macro = { albedo: tex(), surfaces: tex(), coverage: tex(), bounds: { minX: 10, minY: 10, maxX: 40, maxY: 40 }, closeWeight: 0.2, farWeight: 0.6 };
+test('macro turf material: adds aerial tint uniforms + a distinct program', () => {
+  const macro = {
+    albedo: tex(), surfaces: tex(), coverage: tex(), low: tex(), avg: new THREE.Vector3(0.2, 0.25, 0.2),
+    bounds: { minX: 10, minY: 10, maxX: 40, maxY: 40 }, closeWeight: 0.2, farWeight: 0.6, photoFar: 0.65,
+  };
   const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4, macro });
   const s = fakeShader();
   mat.onBeforeCompile(s);
-  for (const u of ['uMacro', 'uMacroSurfaces', 'uMacroCoverage', 'uMacroMin', 'uMacroSize', 'uMacroWeights']) assert.ok(s.uniforms[u], `missing ${u}`);
-  assert.notEqual(mat.customProgramCacheKey(), 'turf-grain-v23');
-  assert.match(s.fragmentShader, /uMacro/);
+  for (const u of ['uMacro', 'uMacroSurfaces', 'uMacroCoverage', 'uMacroLow', 'uMacroAvg', 'uMacroPhotoFar',
+    'uMacroMin', 'uMacroSize', 'uMacroWeights', 'uCourseMin']) assert.ok(s.uniforms[u], `missing ${u}`);
+  assert.equal(s.uniforms.uMacroLow.value, macro.low);
+  assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
+  assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v26-macro');
+  // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
+  assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
+  // the v23 photo-REPLACEMENT blend is gone — a bad merge restoring it must fail here
+  assert.doesNotMatch(s.fragmentShader, /grass = mix\(grass, photo, mw\)/);
+});
+
+test('macro without low/avg (HD-bundle shape) still wires tint uniforms', () => {
+  const macro = { albedo: tex(), surfaces: tex(), coverage: tex(), bounds, closeWeight: 0.2, farWeight: 0.6 };
+  const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4, macro });
+  const s = fakeShader();
+  mat.onBeforeCompile(s);
+  assert.ok(s.uniforms.uMacroLow.value, 'uMacroLow falls back to the albedo');
+  assert.equal(s.uniforms.uMacroLow.value, macro.albedo);
+  assert.ok(s.uniforms.uMacroAvg.value && typeof s.uniforms.uMacroAvg.value.x === 'number', 'uMacroAvg falls back to a Vector3');
+  assert.equal(s.uniforms.uMacroPhotoFar.value, 0.88, 'photoFar default');
 });
 
 test('macro textures are NOT in turf disposeTextures (owned by the bundle loader)', () => {
-  const macro = { albedo: tex(), surfaces: tex(), coverage: tex(), bounds, closeWeight: 0.2, farWeight: 0.6 };
+  const macro = { albedo: tex(), surfaces: tex(), coverage: tex(), low: tex(), avg: new THREE.Vector3(1, 1, 1), bounds, closeWeight: 0.2, farWeight: 0.6 };
   const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4, macro });
   const disp = mat.userData.disposeTextures || [];
-  assert.ok(!disp.includes(macro.albedo) && !disp.includes(macro.surfaces) && !disp.includes(macro.coverage));
+  assert.ok(!disp.includes(macro.albedo) && !disp.includes(macro.surfaces) && !disp.includes(macro.coverage) && !disp.includes(macro.low));
 });
