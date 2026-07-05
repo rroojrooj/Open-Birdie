@@ -60,7 +60,7 @@ export async function compileHole({
   const fingerprint = canonicalCourseFingerprint(course);
 
   await run('resolve-course', () => {
-    if (course.version !== 3) throw new HdCompileError('resolve-course', 'HD_COURSE_VERSION', { version: course.version });
+    if (course.version !== 3 && course.version !== 4) throw new HdCompileError('resolve-course', 'HD_COURSE_VERSION', { version: course.version });
     if (manifest.course.fingerprint !== 'pending' && manifest.course.fingerprint !== fingerprint) {
       throw new HdCompileError('resolve-course', 'HD_FINGERPRINT_MISMATCH', { expected: manifest.course.fingerprint, actual: fingerprint });
     }
