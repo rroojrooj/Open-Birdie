@@ -64,7 +64,10 @@ export function loadCourseFile(filePath) {
   let course;
   try { course = JSON.parse(raw); }
   catch (cause) { throw new HdCompileError('resolve-course', 'HD_COURSE_JSON', { path: filePath }, cause); }
-  if (course.version !== 3) {
+  // Accept the current course schema (v4) as well as legacy v3 caches. `version` is
+  // part of the canonical fingerprint, so a v3->v4 bump shifts courseFingerprint and
+  // requires rebuilding HD bundles — but the compiler must be able to READ v4 to do so.
+  if (course.version !== 3 && course.version !== 4) {
     throw new HdCompileError('resolve-course', 'HD_COURSE_VERSION', { version: course.version });
   }
   if (!Array.isArray(course.holes) || course.holes.length === 0) {
