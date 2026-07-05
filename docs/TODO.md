@@ -39,6 +39,28 @@ Built via subagent-driven development (6 tasks, per-task spec+quality review). N
   caches predate the feature) — a fresh US course auto-generates on first load. (3) `water` NDVI class
   over-fires (shoreline+shadow) — unused by the gate, don't treat as hydrology.
 
+## Chambers Bay HD bundles vs CACHE_VERSION 4 — RESOLVED (2026-07-04), with a v3-cache follow-up
+
+The warned-about break happened: PR #23 (`c9eb14d`, v0.9.0) bumped `CACHE_VERSION` 3→4 and re-fetched
+`chambers-bay.json` with the course-wide 1 m 3DEP base (`elevation` 217×363@5m → 1081×1816@1m, patches baked
+in, `version: 4`) — both fields are fingerprinted, so `courseFingerprint` moved `92067899…` → `bd4fce5f…` and
+`resolveHdBundles` rejected both hole 8/9 bundles (status `absent`, coarse fallback). The v4 migration was
+intentional, so the fix was **rebuild, not restore** (restoring `chambers-bay.v3.bak.json` would just re-fetch
+v4 on the next non-cached load). Done:
+
+- Compiler now accepts course cache **v3 and v4** (`tools/hd-course/course-source.mjs` + `compiler.mjs` gates;
+  test in `test/hd-fingerprint.test.mjs`). v4 is shape-identical everywhere the compiler reads.
+- Both manifests re-pinned via `cli.mjs discover --write` (fingerprint `bd4fce5f…`, bounds re-snapped for the
+  1 m coarse grid, same NAIP COG/ETag) and rebuilt (~30 s each): hole 8 → `c4da699e…`, hole 9 → `a0bb8060…`.
+  Old `92067899…` bundles left on disk (harmless — fingerprint-filtered; delete or keep for rollback).
+- Verified live: `[hd] 2 bundle(s) active: hole(s) 8, 9` on `/api/load-course {cached: "chambers-bay.json"}`.
+
+- **FOLLOW-UP — every still-v3 cached course breaks its bundles on re-search.** `bandon-…json` (has the hole-1
+  bundle), `st-andrews…json`, `tpc-sawgrass.json` (hole-17 manifest in flight) are still `version: 3`. Cached
+  loads (`/api/load-course {cached}`) skip the version check, so they keep working — but a **search-path load**
+  (`loadCourse`) sees `version !== CACHE_VERSION` and re-fetches v4 with a new fingerprint, killing that
+  course's bundles. Remedy per course after it migrates: `discover --write` + `build` (the runbook above).
+
 ## Material-first ground — SHIPPED (2026-07-04), with follow-ups
 
 The aerial is demoted from albedo (was 90–99 % of the ground color = "satellite photo
@@ -74,7 +96,7 @@ true-far-field layer (60–150 m crossfade); greens get their own treatment via 
   tint/photo band constants tuned on two courses; collar subtle at grazing angles.
 - **Observed (pre-existing, not this arc):** tpc-sawgrass plants rough-fescue tufts across
   water/green approaches (OSM labeling/placement quirk — `groundGrass` uses zone data);
-  chambers-bay HD bundles fingerprint-stale (separate task, CACHE_VERSION 3→4).
+  chambers-bay HD bundles were fingerprint-stale (CACHE_VERSION 3→4) — **now RESOLVED**, see the top section.
 
 ## Multi-patch HD terrain — SHIPPED (2026-06-30), with a batch-build follow-up
 

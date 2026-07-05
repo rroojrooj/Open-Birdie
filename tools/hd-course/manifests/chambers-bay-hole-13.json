@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "course": {
     "name": "Chambers Bay",
-    "cacheVersion": 4,
+    "cacheVersion": 3,
     "fingerprint": "bd4fce5f8f4d4fbccd0aaa40c9630ef89018a1d4ad2b7f1bf29387ab2c39c0ff"
   },
-  "hole": 9,
+  "hole": 13,
   "padding": 40,
   "terrain": {
     "targetSpacingM": 1,
@@ -37,10 +37,10 @@
   "discovered": {
     "state": "resolved",
     "bounds": {
-      "minX": 167.01,
-      "minY": -542.68,
-      "maxX": 440.01,
-      "maxY": -399.67999999999995
+      "minX": -36.99000000000001,
+      "minY": 466.32000000000005,
+      "maxX": 425.01,
+      "maxY": 741.32
     },
     "assets": [
       {

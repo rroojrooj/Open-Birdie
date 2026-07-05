@@ -33,9 +33,10 @@
 > then `S.postfx.render()` — raw renders bypass GTAO/grade and can't fail those gates; a
 > renderer-only `setSize` leaves the composer at 0×0 = black frames). 262 tests green.
 > Plan + full review record: [`superpowers/plans/2026-07-04-material-first-ground.md`](superpowers/plans/2026-07-04-material-first-ground.md).
-> **Also found 2026-07-04:** chambers-bay HD bundles are fingerprint-stale on main
-> (CACHE_VERSION 3→4) — separate task; the AFTER captures here are coarse-terrain like the
-> BEFOREs, so the comparison is apples-to-apples.
+> **Also found 2026-07-04 (since RESOLVED):** chambers-bay HD bundles were fingerprint-stale on
+> main (CACHE_VERSION 3→4) — since rebuilt (holes 8/9 active again, see TODO top section). The
+> AFTER captures in this arc predate that fix, so they're coarse-terrain like the BEFOREs and the
+> comparison stays apples-to-apples.
 
 **Date:** 2026-06-27 · **Branch:** `claude/hd-discovery-plan4` (base `main` @ `eede37a`)
 **Read with:** [`docs/TODO.md`](TODO.md) (live backlog), the `~/.claude` memory files (machine-local),
@@ -133,7 +134,9 @@ buildings are flat-roof massing blocks (pitched roofs would read more real); (c)
 | `ca81041` | **course-wide aerial drape** — kills the HD "square" |
 
 Plus the QL1 build itself: `tools/hd-course/manifests/chambers-bay-hole-09.json` (1 m, fingerprint `92067899…`,
-published bundle `516339c7…`).
+published bundle `516339c7…`). *(2026-07-04: the v0.9.0 `CACHE_VERSION` 3→4 migration moved the fingerprint to
+`bd4fce5f…`; both hole manifests were re-pinned and rebuilt — holes 8/9 are now `c4da699e…`/`a0bb8060…`. See
+`docs/TODO.md` top section.)*
 
 ---
 
