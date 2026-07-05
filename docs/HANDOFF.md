@@ -1,5 +1,19 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-05 — RUNTIME NDVI SURFACE CLASSIFICATION IMPLEMENTED** (branch
+> `claude/ndvi-classification`, not yet PR'd). Auto-classifies mown fairway + sand OSM missed
+> from the NAIP infrared band at course load (zero new deps — a 2nd `format=png&bandIds=3,0,1`
+> fetch + `pngjs`), baking a class-map the turf shader (v27) unions into the mown/sand gates —
+> extending stripes + sand material onto surfaces OSM never mapped, every course, no manual step.
+> `lib/ndvi-fetch.js` + `lib/classify-surfaces.js` (+ `lib/segment-core.js` extracted from
+> `tools/trace/segment.mjs`) → `course.aerial.classFile` (non-fingerprinted) → `/api/course-classmap`
+> → `scene.js` `_macro.surfaces` → `turf.js` `macroPre`. Safeguards: S1 (no sand on OSM-mown), S2
+> (mown-floor <3% / sand >55%, calibrated live). Class-map clipped to inside-course (else off-course
+> beach/parking overpaints the far-field photo — caught by the visual gate). **Honest:** on
+> well-mapped courses (Chambers) the visible delta is modest; the win is automation + sparse-OSM
+> courses. Stripe *strength* is a separable follow-up. Full detail + review record:
+> [`docs/TODO.md`](TODO.md) and the plan `superpowers/plans/2026-07-05-runtime-ndvi-classification.md`.
+
 > **UPDATE 2026-07-04 — MATERIAL-FIRST GROUND SHIPPED (the "satellite photo painted on the
 > surface" fix).** The aerial no longer replaces the lit turf (it was 90–99 % of the ground
 > color): a blurred low-res copy now **tints** the PBR turf's hue/value (normalized by the
