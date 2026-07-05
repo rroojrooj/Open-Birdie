@@ -152,13 +152,15 @@ test('d: encoded PNG round-trips - R/B channels match the intended classes at kn
   const img = PNG.sync.read(pngBuffer);
   assert.equal(img.width, W); assert.equal(img.height, H);
   const at = (px, py) => (py * W + px) * 4;
-  // sand pixel (interior of top strip)
+  // sand pixel (interior of top strip). Channels are 0..255 COVERAGE since the feather
+  // (v-greens) — an interior reads high (not necessarily exactly 255 in these thin test
+  // strips where the blur window reaches the class boundary), outside reads 0.
   let o = at(16, 3);
-  assert.equal(img.data[o + 2], 255, 'sand -> B=255');
+  assert.ok(img.data[o + 2] > 200, 'sand -> high B coverage');
   assert.equal(img.data[o + 0], 0, 'sand -> R=0');
   // fairway pixel (interior of middle band)
   o = at(16, 13);
-  assert.equal(img.data[o + 0], 255, 'fairway -> R=255');
+  assert.ok(img.data[o + 0] > 200, 'fairway -> high R coverage');
   assert.equal(img.data[o + 2], 0, 'fairway -> B=0');
   // rough pixel (interior of bottom band)
   o = at(16, 27);
@@ -246,7 +248,27 @@ test('denoise: a lone 1px sand speck is dropped; a solid sand block survives (en
   const img = PNG.sync.read(pngBuffer);
   const at = (px, py) => (py * W + px) * 4;
   assert.equal(img.data[at(25, 25) + 2], 0, 'isolated sand speck denoised away (B=0)');
-  assert.equal(img.data[at(7, 23) + 2], 255, 'solid sand block interior survives (B=255)');
+  assert.ok(img.data[at(7, 23) + 2] > 200, 'solid sand block interior survives (high B coverage)');
+});
+
+test('feather: solid interiors stay full coverage; class edges ramp to partial (soft, not hard tiles)', () => {
+  const W = 32, H = 32;
+  // fairway band (clears the mown floor) + a solid 10x10 sand block. The feather blurs
+  // the denoised mask to 0..255 coverage: the block INTERIOR stays 255, but a pixel just
+  // outside the block edge picks up PARTIAL sand coverage (0 < B < 255) so the shader
+  // fades the sand in instead of stair-stepping a hard tile.
+  const inBlock = (px, py) => px >= 8 && px <= 17 && py >= 16 && py <= 25;
+  const bands = buildBands(W, H, (px, py) => (py < 8 ? 'fairway' : inBlock(px, py) ? 'sand' : 'rough'));
+  const bounds = unitBounds(W, H);
+  const surfaces = [{ kind: 'rough', poly: rectPoly(0, 0, W, H) }];
+  const boundary = rectPoly(0, 0, W, H);
+  const { pngBuffer, aborted } = classifyToClassmap({ bands, width: W, height: H, bounds, boundary, surfaces });
+  assert.equal(aborted, false);
+  const img = PNG.sync.read(pngBuffer);
+  const at = (px, py) => (py * W + px) * 4;
+  assert.equal(img.data[at(12, 20) + 2], 255, 'block interior = full sand coverage (255)');
+  const edge = img.data[at(19, 20) + 2]; // 2 px outside the block's right edge (col 17)
+  assert.ok(edge > 0 && edge < 255, `edge sand ramps to partial coverage, got ${edge}`);
 });
 
 test('bad input (missing bands / surfaces) returns {pngBuffer:null, aborted:true, stats:{}} without throwing', () => {
