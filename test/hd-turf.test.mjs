@@ -52,6 +52,11 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroSurfaces/);
   // the mown gate is WIDENED by NDVI-detected fairway (cls.r) BEFORE the stripe block…
   assert.match(s.fragmentShader, /m = max\(m, cls\.r\)/);
+  // ORDERING GUARD (the feature's #1 risk): the mown union MUST precede the stripe block,
+  // else stripes never key off the widened m and NDVI fairway gets no stripes — a
+  // mis-order would pass every other assertion. Pin it by source position.
+  assert.ok(s.fragmentShader.indexOf('m = max(m, cls.r)') < s.fragmentShader.indexOf('float band = sin('),
+    'NDVI mown-union must appear before the stripe block');
   // …and the sand gate UNIONS NDVI-detected sand (cls.b) into the tiled-sand path.
   assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
   // the v23 photo-REPLACEMENT blend is gone — a bad merge restoring it must fail here
