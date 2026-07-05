@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "course": {
     "name": "Chambers Bay",
-    "cacheVersion": 3,
-    "fingerprint": "92067899d5e18c15efef72b38ed4a31f535e682a4b952bf823189601ee5d064f"
+    "cacheVersion": 4,
+    "fingerprint": "bd4fce5f8f4d4fbccd0aaa40c9630ef89018a1d4ad2b7f1bf29387ab2c39c0ff"
   },
   "hole": 9,
   "padding": 40,
@@ -37,10 +37,10 @@
   "discovered": {
     "state": "resolved",
     "bounds": {
-      "minX": 165.01,
-      "minY": -543.68,
+      "minX": 167.01,
+      "minY": -542.68,
       "maxX": 440.01,
-      "maxY": -398.67999999999995
+      "maxY": -399.67999999999995
     },
     "assets": [
       {
