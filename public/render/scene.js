@@ -13,6 +13,7 @@ import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
 import { makeWaterDepth } from './water-depth.js';
 import { makeTurfMaterial, makeSandMaterial } from './turf.js';
+import { srgbToLinear, averageLinearColor } from './macro-tint.js';
 import { densifyRing, drapeRing } from './drape.js';
 import { buildHdTerrain, buildCoarseTerrain } from './hd-terrain.js';
 import { makeTerrainSampler } from './terrain-grid.js';
@@ -49,7 +50,10 @@ const COLORS = {
   wood: '#2b4124',
   range: '#52883f',
   fairwayA: '#5aa848', fairwayB: '#4f9a40', // vivid lush fairway (mow stripes added in shader)
-  greenA: '#5cab4f', greenB: '#519c45', // lush, ~fairway brightness, a touch cooler — distinct by hue, never by glow
+  // Greens: muted since material-first (v25) — the splat is now the ACTUAL albedo, not a
+  // 10% residue under the photo drape; #5cab4f read as a neon decal. The fine mow, sheen,
+  // and collar carry "putting surface"; the color stays in the fairway family.
+  greenA: '#4c8f42', greenB: '#447f38',
   tee: '#63a84f',
   bunker: '#cbb583',
   water: '#2f6d97',
@@ -258,26 +262,46 @@ export class GolfScene {
     // HD bundle: a high-res terrain patch + aerial macro within its rect. Sets up the
     // unified sampler (placement) + macro (turf shader) consumed below.
     this._hdAssets = hdList;
+    // Free the previous course's macro tint textures on BOTH paths — inside the
+    // aerial branch this would leak the old full-res aerial (~64 MB + mips GPU)
+    // whenever the user switches from a US course to a no-aerial course.
+    if (this._macro) { this._macro.albedo?.dispose?.(); this._macro.low?.dispose?.(); }
+    for (const hm of this._hdMacros || []) hm.low?.dispose?.(); // ours; the bundle owns the ortho
     if (hdList.length && this.elev) {
       this._hdPatches = hdList.map((a) => ({
         minX: a.terrain.bounds.minX, minY: a.terrain.bounds.minY, cellM: a.terrain.cellM,
         nx: a.terrain.nx, ny: a.terrain.ny, heights: a.terrain.heights, edgeBlendM: 0,
       }));
-      this._hdMacros = hdList.map((a) => ({
-        albedo: a.orthophoto, surfaces: a.surfaces, coverage: a.coverage, bounds: a.terrain.bounds,
-        closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.78, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.96,
-      }));
+      // Each HD macro gets a REAL blurred tint copy + mean from its own decoded ortho
+      // bitmap — without it, the aerial-less fallback path would divide the un-blurred
+      // photo by a fabricated grey mean (a mis-normalized full-frequency multiply).
+      // Defaults re-tuned for v24 tint semantics (the old 0.78/0.96 meant photo weight).
+      this._hdMacros = hdList.map((a) => {
+        const t = this._tintFromImage(a.orthophoto.image);
+        return {
+          albedo: a.orthophoto, surfaces: a.surfaces, coverage: a.coverage, bounds: a.terrain.bounds,
+          low: t.low, avg: t.avg,
+          closeWeight: RENDER_CONFIG.hdMacroCloseWeight ?? 0.85, farWeight: RENDER_CONFIG.hdMacroFarWeight ?? 0.92,
+        };
+      });
       this._hdSampler = makeTerrainSampler(this.elev, this._hdPatches);
     } else {
       this._hdPatches = []; this._hdMacros = []; this._hdSampler = null;
     }
-    // Course-wide aerial drape: the real NAIP photo as the ground texture for the
-    // WHOLE course (bounds from geo.aerial), so the HD hole stops reading as a lone
-    // photographic tile on green felt — everything is the photo, the HD hole is just
-    // a sharper-relief region within it. Loaded async (auto-updates on first render
-    // after decode); white 1x1 coverage = valid everywhere. Preferred over _hdMacros.
+    // Course-wide aerial: since v24 it TINTS the lit turf (blurred copy + playable
+    // mean, built when the photo decodes) and supplies the true-far-field photo; the
+    // materials carry the surface at play distance. Loaded async; white 1x1 coverage
+    // = valid everywhere; black 1x1 surfaces = "no classes" (reserved for the NDVI
+    // follow-up — white would mean all-classes-everywhere the day it's sampled).
     if (geo.aerial && geo.aerial.bounds) {
-      const tex = new THREE.TextureLoader().load('/api/course-aerial');
+      // Capture the macro object in the decode callback (NOT this._macro): if the user
+      // switches course before the photo decodes, the stale callback must not redraw
+      // the NEW course's tint canvas from the OLD course's image.
+      const macroRef = {};
+      const tex = new THREE.TextureLoader().load('/api/course-aerial',
+        () => this._buildMacroTint(macroRef),
+        undefined,
+        () => console.warn('[render] course aerial failed to load — procedural turf + neutral tint'));
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -285,10 +309,27 @@ export class GolfScene {
         this._whiteTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
         this._whiteTex.needsUpdate = true;
       }
-      this._macro = {
-        albedo: tex, coverage: this._whiteTex, surfaces: this._whiteTex, bounds: geo.aerial.bounds,
-        closeWeight: RENDER_CONFIG.courseAerialCloseWeight ?? 0.90, farWeight: RENDER_CONFIG.courseAerialFarWeight ?? 0.99,
-      };
+      if (!this._blackTex) {
+        this._blackTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+        this._blackTex.needsUpdate = true;
+      }
+      // Tint copy: starts as 1x1 mid-grey (tint == 1.0 everywhere) and is redrawn in
+      // place from the decoded photo — the shader uniform holds THIS texture object,
+      // so mutating it needs no recompile (same async-update pattern as the photo).
+      const tintCv = document.createElement('canvas');
+      tintCv.width = tintCv.height = 1;
+      const tctx = tintCv.getContext('2d');
+      tctx.fillStyle = '#808080'; tctx.fillRect(0, 0, 1, 1);
+      const low = new THREE.CanvasTexture(tintCv);
+      low.colorSpace = THREE.SRGBColorSpace;
+      low.wrapS = low.wrapT = THREE.ClampToEdgeWrapping;
+      this._macro = Object.assign(macroRef, {
+        albedo: tex, low, avg: new THREE.Vector3(0.2159, 0.2159, 0.2159), // linear of #808080 -> tint 1.0
+        coverage: this._whiteTex, surfaces: this._blackTex, bounds: geo.aerial.bounds,
+        closeWeight: RENDER_CONFIG.courseAerialTintClose ?? 0.85,
+        farWeight: RENDER_CONFIG.courseAerialTintFar ?? 0.92,
+        photoFar: RENDER_CONFIG.courseAerialPhotoFar ?? 0.88,
+      });
     } else {
       this._macro = null;
     }
@@ -380,17 +421,24 @@ export class GolfScene {
     const tex = new THREE.CanvasTexture(this._paintSplat(b));
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    const maskTex = new THREE.CanvasTexture(this._paintMask(b, ['fairway', 'green', 'tee']));
+    // Packed channels: .r = mown (fairway/tee/green — semantics unchanged), .g = green
+    // only. One canvas, no extra texture (~67 MB saved at the 4096 cap); kinds paint
+    // in order so greens land last and keep their G channel.
+    const maskTex = new THREE.CanvasTexture(this._paintMask(
+      b, ['fairway', 'tee', 'green'], { default: '#ff0000', green: '#ffff00' }));
     maskTex.colorSpace = THREE.NoColorSpace;
     maskTex.anisotropy = tex.anisotropy;
     const bunkerMaskTex = new THREE.CanvasTexture(this._paintMask(b, ['bunker']));
     bunkerMaskTex.colorSpace = THREE.NoColorSpace;
     bunkerMaskTex.anisotropy = tex.anisotropy;
 
-    const turfMat = makeTurfMaterial({
+    // Stashed so _addGreenPatches can build a second, polygon-offset instance of the
+    // SAME shader (shared texture/macro objects — in-place tint updates reach both).
+    this._turfInputs = {
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
       macro: this._macro || this._hdMacros[0] || null,
-    });
+    };
+    const turfMat = makeTurfMaterial(this._turfInputs);
     if (this._hdPatches.length) {
       // Unified terrain: a coarse mesh with EVERY HD rect cut out + one HD mesh per
       // patch filling the cutouts, sharing boundaries with zero positive-area overlap.
@@ -409,6 +457,92 @@ export class GolfScene {
     const mesh = new THREE.Mesh(geom, turfMat);
     mesh.receiveShadow = true;
     return mesh;
+  }
+
+  // Redraw the 1x1 placeholder tint canvas from the decoded course aerial: a small
+  // blurred copy (low-frequency hue/value only — baked shadows and sub-30cm detail
+  // are averaged away) + the mean linear color of the PLAYABLE ground, used to
+  // normalize it. Playable = inside the course boundary, outside water/bunker: the
+  // aerial is padded ~60 m past the course and can include open sea (not an OSM
+  // surface at all), and parkland courses are water-heavy — a mean dragged dark by
+  // water would brighten ALL turf and make the tint knobs course-dependent.
+  // Non-playable pixels are then neutralized to that mean so they can't halo into
+  // the turf tint. Resolution is fixed metres-per-pixel, course-size-independent.
+  // `m` is the macro object captured at load time; bail if a newer course replaced
+  // it. Best-effort: a failure here must never break course load.
+  _buildMacroTint(m) {
+    if (!m || m !== this._macro) return; // course changed while the photo decoded
+    try {
+      const img = m.albedo && m.albedo.image;
+      if (!img || !img.width) return;
+      const b = m.bounds, extX = b.maxX - b.minX, extY = b.maxY - b.minY;
+      const mpp = RENDER_CONFIG.macroTintMPerPx ?? 2.5;
+      const w = Math.min(1024, Math.max(32, Math.round(extX / mpp)));
+      const h = Math.min(1024, Math.max(32, Math.round(extY / mpp)));
+      const px = (x) => ((x - b.minX) / extX) * w, py = (y) => ((b.maxY - y) / extY) * h;
+      const trace = (c, poly) => {
+        c.moveTo(px(poly[0][0]), py(poly[0][1]));
+        for (let i = 1; i < poly.length; i++) c.lineTo(px(poly[i][0]), py(poly[i][1]));
+        c.closePath();
+      };
+      const cnv = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+      const raw = cnv(); const rctx = raw.getContext('2d');
+      rctx.drawImage(img, 0, 0, w, h);
+      // playable-mask: alpha 1 inside the boundary, erased over water/bunker (alpha
+      // keys both the mean loop and the composite below)
+      const msk = cnv(); const mctx = msk.getContext('2d');
+      const boundary = this.geo && this.geo.boundary;
+      mctx.fillStyle = '#fff';
+      if (boundary && boundary.length >= 3) { mctx.beginPath(); trace(mctx, boundary); mctx.fill(); }
+      else mctx.fillRect(0, 0, w, h);
+      mctx.globalCompositeOperation = 'destination-out';
+      for (const s of (this.geo && this.geo.surfaces) || []) {
+        if ((s.kind !== 'water' && s.kind !== 'bunker') || !s.poly || s.poly.length < 3) continue;
+        mctx.beginPath(); trace(mctx, s.poly); mctx.fill();
+      }
+      // mean over playable pixels only (empty mask -> full-frame fallback)
+      const rd = rctx.getImageData(0, 0, w, h).data, md = mctx.getImageData(0, 0, w, h).data;
+      let r = 0, g = 0, bl = 0, n = 0;
+      for (let i = 0; i < rd.length; i += 4) {
+        if (md[i + 3] < 128) continue;
+        r += srgbToLinear(rd[i]); g += srgbToLinear(rd[i + 1]); bl += srgbToLinear(rd[i + 2]); n++;
+      }
+      if (n > 0) m.avg.set(r / n, g / n, bl / n);
+      else { const a = averageLinearColor(rd); m.avg.set(a.r, a.g, a.b); }
+      // composite: mean everywhere, real photo only where playable, then blur into
+      // the live tint canvas (the texture object bound at compile — mutate in place)
+      const play = cnv(); const pctx = play.getContext('2d');
+      pctx.drawImage(msk, 0, 0);
+      pctx.globalCompositeOperation = 'source-in';
+      pctx.drawImage(raw, 0, 0);
+      const comp = cnv(); const cctx = comp.getContext('2d');
+      cctx.fillStyle = `rgb(${Math.round(255 * (m.avg.x ** (1 / 2.2)))},${Math.round(255 * (m.avg.y ** (1 / 2.2)))},${Math.round(255 * (m.avg.z ** (1 / 2.2)))})`;
+      cctx.fillRect(0, 0, w, h);
+      cctx.drawImage(play, 0, 0);
+      const cv = m.low.image;
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.filter = `blur(${RENDER_CONFIG.macroTintBlurPx ?? 2}px)`;
+      ctx.drawImage(comp, 0, 0);
+      m.low.needsUpdate = true;
+      console.log(`[render] aerial tint built ${w}x${h}, playable mean rgb(${m.avg.x.toFixed(3)}, ${m.avg.y.toFixed(3)}, ${m.avg.z.toFixed(3)})`);
+    } catch (e) { console.warn('[render] tint build failed — neutral tint kept:', e && e.message); }
+  }
+
+  // Blurred low-res copy + linear mean from an already-decoded image (HD ortho path —
+  // the bundle loader hands us the ImageBitmap synchronously).
+  _tintFromImage(img) {
+    const w = Math.max(8, Math.min(128, Math.round(((img && img.width) || 64) / 8)));
+    const h = Math.max(8, Math.min(128, Math.round(((img && img.height) || 64) / 8)));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    ctx.filter = `blur(${RENDER_CONFIG.macroTintBlurPx ?? 2}px)`;
+    try { ctx.drawImage(img, 0, 0, w, h); } catch (e) { /* keep blank canvas -> neutral-ish */ }
+    const a = averageLinearColor(ctx.getImageData(0, 0, w, h).data);
+    const low = new THREE.CanvasTexture(cv);
+    low.colorSpace = THREE.SRGBColorSpace;
+    low.wrapS = low.wrapT = THREE.ClampToEdgeWrapping;
+    return { low, avg: new THREE.Vector3(a.r || 0.2159, a.g || 0.2159, a.b || 0.2159) };
   }
 
   _paintSplat(b) {
@@ -483,10 +617,12 @@ export class GolfScene {
     return cv;
   }
 
-  // Black/white mask over the terrain for the given surface kinds — white inside
-  // those polygons, black elsewhere. Sampled in the turf shader to gate per-zone
-  // effects (mow stripes on mown surfaces, sand on bunkers).
-  _paintMask(b, kinds) {
+  // Channel mask over the terrain for the given surface kinds — black elsewhere.
+  // Default: white inside the polygons (the shipping single-channel behavior).
+  // With a `colors` map, each kind fills with its own color so one canvas can pack
+  // several gates (e.g. .r = mown, .g = green). Kinds paint in the ORDER GIVEN —
+  // later kinds overpaint earlier ones where polygons touch.
+  _paintMask(b, kinds, colors = null) {
     const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
     const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
     const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
@@ -496,15 +632,17 @@ export class GolfScene {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     const px = (x) => (x - b.minX) * ppm, py = (y) => (b.maxY - y) * ppm;
-    ctx.fillStyle = '#fff';
     ctx.filter = 'blur(1px)';
-    for (const s of this.geo.surfaces) {
-      if (!kinds.includes(s.kind)) continue;
-      ctx.beginPath();
-      ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
-      for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
-      ctx.closePath();
-      ctx.fill();
+    for (const kind of kinds) {
+      ctx.fillStyle = colors ? (colors[kind] || colors.default || '#fff') : '#fff';
+      for (const s of this.geo.surfaces) {
+        if (s.kind !== kind) continue;
+        ctx.beginPath();
+        ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
+        for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
+        ctx.closePath();
+        ctx.fill();
+      }
     }
     return cv;
   }
@@ -810,13 +948,25 @@ export class GolfScene {
     if (!patches || !patches.length || !baseMesh) return;
     const b = this.bounds, extX = b.maxX - b.minX, extY = b.maxY - b.minY;
     const FEATHER = 4; // m — matches the physics feather in makeTerrain
-    const bm = baseMesh.material;
-    const mat = new THREE.MeshStandardMaterial({
-      map: bm.map, normalMap: bm.normalMap, roughnessMap: bm.roughnessMap,
-      normalScale: bm.normalScale ? bm.normalScale.clone() : new THREE.Vector2(0.8, 0.8),
-      roughness: bm.roughness, metalness: 0, envMapIntensity: bm.envMapIntensity,
-      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-    });
+    // The patch mesh must run the FULL turf shader (tint, fescue desat, the uMask.g
+    // green treatment) — a plain slot-clone renders the raw kelly-green splat with
+    // none of it, which read as a neon decal once material-first ground landed
+    // (invisible before, when the photo drape covered everything at 90%+). Patch UVs
+    // are course-relative, so every mask/macro gate lines up with the ground below.
+    const mat = this._turfInputs
+      ? makeTurfMaterial(this._turfInputs)
+      : (() => {
+        const bm = baseMesh.material;
+        return new THREE.MeshStandardMaterial({
+          map: bm.map, normalMap: bm.normalMap, roughnessMap: bm.roughnessMap,
+          normalScale: bm.normalScale ? bm.normalScale.clone() : new THREE.Vector2(0.8, 0.8),
+          roughness: bm.roughness, metalness: 0, envMapIntensity: bm.envMapIntensity,
+        });
+      })();
+    mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -1;
+    // second material instance -> its own texture registrations would double-dispose;
+    // the primary turf material owns them (loadCourse traverse dedupes by object, but
+    // dispose() on an already-disposed texture is a safe no-op in three anyway)
     for (const p of patches) {
       const { minX, minY, cellM, nx, ny, heights } = p;
       const maxX = minX + (nx - 1) * cellM, maxY = minY + (ny - 1) * cellM;

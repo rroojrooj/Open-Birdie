@@ -22,6 +22,45 @@ v4 on the next non-cached load). Done:
   (`loadCourse`) sees `version !== CACHE_VERSION` and re-fetches v4 with a new fingerprint, killing that
   course's bundles. Remedy per course after it migrates: `discover --write` + `build` (the runbook above).
 
+## Material-first ground — SHIPPED (2026-07-04), with follow-ups
+
+The aerial is demoted from albedo (was 90–99 % of the ground color = "satellite photo
+painted on the surface") to a playable-mean-normalized **tint** over the PBR turf + a
+true-far-field layer (60–150 m crossfade); greens get their own treatment via the packed
+`uMask.g` channel. Plan + embedded review record:
+[`superpowers/plans/2026-07-04-material-first-ground.md`](superpowers/plans/2026-07-04-material-first-ground.md).
+
+- **FOLLOW-UP — runtime NDVI sand (dunes/waste OSM misses).** Build **runtime-first** on the
+  `lib/aerial.js` pattern: one more NAIPPlus `exportImage` request with the NIR band
+  (`bandIds`) + `pngjs` decode + the pure `tools/trace/segment.mjs` math → feed
+  `uMacroSurfaces` (bound, black-defaulted, never sampled today). **Never a manual per-course
+  dev tool** (the review killed that: it re-introduces the manual-step debt v0.9.2 removed).
+  **Mandatory safeguards (CEO-review):** NDVI sand only *outside* OSM mown polys (bright +
+  low-NDVI is exactly dry links fescue — Chambers fairways would classify as sand), plus a
+  coverage-sanity abort (implausible sand % → refuse loudly). Trigger: captures showing OSM
+  bunker/waste coverage is visibly insufficient.
+- **6→8 polish pass — SHIPPED (2026-07-05, v26)** in response to an adversarial visual-QA
+  pass (6/10 → the four PARTIAL/NOT-MET findings). Chroma-limited luma-lean tint (kills
+  OSM-unmapped water/path/roof colour bleeding onto turf), sharper 2.5 m/px tint copy (fills
+  the 20–80 m ball-flight band with real ground structure), tint pulled off mown ground +
+  bolder stripes (mow bands now legible where OSM marks fairway), 8-tap collar (was
+  invisible). **Correction to the QA report:** its "worst problem #1 — teal water painted on
+  grass" at Sawgrass 17 is the REAL island-green water mesh (raycast: 2 meshes span the
+  region), not a tint ghost — the tufts standing in it are the placement bug below.
+- **Still open — the biggest remaining "groomed" gap is DATA, not shader.** Mow stripes only
+  render where OSM marks fairway/tee; Chambers hole 9's OSM mown coverage is near-empty
+  (fairway centroid mask r≈0.22), so most of its fairway shows no stripes. This is exactly
+  what the **runtime NDVI classification** follow-up (above) fixes — real mown boundaries on
+  every course. Until then, stripes are correct-but-sparse, not a shader bug.
+- **Polish (minor):** near-field links palette on Chambers still greener than its own
+  overview (faithful to the aerial there; pushing fescue harder risks the reverted grey-wash);
+  tint/photo band constants tuned on two courses; collar subtle at grazing angles.
+- **Observed (pre-existing, not this arc):** tpc-sawgrass plants rough-fescue tufts across
+  water/green approaches (OSM labeling/placement quirk — `groundGrass` uses zone data);
+  chambers-bay HD bundles were fingerprint-stale (CACHE_VERSION 3→4) — **now RESOLVED**, see the top section.
+
+## Multi-patch HD terrain — SHIPPED (2026-06-30), with a batch-build follow-up
+
 The runtime rendered only **one** 1 m lidar hole at a time (`active.json` → singular `activeHd`), so the rest
 of the course stayed smooth SRTM ("satellite image on a smooth surface"). Now it renders **every built hole's
 bundle at once**: `resolveHdBundles` scans `data/hd-courses/<slug>/bundles/` and returns one descriptor per

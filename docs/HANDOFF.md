@@ -1,5 +1,27 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-04 — MATERIAL-FIRST GROUND SHIPPED (the "satellite photo painted on the
+> surface" fix).** The aerial no longer replaces the lit turf (it was 90–99 % of the ground
+> color): a blurred low-res copy now **tints** the PBR turf's hue/value (normalized by the
+> playable-ground mean — boundary-masked, water/bunker excluded, so open sea can't skew it),
+> and the raw photo only crossfades in past the aiming corridor (60–150 m). Greens gate off
+> the packed **`uMask.g`** channel (`_paintMask` per-kind colors — zero new textures): calm
+> fine grain, tight checkerboard mow, roughness-0.84 sheen, in-shader dilated fringe collar;
+> green splat palette muted (the photo-era kelly read as a neon decal once materials became
+> the albedo). Knobs in `RENDER_CONFIG` (`courseAerialTint*`, `courseAerialPhotoFar`,
+> `macroTintMPerPx/BlurPx`). Shader keys v23→v25 (`turf.js`); tint build in `scene.js`
+> `_buildMacroTint`/`_tintFromImage` (HD macros get a real tint from their own ortho — the
+> aerial-less HD fallback no longer mis-normalizes). Verified: 8 BEFORE/AFTER pairs, 4 fixed
+> cameras × 2 courses (chambers-bay links + tpc-sawgrass parkland, coords in
+> `.shots/NOTES.md`), captures rendered **through the postfx composer** (`S.postfx.setSize`
+> then `S.postfx.render()` — raw renders bypass GTAO/grade and can't fail those gates; a
+> renderer-only `setSize` leaves the composer at 0×0 = black frames). 262 tests green.
+> Plan + full review record: [`superpowers/plans/2026-07-04-material-first-ground.md`](superpowers/plans/2026-07-04-material-first-ground.md).
+> **Also found 2026-07-04 (since RESOLVED):** chambers-bay HD bundles were fingerprint-stale on
+> main (CACHE_VERSION 3→4) — since rebuilt (holes 8/9 active again, see TODO top section). The
+> AFTER captures in this arc predate that fix, so they're coarse-terrain like the BEFOREs and the
+> comparison stays apples-to-apples.
+
 **Date:** 2026-06-27 · **Branch:** `claude/hd-discovery-plan4` (base `main` @ `eede37a`)
 **Read with:** [`docs/TODO.md`](TODO.md) (live backlog), the `~/.claude` memory files (machine-local),
 and the plan summarized in §7 below. This file is the single source of truth for resuming.
