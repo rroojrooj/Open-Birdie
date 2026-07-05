@@ -17,11 +17,24 @@ true-far-field layer (60–150 m crossfade); greens get their own treatment via 
   low-NDVI is exactly dry links fescue — Chambers fairways would classify as sand), plus a
   coverage-sanity abort (implausible sand % → refuse loudly). Trigger: captures showing OSM
   bunker/waste coverage is visibly insufficient.
-- **Polish:** fringe collar reads thin/subtle at grazing angles (4-tap axis-aligned dilation
-  ≈ 1.06 m effective on diagonals — go 8-tap if it matters); tint/photo band constants
-  (`20/60`, `60/150` in `turf.js`) tuned on two courses only; mow-checkerboard contrast 0.15.
+- **6→8 polish pass — SHIPPED (2026-07-05, v26)** in response to an adversarial visual-QA
+  pass (6/10 → the four PARTIAL/NOT-MET findings). Chroma-limited luma-lean tint (kills
+  OSM-unmapped water/path/roof colour bleeding onto turf), sharper 2.5 m/px tint copy (fills
+  the 20–80 m ball-flight band with real ground structure), tint pulled off mown ground +
+  bolder stripes (mow bands now legible where OSM marks fairway), 8-tap collar (was
+  invisible). **Correction to the QA report:** its "worst problem #1 — teal water painted on
+  grass" at Sawgrass 17 is the REAL island-green water mesh (raycast: 2 meshes span the
+  region), not a tint ghost — the tufts standing in it are the placement bug below.
+- **Still open — the biggest remaining "groomed" gap is DATA, not shader.** Mow stripes only
+  render where OSM marks fairway/tee; Chambers hole 9's OSM mown coverage is near-empty
+  (fairway centroid mask r≈0.22), so most of its fairway shows no stripes. This is exactly
+  what the **runtime NDVI classification** follow-up (above) fixes — real mown boundaries on
+  every course. Until then, stripes are correct-but-sparse, not a shader bug.
+- **Polish (minor):** near-field links palette on Chambers still greener than its own
+  overview (faithful to the aerial there; pushing fescue harder risks the reverted grey-wash);
+  tint/photo band constants tuned on two courses; collar subtle at grazing angles.
 - **Observed (pre-existing, not this arc):** tpc-sawgrass plants rough-fescue tufts across
-  green approaches (OSM labeling/placement quirk — `groundGrass` uses zone data);
+  water/green approaches (OSM labeling/placement quirk — `groundGrass` uses zone data);
   chambers-bay HD bundles fingerprint-stale (separate task, CACHE_VERSION 3→4).
 
 ## Multi-patch HD terrain — SHIPPED (2026-06-30), with a batch-build follow-up
