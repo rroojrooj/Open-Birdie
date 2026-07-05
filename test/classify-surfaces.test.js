@@ -194,6 +194,37 @@ test('e: a sand pixel OUTSIDE the inside-course mask is excluded from sandPct (d
   assert.ok(stats.mownPct >= 0.03, `mownPct ${stats.mownPct} clears the primary floor`);
 });
 
+test('f: a sand pixel OUTSIDE the inside-course mask is ZEROED in the PNG (R=0,B=0); in-course sand stays B=255', () => {
+  // Output-clip complement of test e. Same boundary=null dilated-union layout: an
+  // in-course block x in [0,60] (fairway over most of it, a sand sub-strip) and a FAR
+  // sand block x in [85,120] whose nearest poly edge (x=60) is > 25 m away -> outside
+  // the inside-course mask. That far sand still classifies 'sand', but the classmap must
+  // NOT mark it (R=0,B=0) or the renderer overpaints the far-field aerial. Meanwhile the
+  // in-course sand sub-strip must still emit B=255.
+  const W = 120, H = 40;
+  const bands = buildBands(W, H, (px, py) => {
+    if (px < 60) return py < 30 ? 'fairway' : 'sand'; // in-course block: 30 rows fairway, 10 sand
+    return 'sand';                                    // ring (60..84) + far block (85..119): sand
+  });
+  const bounds = unitBounds(W, H);
+  const surfaces = [{ kind: 'rough', poly: rectPoly(0, 0, 60, 40) }]; // in-course poly, right edge metre x=60
+  const boundary = null; // force the dilated-union inside-course mask
+  const { pngBuffer, aborted } = classifyToClassmap({
+    bands, width: W, height: H, bounds, boundary, surfaces,
+  });
+  assert.equal(aborted, false, 'not aborted');
+  assert.ok(pngBuffer, 'returns a buffer');
+  const img = PNG.sync.read(pngBuffer);
+  const at = (px, py) => (py * W + px) * 4;
+  // FAR sand pixel (100,20): classifies sand but is > 25 m outside the mask -> zeroed.
+  let o = at(100, 20);
+  assert.equal(img.data[o + 2], 0, 'off-course sand -> B=0 (clipped, not overpainted)');
+  assert.equal(img.data[o + 0], 0, 'off-course sand -> R=0');
+  // IN-COURSE sand pixel (interior of the bottom sand sub-strip, x<60, py in [30,39]).
+  o = at(20, 35);
+  assert.equal(img.data[o + 2], 255, 'in-course sand still emits B=255');
+});
+
 test('bad input (missing bands / surfaces) returns {pngBuffer:null, aborted:true, stats:{}} without throwing', () => {
   assert.deepEqual(
     classifyToClassmap({ width: 8, height: 8, bounds: unitBounds(8, 8), boundary: null, surfaces: [] }),
