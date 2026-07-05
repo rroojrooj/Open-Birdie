@@ -476,9 +476,9 @@ export class GolfScene {
       const img = m.albedo && m.albedo.image;
       if (!img || !img.width) return;
       const b = m.bounds, extX = b.maxX - b.minX, extY = b.maxY - b.minY;
-      const mpp = RENDER_CONFIG.macroTintMPerPx ?? 4;
-      const w = Math.min(512, Math.max(32, Math.round(extX / mpp)));
-      const h = Math.min(512, Math.max(32, Math.round(extY / mpp)));
+      const mpp = RENDER_CONFIG.macroTintMPerPx ?? 2.5;
+      const w = Math.min(1024, Math.max(32, Math.round(extX / mpp)));
+      const h = Math.min(1024, Math.max(32, Math.round(extY / mpp)));
       const px = (x) => ((x - b.minX) / extX) * w, py = (y) => ((b.maxY - y) / extY) * h;
       const trace = (c, poly) => {
         c.moveTo(px(poly[0][0]), py(poly[0][1]));

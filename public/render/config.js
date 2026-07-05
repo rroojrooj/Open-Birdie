@@ -23,7 +23,10 @@ export const RENDER_CONFIG = {
   courseAerialTintFar: 0.92,   // ... at far range
   courseAerialPhotoFar: 0.88,  // RAW photo weight at TRUE far range — keeps the shipped
                                // overview look near-intact (diff-gated); tint owns mid-range
-  macroTintMPerPx: 4,          // tint copy resolution: fixed metres/px (course-size-independent), px cap 512
+  macroTintMPerPx: 2.5,        // tint copy resolution: fixed metres/px (course-size-independent), px cap 1024.
+                               // Sharper than the eye-of-address material band needs, but it fills the
+                               // 20-80m ball-flight band with real low-freq ground structure (fairway/dune
+                               // shapes) instead of watercolour mush. Luma-lean tint keeps ghosts out.
   macroTintBlurPx: 2,          // canvas blur applied when downsampling the tint copy
   // Tier 1
   foliageTrees: true, // card-foliage conifers (see tree-cards.js)

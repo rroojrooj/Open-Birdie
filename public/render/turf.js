@@ -93,12 +93,23 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
               // capture-day shadows and sub-30cm detail are gone), normalized by the
               // playable-ground mean so the tint averages ~1.0; the material keeps its
               // own value structure, stripes, and light response.
-              vec3 tint = clamp(texture2D(uMacroLow, mUv).rgb / max(uMacroAvg, vec3(0.03)), 0.5, 1.4);
+              vec3 tRaw = texture2D(uMacroLow, mUv).rgb / max(uMacroAvg, vec3(0.03));
+              // CHROMA-LIMITED LUMA-LEAN: take the photo's VALUE fully, but its HUE only
+              // in proportion to how far it strays from neutral. OSM-unmapped water /
+              // cart paths / roofs print their saturated colour straight onto the grass
+              // (a teal 'lake' painted on turf, white 'fog' smears in the corridor); they
+              // are HIGH-chroma outliers, so a soft limiter crushes them to value shifts
+              // while normal fairway-vs-dune tan/green drift (LOW chroma) passes through.
+              float tL = dot(tRaw, vec3(0.299, 0.587, 0.114));
+              vec3 chroma = tRaw - tL;
+              float keep = 0.62 / (1.0 + 2.4 * length(chroma));
+              vec3 tint = clamp(tL + chroma * keep, 0.62, 1.32);
               float tw = mvalid * edgeW * mix(uMacroWeights.x, uMacroWeights.y, tintFar);
-              // Greens keep their AUTHORED look — the photo's putting surfaces are so
-              // much brighter/greener than the course mean that a full-strength tint
-              // clamps neon. The photo places the green; the material colors it.
-              tw *= 1.0 - 0.5 * g;
+              // Greens keep their authored colour; mown fairway keeps its mow structure —
+              // pull the tint back on BOTH so the manicured signal (stripes, green
+              // treatment) isn't washed flat by the photo. The photo PLACES the surface;
+              // the material grooms it.
+              tw *= 1.0 - 0.5 * g - 0.35 * m;
               grass *= mix(vec3(1.0), tint, tw);
               // FAR PHOTO CROSSFADE — keeps the shipped "real place" overview (raw RGB;
               // a global de-light flattens real fairway/dune/sand albedo into milky grey
@@ -158,12 +169,20 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // minus green). Derived in-shader from a coverage mask — no encoded magic
           // values, so nothing breaks under bilinear/mip filtering. Distance-faded:
           // a 1.5 m collar is sub-pixel past ~60 m anyway.
-          vec2 fo = vec2(1.5) / uExt;
-          float gN = max(max(texture2D(uMask, vMapUv + vec2(fo.x, 0.0)).g,
-                             texture2D(uMask, vMapUv - vec2(fo.x, 0.0)).g),
-                         max(texture2D(uMask, vMapUv + vec2(0.0, fo.y)).g,
-                             texture2D(uMask, vMapUv - vec2(0.0, fo.y)).g));
-          float fr = clamp(gN - g, 0.0, 1.0) * (1.0 - smoothstep(35.0, 60.0, length(vViewPosition)));
+          // 8-tap dilation (axes + diagonals) — a 4-tap axis-only ring reads ~30%
+          // thinner on diagonal green edges (~1.06 m vs 1.5 m) and the collar vanished
+          // in review. Diagonals fill the ring so it's a uniform ~1.3 m band.
+          vec2 fo = vec2(1.3) / uExt;
+          float gN = g;
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, 0.0)).g);
+          gN = max(gN, texture2D(uMask, vMapUv - vec2(fo.x, 0.0)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(0.0, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv - vec2(0.0, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(fo.x, -fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv + vec2(-fo.x, fo.y)).g);
+          gN = max(gN, texture2D(uMask, vMapUv - vec2(fo.x, fo.y)).g);
+          float fr = clamp(gN - g, 0.0, 1.0) * (1.0 - smoothstep(45.0, 70.0, length(vViewPosition)));
           float wx = vMapUv.x * uExt.x, wy = vMapUv.y * uExt.y;
           // procedural grain: fine "tooth" (~0.5-4m) + broad patches (~8-20m), so the
           // turf reads as real grass at the orbit camera instead of a flat plastic
@@ -194,7 +213,10 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float stripe = smoothstep(-0.42, 0.42, band) * 2.0 - 1.0;
           float band2 = sin((wx * -0.55 + wy * 0.84) * (3.14159265 / (uStripeM * 1.7)));
           float stripe2 = smoothstep(-0.5, 0.5, band2) * 2.0 - 1.0;
-          grass *= 1.0 + (0.2 * stripe + 0.09 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
+          // Bolder primary set — the photo tint no longer washes it flat (pulled back on
+          // mown ground above), so the grooming cue can carry. Fairway only (green +
+          // collar suppressed; the green has its own tighter checker below).
+          grass *= 1.0 + (0.28 * stripe + 0.13 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
           // GREEN: tighter, calmer grain + a fine checkerboard mow — the putting
           // surface must read manicured at close range, not share the fairway's 7 m
           // bands (suppressed above; fr is the collar ring, mutually exclusive with g).
@@ -204,7 +226,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float gb1 = sin((wx * 0.94 + wy * 0.34) * (3.14159265 / (uStripeM * 0.30)));
           float gb2 = sin((wx * -0.34 + wy * 0.94) * (3.14159265 / (uStripeM * 0.30)));
           grass *= 1.0 + 0.15 * ((smoothstep(-0.6, 0.6, gb1) - 0.5) + (smoothstep(-0.6, 0.6, gb2) - 0.5)) * g;
-          grass *= 1.0 - 0.09 * fr; // collar: darker tight-mown ring
+          grass *= 1.0 - 0.14 * fr; // collar: darker tight-mown ring (was invisible at 0.09)
           // Procedural sun-play — directional shading from a low-frequency undulation
           // field so the sun visibly rakes across gentle rolls instead of lighting a
           // flat sheet. The DIRECTIONAL gradient (one flank of a roll lit, the other
@@ -270,7 +292,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v25-macro' : 'turf-grain-v25');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v26-macro' : 'turf-grain-v26');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
