@@ -235,7 +235,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // Bolder primary set — the photo tint no longer washes it flat (pulled back on
           // mown ground above), so the grooming cue can carry. Fairway only (green +
           // collar suppressed; the green has its own tighter checker below).
-          grass *= 1.0 + (0.28 * stripe + 0.13 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
+          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
           // GREEN: tighter, calmer grain + a fine checkerboard mow — the putting
           // surface must read manicured at close range, not share the fairway's 7 m
           // bands (suppressed above; fr is the collar ring, mutually exclusive with g).
@@ -313,7 +313,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v27-macro' : 'turf-grain-v27');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v28-macro' : 'turf-grain-v28');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];

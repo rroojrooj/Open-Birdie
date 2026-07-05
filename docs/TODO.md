@@ -30,9 +30,11 @@ Built via subagent-driven development (6 tasks, per-task spec+quality review). N
   already maps the greens + most bunkers, and the far-field photo already reads correct, so NDVI mostly
   adds sand material on the waste OSM missed (real but subtle) and extends the mown treatment. The win
   is bigger on sparse-OSM courses, plus the automation (every course, zero manual steps).
-- **FOLLOW-UPS:** (1) **stripe strength** is the separable lever — NDVI extends *where* stripes apply,
-  but the base strength (`0.28/0.13` in `turf.js`) is subtle, so the added stripes read faint; bump it
-  (like the material-first 6→8 pass) if a bolder groomed look is wanted. (2) Class-maps are
+- **FOLLOW-UPS:** (1) **stripe strength — SHIPPED (2026-07-05, `turf.js` v28).** NDVI extends *where*
+  stripes apply; the base amplitude was bumped `0.28/0.13 → 0.38/0.17` so the groomed mow bands now read
+  boldly at both play height and the elevated orbit cam (verified before/after on the largest Chambers
+  fairway; the overview is unregressed — the symmetric stripe averages out under mip-collapse at altitude).
+  This is the "visible finish" on top of the NDVI foundation. (2) Class-maps are
   runtime-generated on cache-miss; the two demo courses were back-filled with a one-off script (their
   caches predate the feature) — a fresh US course auto-generates on first load. (3) `water` NDVI class
   over-fires (shoreline+shadow) — unused by the gate, don't treat as hydrology.
