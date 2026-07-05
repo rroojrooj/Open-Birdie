@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "course": {
+    "name": "Chambers Bay",
+    "cacheVersion": 3,
+    "fingerprint": "bd4fce5f8f4d4fbccd0aaa40c9630ef89018a1d4ad2b7f1bf29387ab2c39c0ff"
+  },
+  "hole": 11,
+  "padding": 40,
+  "terrain": {
+    "targetSpacingM": 1,
+    "nativeSpacingM": 1,
+    "maxPx": 1200,
+    "crs": "EPSG:3857"
+  },
+  "imagery": {
+    "collection": "naip",
+    "date": "2023-08-02",
+    "gsdM": 0.6,
+    "itemIds": [
+      "wa_m_4712252_nw_10_060_20230802_20240209"
+    ]
+  },
+  "providers": {
+    "elevation": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+    "imagery": "https://planetarycomputer.microsoft.com/api/stac/v1"
+  },
+  "limits": {
+    "maxPixels": 80000000,
+    "maxDownloadBytes": 3221225472,
+    "maxBundleBytes": 157286400
+  },
+  "normalization": {
+    "format": "webp",
+    "quality": 90
+  },
+  "discovered": {
+    "state": "resolved",
+    "bounds": {
+      "minX": -266.99,
+      "minY": -110.67999999999995,
+      "maxX": -76.99000000000001,
+      "maxY": 433.32000000000005
+    },
+    "assets": [
+      {
+        "url": "https://naipeuwest.blob.core.windows.net/naip/v002/wa/2023/wa_060cm_2023/47122/m_4712252_nw_10_060_20230802_20240209.tif",
+        "contentLength": 285292344,
+        "etag": "0x8DD335A27B7D3D9"
+      }
+    ]
+  }
+}
