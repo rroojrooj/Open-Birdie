@@ -84,6 +84,30 @@ test('fetchNdviBands interleaves [R,G,B,NIR] with NIR from the NIR fetch ch0 (re
   assert.equal(out.bands[p + 3], 222, 'NIR from NIR fetch ch0 (alpha must be ignored)');
 });
 
+test('interleave is correct PER PIXEL, not a constant fill (pins the i*4 stride)', async () => {
+  // Position-dependent fixtures: a constant-color PNG can't catch a stride/offset bug
+  // (every pixel is identical). Encode the pixel index into R (RGB fetch) and NIR (NIR
+  // fetch ch0), then assert several distinct pixels line up. 64x64 keeps the body above
+  // the 2 KB no-data floor; alpha stays random noise (ignored by the implementation).
+  const W = 64, H = 64, N = W * H;
+  const build = (fn) => {
+    const png = new PNG({ width: W, height: H });
+    for (let i = 0; i < N; i++) {
+      const o = i * 4, [a, b, c] = fn(i);
+      png.data[o] = a; png.data[o + 1] = b; png.data[o + 2] = c; png.data[o + 3] = (Math.random() * 256) | 0;
+    }
+    return PNG.sync.write(png);
+  };
+  const rgb = build((i) => [i & 0xff, 80, 120]);        // R varies by position
+  const nir = build((i) => [(i * 3) & 0xff, 40, 80]);   // NIR (ch0) varies; ch1/ch2 are decoys to ignore
+  const out = await fetchNdviBands({ origin, bounds, fetchImpl: router({ rgb, nir }) });
+  assert.ok(out, 'returns a result');
+  for (const i of [17, 9 * W + 17, N - 1]) {
+    assert.equal(out.bands[i * 4 + 0], i & 0xff, `R@${i} is position-dependent (stride correct)`);
+    assert.equal(out.bands[i * 4 + 3], (i * 3) & 0xff, `NIR@${i} from NIR ch0 (stride correct)`);
+  }
+});
+
 test('fetchNdviBands returns null when the RGB fetch is non-ok', async () => {
   const nir = makePng(64, 64, [222, 0, 0]);
   const fetchImpl = async (url) => (/bandIds=0,1,2/.test(url) ? resp(Buffer.alloc(3000), false) : resp(nir));
