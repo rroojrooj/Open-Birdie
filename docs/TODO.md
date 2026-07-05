@@ -1,5 +1,28 @@
 # Open-Birdie — TODO
 
+## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
+
+Cross-checked the sim's renders against the REAL Chambers Bay (gathered a **~106-photo local reference
+library** at `reference/chambers-bay/` via parallel web-search agents — aerial/ground/greens/holes/
+features, each dev-labeled; see `reference/chambers-bay/CATALOG.md` for the palette hexes + character +
+gap list). The cross-check verdict: **the sim renders Chambers as a lush green striped PARKLAND course;
+it's a firm brown/tan minimal-stripe LINKS.**
+
+- **Shipped: greige native sand (`turf.js` v31).** Real waste/bunker sand is grey-tan crushed material
+  (~`#b7a98b`), NOT the bunker-white the sim used. Toned both sand paths (`makeSandMaterial` +
+  the turf shader sand path). Verified on Chambers overview: waste now reads native greige. 291 tests.
+- **Scoped follow-up — course-character palette (the rest of the arc).** Target hexes (from real photos):
+  fairway `#5e7d3d` (cool olive, not kelly), rough `#c0a666` (gold-tan, should DOMINATE off-line), green
+  `#6b894a`, water pewter. Mow stripes should be **minimal on fescue links** (bold is correct for
+  parkland like Sawgrass — so it must be COURSE-AWARE, not global). **Detector:** the aerial playable-mean
+  greenness does NOT separate links/parkland (Chambers 0.047 vs Sawgrass 0.023 — mean averages in
+  sand/water/trees); sample the **fairway-grass color** in `scene.js _buildMacroTint` (already rasterizes
+  polys into the aerial canvas) → `uCourseDry` via a shared `{value}` uniform (like `uMacroAvg`) →
+  drive stripe strength + palette in `turf.js`. Spans base + HD macro paths (two async tint builders).
+- **Also confirmed by the reference:** treeless playing field (only the Lone Fir at 15 + a perimeter rim
+  wall — verify no interior trees); greens = raised tiered plateaus (greens phase B); quarry ruins + rail
+  line + Puget Sound are signature scenery.
+
 ## Overview realism — DONE (2026-07-06, branch `claude/overview-realism`)
 
 Kills the last facet of the "satellite photo painted on terrain" complaint: the OVERVIEW /
