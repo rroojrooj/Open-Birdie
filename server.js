@@ -210,6 +210,16 @@ const server = http.createServer(async (req, res) => {
         return res.end(req.method === 'HEAD' ? undefined : buf);
       } catch (e) { res.writeHead(404); return res.end('not found'); }
     }
+    if (p === '/api/course-classmap' && (req.method === 'GET' || req.method === 'HEAD')) {
+      const a = game.course && game.course.aerial;
+      const fname = a && a.classFile ? path.basename(a.classFile) : null; // basename strips any path traversal
+      if (!fname) { res.writeHead(404); return res.end('not found'); }
+      try {
+        const buf = fs.readFileSync(path.join(DATA_DIR, 'courses', fname));
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' }); // classmap is always PNG (data, not photo)
+        return res.end(req.method === 'HEAD' ? undefined : buf);
+      } catch (e) { res.writeHead(404); return res.end('not found'); }
+    }
     if (p === '/api/course-geometry') return json(res, courseGeometry());
 
     // three.js served from node_modules (keeps the app fully offline-capable)
@@ -237,12 +247,29 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// True iff both bounds exist and their extents are equal (tiny epsilon for float noise).
+// The classmap's staleness key: it was generated against aerial.classBounds, so if a
+// manual aerial swap has since changed aerial.bounds, the pixels no longer register.
+function sameBounds(x, y) {
+  if (!x || !y) return false;
+  const eq = (a, b) => Math.abs(a - b) < 1e-6;
+  return eq(x.minX, y.minX) && eq(x.minY, y.minY) && eq(x.maxX, y.maxX) && eq(x.maxY, y.maxY);
+}
+
 function courseGeometry() {
   if (!game.course) return null;
   const { name, surfaces, boundary, holes, trees, woods, buildings, elevation } = game.course;
   // Course-wide aerial: bounds only (the image is fetched from /api/course-aerial);
   // never leak the server file path. Drapes the whole course as the ground photo.
-  const aerial = game.course.aerial ? { bounds: game.course.aerial.bounds } : null;
+  // classes: advertise the runtime NDVI classmap ONLY when it's fresh — i.e. it was
+  // built against these same bounds. A stale classmap (aerial hand-swapped since) would
+  // sample surfaces at UV coords from the NEW bounds against OLD pixels → mis-registered;
+  // mismatch => classes:false => the shader falls back to OSM-only masks (safe).
+  const a = game.course.aerial;
+  const aerial = a ? {
+    bounds: a.bounds,
+    classes: !!(a.classFile && a.classBounds && sameBounds(a.classBounds, a.bounds)),
+  } : null;
   // hd is an ARRAY of sanitized metadata (one per built hole; no absolute paths,
   // no Float32 heights), or null when the course has no HD bundles.
   const hd = activeHd.length ? activeHd.map(publicHdMetadata) : null;
