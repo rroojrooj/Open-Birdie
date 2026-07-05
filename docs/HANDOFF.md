@@ -1,5 +1,16 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-06 (3) — OVERVIEW REALISM** (branch `claude/overview-realism`). The survey/overview
+> shot no longer reads as a flat satellite photo. Went through `/plan-eng-review` + an outside voice
+> that (code-verified) killed the plan's original shadow thesis: terrain meshes **never `castShadow`**
+> so relief can't self-shadow, and the far field is 88% raw photo washing out lighting. A Task-0 live
+> A/B confirmed enabling terrain casting changed the overview by NOTHING; dropping `courseAerialPhotoFar`
+> transformed it. So the whole shadow-casting/CSM epic was **dropped as unnecessary**. Fix = **one
+> knob + one fade**: `courseAerialPhotoFar 0.88→0.62` (lets the diffuse-lit HD dune relief read 3D;
+> play view unchanged — far photo only past 60 m) + `turf.js` **v30** stripe/checker distance-fade
+> (`1-smoothstep(120,280,dist)`) so the mow grid doesn't over-read at altitude. Chambers flat→3D,
+> play pixel-unchanged, Sawgrass unregressed, 291 tests. Detail: [`docs/TODO.md`](TODO.md).
+
 > **UPDATE 2026-07-06 (2) — GREENS POLISH + CLASS-MAP FEATHER** (branch `claude/greens-polish`).
 > Phase-A of the greens arc (shader-only, scope-locked with the user). `turf.js` **v29**: soft graded
 > green collar (averaged dilation → `gEdge`, kills the cookie-cutter edge), calmer checker
