@@ -31,7 +31,8 @@ export function makeSandMaterial(bounds, aniso) {
     envMapIntensity: 0.5,
     polygonOffset: true, polygonOffsetFactor: -1.2, polygonOffsetUnits: -1.2,
   });
-  mat.color = new THREE.Color(1.3, 1.24, 1.08); // brighten + warm toward bright bunker sand
+  mat.color = new THREE.Color(1.02, 0.97, 0.84); // muted greige native sand (real links/waste sand
+  // is a grey-tan crushed material ~#b7a98b, NOT bright white — verified vs Chambers Bay photos)
   mat.userData.disposeTextures = [map, normalMap, roughnessMap];
   return mat;
 }
@@ -277,9 +278,11 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // Soft highlight rolloff: light mown/aerial areas + mow-stripe peaks were
           // washing out to pale rectangles. Compress grass values above ~0.66.
           grass = grass / (1.0 + 0.5 * max(vec3(0.0), grass - 0.66));
-          // sand path: real tiled sand, brightened toward bright bunker white
+          // sand path: real tiled sand toned to muted GREIGE native sand (was brightened
+          // toward bunker-white *1.28 — real links/waste sand is grey-tan ~#b7a98b, verified
+          // vs Chambers Bay photos; white sand read as manufactured/wrong).
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
-          sand = mix(sand, vec3(1.0), 0.12) * 1.28;
+          sand = mix(sand, vec3(0.72, 0.68, 0.58), 0.18) * 1.04;
           // Union NDVI-detected sand (cls.b) into the OSM bunker mask, but only OUTSIDE
           // mown ground — m is post-union here, so "no sand where OSM- or NDVI-mown".
           float bm = max(texture2D(uBunker, vMapUv).r, cls.b * (1.0 - m));
@@ -325,7 +328,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v30-macro' : 'turf-grain-v30');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v31-macro' : 'turf-grain-v31');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
