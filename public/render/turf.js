@@ -73,6 +73,22 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
         uniform sampler2D uMacro; uniform sampler2D uMacroSurfaces; uniform sampler2D uMacroCoverage;
         uniform sampler2D uMacroLow; uniform vec3 uMacroAvg; uniform float uMacroPhotoFar;
         uniform vec2 uMacroMin; uniform vec2 uMacroSize; uniform vec2 uMacroWeights; uniform vec2 uCourseMin;` : '';
+    // NDVI class-map union (runtime NDVI classification). The class-map rides the
+    // AERIAL bounds (uMacroMin/uMacroSize), NOT the terrain bounds the OSM masks use,
+    // so it's sampled at clsUv (course-world → aerial-UV), never vMapUv. R = NDVI-
+    // detected mown fairway (OSM may have missed), B = NDVI-detected sand. We union
+    // (max) these INTO the existing gates so it can only ADD surface, never remove —
+    // the _blackTex default (course with no classmap) makes cls.r=cls.b=0 → clean
+    // no-op → OSM-only behavior preserved. Sampled BEFORE the stripe block on purpose:
+    // the stripes key off `m`, so widening the mown gate here is what puts stripes on
+    // NDVI-detected fairway. When there's no macro, `cls` is a zero vec4 so the later
+    // sand-union line references a defined symbol in BOTH program variants.
+    const macroPre = macro ? `
+          vec2 clsUv = (uCourseMin + vMapUv * uExt - uMacroMin) / uMacroSize;
+          vec4 cls = (clsUv.x >= 0.0 && clsUv.x <= 1.0 && clsUv.y >= 0.0 && clsUv.y <= 1.0)
+            ? texture2D(uMacroSurfaces, clsUv) : vec4(0.0);
+          m = max(m, cls.r);        // extend the mown gate onto NDVI-detected fairway` : `
+          vec4 cls = vec4(0.0);`;
     const macroBlend = macro ? `
           { vec2 wXY = uCourseMin + vMapUv * uExt;
             vec2 mUv = (wXY - uMacroMin) / uMacroSize;
@@ -165,6 +181,9 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           vec4 mk = texture2D(uMask, vMapUv);
           float m = mk.r;                 // mown gate — semantics unchanged
           float g = mk.g;                 // green gate — packed channel (.g = greens only)
+          // Union the NDVI class-map into the mown gate BEFORE the stripe block (see
+          // macroPre): widens the mown gate onto NDVI-detected fairway OSM missed; cls is
+          // also reused by the sand union below (kept inside #ifdef USE_MAP, GTAO-safe).${macroPre}
           // Fringe collar: dilate the green channel ~1.5 m and take the ring (dilated
           // minus green). Derived in-shader from a coverage mask — no encoded magic
           // values, so nothing breaks under bilinear/mip filtering. Distance-faded:
@@ -216,7 +235,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // Bolder primary set — the photo tint no longer washes it flat (pulled back on
           // mown ground above), so the grooming cue can carry. Fairway only (green +
           // collar suppressed; the green has its own tighter checker below).
-          grass *= 1.0 + (0.28 * stripe + 0.13 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
+          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr);
           // GREEN: tighter, calmer grain + a fine checkerboard mow — the putting
           // surface must read manicured at close range, not share the fairway's 7 m
           // bands (suppressed above; fr is the collar ring, mutually exclusive with g).
@@ -249,7 +268,9 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // sand path: real tiled sand, brightened toward bright bunker white
           vec3 sand = texture2D(uSand, vMapUv * uDetailRepeat).rgb;
           sand = mix(sand, vec3(1.0), 0.12) * 1.28;
-          float bm = texture2D(uBunker, vMapUv).r;
+          // Union NDVI-detected sand (cls.b) into the OSM bunker mask, but only OUTSIDE
+          // mown ground — m is post-union here, so "no sand where OSM- or NDVI-mown".
+          float bm = max(texture2D(uBunker, vMapUv).r, cls.b * (1.0 - m));
           diffuseColor.rgb = mix(grass, sand, bm);
         }
         #endif`)
@@ -292,7 +313,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v26-macro' : 'turf-grain-v26');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v28-macro' : 'turf-grain-v28');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];

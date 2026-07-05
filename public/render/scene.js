@@ -265,7 +265,7 @@ export class GolfScene {
     // Free the previous course's macro tint textures on BOTH paths — inside the
     // aerial branch this would leak the old full-res aerial (~64 MB + mips GPU)
     // whenever the user switches from a US course to a no-aerial course.
-    if (this._macro) { this._macro.albedo?.dispose?.(); this._macro.low?.dispose?.(); }
+    if (this._macro) { this._macro.albedo?.dispose?.(); this._macro.low?.dispose?.(); this._macro.classTex?.dispose?.(); }
     for (const hm of this._hdMacros || []) hm.low?.dispose?.(); // ours; the bundle owns the ortho
     if (hdList.length && this.elev) {
       this._hdPatches = hdList.map((a) => ({
@@ -330,6 +330,22 @@ export class GolfScene {
         farWeight: RENDER_CONFIG.courseAerialTintFar ?? 0.92,
         photoFar: RENDER_CONFIG.courseAerialPhotoFar ?? 0.88,
       });
+      // Runtime NDVI classmap: when the server advertises a FRESH one (classes:true),
+      // replace the black 1x1 surfaces default with the real per-pixel class texture.
+      // A 404 / decode failure leaves surfaces as whatever it was (the incomplete
+      // texture samples black) → OSM-only, graceful by construction. Task 5 makes the
+      // turf shader actually SAMPLE this; here we only deliver the texture.
+      if (geo.aerial.classes) {
+        const cls = new THREE.TextureLoader().load('/api/course-classmap',
+          () => console.log('[render] classmap loaded'),
+          undefined,
+          () => console.warn('[render] classmap failed to load — OSM-only surfaces'));
+        cls.colorSpace = THREE.NoColorSpace;               // data, not colour
+        cls.wrapS = cls.wrapT = THREE.ClampToEdgeWrapping;
+        cls.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+        this._macro.surfaces = cls;
+        this._macro.classTex = cls;                        // so it's disposed on reload
+      }
     } else {
       this._macro = null;
     }

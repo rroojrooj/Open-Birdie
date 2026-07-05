@@ -19,12 +19,16 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   mat.onBeforeCompile(s);
   for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v26');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v28');
   // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
   // the roughness sheen samples it directly, the map block via the mk swizzle
   assert.match(s.fragmentShader, /texture2D\(uMask, vMapUv\)\.g/);
   assert.match(s.fragmentShader, /roughnessFactor = mix\(roughnessFactor/);
   assert.match(s.fragmentShader, /float g = mk\.g/);
+  // v27: the non-macro variant still defines `cls` (as a zero vec4) so the sand
+  // union line `max(texture2D(uBunker...).r, cls.b...)` compiles in BOTH variants.
+  assert.match(s.fragmentShader, /vec4 cls = vec4\(0\.0\)/);
+  assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
 });
 
 test('macro turf material: adds aerial tint uniforms + a distinct program', () => {
@@ -40,9 +44,21 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.equal(s.uniforms.uMacroLow.value, macro.low);
   assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
   assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v26-macro');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v28-macro');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
+  // v27: the NDVI class-map (uMacroSurfaces) was declared-but-unsampled — it must now
+  // be SAMPLED (in aerial-bounds space, clsUv) to drive the mown + sand unions.
+  assert.match(s.fragmentShader, /texture2D\(\s*uMacroSurfaces/);
+  // the mown gate is WIDENED by NDVI-detected fairway (cls.r) BEFORE the stripe block…
+  assert.match(s.fragmentShader, /m = max\(m, cls\.r\)/);
+  // ORDERING GUARD (the feature's #1 risk): the mown union MUST precede the stripe block,
+  // else stripes never key off the widened m and NDVI fairway gets no stripes — a
+  // mis-order would pass every other assertion. Pin it by source position.
+  assert.ok(s.fragmentShader.indexOf('m = max(m, cls.r)') < s.fragmentShader.indexOf('float band = sin('),
+    'NDVI mown-union must appear before the stripe block');
+  // …and the sand gate UNIONS NDVI-detected sand (cls.b) into the tiled-sand path.
+  assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
   // the v23 photo-REPLACEMENT blend is gone — a bad merge restoring it must fail here
   assert.doesNotMatch(s.fragmentShader, /grass = mix\(grass, photo, mw\)/);
 });

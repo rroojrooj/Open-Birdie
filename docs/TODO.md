@@ -1,5 +1,44 @@
 # Open-Birdie — TODO
 
+## Runtime NDVI surface classification — IMPLEMENTED (2026-07-05, branch `claude/ndvi-classification`)
+
+Closes the material-first "sparse stripes" gap the DATA way: at course load (cache-miss,
+best-effort, zero new deps — `pngjs` only) we fetch the NAIP **NIR band** (a 2nd
+`format=png&bandIds=3,0,1` request alongside the RGB), run the existing NDVI classifier
+(`tools/trace/segment.mjs` → extracted to `lib/segment-core.js`), and bake a course-wide
+class-map PNG (R=NDVI-mown-fairway, B=NDVI-sand) clipped to the inside-course mask. The turf
+shader (v27) **unions** it into the existing gates (`m = max(m, cls.r)` **before** the stripe
+block; `bm = max(uBunker.r, cls.b*(1-m))`) — extending mow stripes + sand material onto
+surfaces OSM never mapped, on every course automatically. Plan + full review record:
+[`superpowers/plans/2026-07-05-runtime-ndvi-classification.md`](superpowers/plans/2026-07-05-runtime-ndvi-classification.md).
+Built via subagent-driven development (6 tasks, per-task spec+quality review). NOT yet PR'd.
+
+- **Task 0 gate = GO (proven live):** NIR retrievable zero-dep (fairway NDVI 0.31 vs sand −0.12).
+  Two fetches required (band 4 drops from a single PNG render); `format=png` mandatory (the
+  aerial's `jpgpng` returns lossy JPEG pngjs can't decode). **S2 safeguard redesigned from the
+  spike:** PRIMARY = mown-floor `<3%` (the real failure — NIR silently degrading to R — collapses
+  mown to 0 while sand stays plausible, which a sand-only abort misses); SECONDARY = sand `>55%`.
+- **Live-verified end to end** (first real run against the endpoint): chambers mown 26.0% / sand
+  15.6%, sawgrass 7.5% / 13.5% (null-boundary dilated-union path) — both match the Task-0 calibration
+  and clear the safeguard. The null-boundary classify path was a **10–20 s first-load stall** (fixed
+  with an AABB pre-reject → sub-second; caught by the code-quality review gate).
+- **Visual gate caught a regression** unit tests couldn't: the class-map marked sand across the whole
+  padded window incl. off-course beach/parking → tiled sand overpainted the far-field photo at the
+  overview. Fixed by clipping the class-map to the inside-course mask. Overview now matches the shipped
+  real-place look; waste/dune areas get real sand material.
+- **Honest visual finding:** on Chambers (good OSM coverage) the *visible* delta is **modest** — OSM
+  already maps the greens + most bunkers, and the far-field photo already reads correct, so NDVI mostly
+  adds sand material on the waste OSM missed (real but subtle) and extends the mown treatment. The win
+  is bigger on sparse-OSM courses, plus the automation (every course, zero manual steps).
+- **FOLLOW-UPS:** (1) **stripe strength — SHIPPED (2026-07-05, `turf.js` v28).** NDVI extends *where*
+  stripes apply; the base amplitude was bumped `0.28/0.13 → 0.38/0.17` so the groomed mow bands now read
+  boldly at both play height and the elevated orbit cam (verified before/after on the largest Chambers
+  fairway; the overview is unregressed — the symmetric stripe averages out under mip-collapse at altitude).
+  This is the "visible finish" on top of the NDVI foundation. (2) Class-maps are
+  runtime-generated on cache-miss; the two demo courses were back-filled with a one-off script (their
+  caches predate the feature) — a fresh US course auto-generates on first load. (3) `water` NDVI class
+  over-fires (shoreline+shadow) — unused by the gate, don't treat as hydrology.
+
 ## Chambers Bay HD bundles vs CACHE_VERSION 4 — RESOLVED (2026-07-04), with a v3-cache follow-up
 
 The warned-about break happened: PR #23 (`c9eb14d`, v0.9.0) bumped `CACHE_VERSION` 3→4 and re-fetched
