@@ -1,5 +1,15 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-06 (2) — GREENS POLISH + CLASS-MAP FEATHER** (branch `claude/greens-polish`).
+> Phase-A of the greens arc (shader-only, scope-locked with the user). `turf.js` **v29**: soft graded
+> green collar (averaged dilation → `gEdge`, kills the cookie-cutter edge), calmer checker
+> (`0.15→0.09`, A/B verified bold-grid→subtle), + a ~16 m contour roll (shaped, not a flat disc). The
+> greens close-up then exposed that the bigger close-range eyesore was NDVI **sand as hard low-res
+> "Minecraft" tiles** — so `classify-surfaces.js` now **feathers** the denoised class masks to 0..255
+> coverage (box blur, radius meter-scaled via `FEATHER_M=3.5`) so the shader's linear blend fades the
+> edges (verified: hard tiles → smooth sand→grass). 291 tests. Deferred: real lidar green relief
+> (phase B), milky far-field, HD-patch seams, overview-still-a-photo. Detail: [`docs/TODO.md`](TODO.md).
+
 > **UPDATE 2026-07-06 — CLASSMAP SPECKLE + BROADLEAF TREE FIXED** (branch
 > `claude/classmap-speckle-fix`). Fast-follow after an independent assessor scored the shipped
 > realism 4.5/10. (1) The per-pixel NDVI class-map scattered false-positive `sand`/`fairway` specks
