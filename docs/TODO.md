@@ -1,5 +1,29 @@
 # Open-Birdie — TODO
 
+## Greens polish + class-map feather — DONE (2026-07-06, branch `claude/greens-polish`)
+
+Phase-A of the greens arc (assessor's #2, "flat green blobs with hard edges") — **shader-only,
+scope-locked with the user**, plus a class-map follow-up the close-up forced out:
+
+- **Greens shader polish (`turf.js` v29).** (1) **Soft edge:** an *averaged* (not max) 8-tap green
+  dilation → a smooth `gEdge` membership that fades the putting-surface character across a collar
+  band instead of a stamped cookie-cutter edge. (2) **Calm checker:** `0.15 → 0.09` (the bold grid
+  read as blocky from the orbit cam — A/B verified: bold grid → subtle mown surface). (3) **Contour
+  roll:** a ~16 m low-freq value undulation (0.05) so the green reads shaped, not a flat uniform disc.
+  Cache key `v28 → v29`. **Reassessed:** at our elevated orbit cam the shader levers (edge/checker)
+  carry the win; real lidar green *relief* (phase B) is subtler than it sounds — deferred.
+- **Class-map feather (`classify-surfaces.js`).** The greens close-up exposed that the bigger
+  close-range eyesore was NDVI **sand rendering as hard low-res "Minecraft" tiles** (the class-map is
+  ~2.4–5.7 m/texel over a whole course; the [[#33]] denoise killed the *scatter*, not the blocky
+  *edges*). Fix: **box-blur the denoised class masks to 0..255 COVERAGE** (radius meter-scaled via
+  `FEATHER_M=3.5` so big courses don't oversoften) so the shader's existing linear sand/mown blend
+  fades across the edge. Solid interiors stay full; only boundaries ramp. **Verified:** chambers
+  close-up went from hard tiles → smooth sand→grass. Channels are now coverage (tests assert >200
+  interior + a partial-edge ramp). 291 tests.
+- **Still open (assessor, next arcs):** real 3D green complexes / lidar relief (phase B); milky
+  mid-distance far-field; HD-patch seams + doll-house buildings; every overview still reads as a
+  photo (the ground-level/relief win doesn't reach the survey-the-hole cameras).
+
 ## Classmap speckle + broadleaf tree — FIXED (2026-07-06, branch `claude/classmap-speckle-fix`)
 
 Fast-follow after an independent visual-QA assessor scored the shipped realism **4.5/10** and
