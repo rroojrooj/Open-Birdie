@@ -1,5 +1,17 @@
 # Open-Birdie — TODO
 
+## ACTIVE ROADMAP: Reality Master Plan (2026-07-06) — 3/10 → 6–7/10
+
+A dual assessment (one agent vs the 106-photo real library, one vs the GSPro/EA/TrackMan bar) scored
+the current build **3/10 on both axes** (convergent, independent). The full phased roadmap lives in
+[`superpowers/plans/2026-07-06-reality-master-plan.md`](superpowers/plans/2026-07-06-reality-master-plan.md):
+**P0** debug-artifact purge (~1d: pond checker, "T" sprite, aim-line dashes, halftone override stamps,
+HD patch seams) → **P1a** Puget Sound + world edge (~2–3d) ∥ **P1b** tan-first course identity (~2–3d)
+→ **P2** SDF crisp surfaces + turf light response (~8–13d) → **P3** bunker recess + green complexes
+(~8–12d) → **P4** links vegetation + marine atmosphere (~5–8d). Each phase gets its own sub-plan +
+`/plan-eng-review` before build; re-run the dual assessment after each phase. What's RIGHT and must
+never regress: QL1 lidar landform, registration/routing, no HD color seam, sky pipeline.
+
 ## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
 
 Cross-checked the sim's renders against the REAL Chambers Bay (gathered a **~106-photo local reference
