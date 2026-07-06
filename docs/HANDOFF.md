@@ -1,5 +1,14 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-06 (4) — REAL-PHOTO CROSS-CHECK + GREIGE SAND** (branch `claude/course-character-palette`).
+> Built a **~106-photo local reference library** (`reference/chambers-bay/` + `CATALOG.md`) of the real course
+> via parallel web agents, and cross-checked the renders: the sim reads as lush green striped PARKLAND, but
+> Chambers is a firm tan minimal-stripe LINKS. **Shipped:** greige native sand (`turf.js` v31 — real waste
+> sand is grey-tan `#b7a98b`, not white). **Scoped follow-up:** the fairway/rough palette (`#5e7d3d` cool
+> olive / `#c0a666` gold-tan) + COURSE-AWARE stripe strength (links minimal, parkland bold), detected from
+> the fairway-grass color in `_buildMacroTint` → `uCourseDry` uniform. Detail + target hexes: `CATALOG.md`
+> and [`docs/TODO.md`](TODO.md). 291 tests.
+
 > **UPDATE 2026-07-06 (3) — OVERVIEW REALISM** (branch `claude/overview-realism`). The survey/overview
 > shot no longer reads as a flat satellite photo. Went through `/plan-eng-review` + an outside voice
 > that (code-verified) killed the plan's original shadow thesis: terrain meshes **never `castShadow`**
