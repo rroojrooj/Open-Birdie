@@ -43,6 +43,17 @@ function pointInPoly(x, y, poly) {
   return inside;
 }
 
+// sRGB hex -> linear [r,g,b] (0..1). The P2a crisp-edge composite overrides the
+// splat albedo per-surface IN-SHADER, where diffuseColor is already linear — so the
+// palette uniforms must be linearized to match (srgbToLinear takes a 0-255 byte).
+function hexToLinearRGB(hex) {
+  return [
+    srgbToLinear(parseInt(hex.slice(1, 3), 16)),
+    srgbToLinear(parseInt(hex.slice(3, 5), 16)),
+    srgbToLinear(parseInt(hex.slice(5, 7), 16)),
+  ];
+}
+
 // The lush COLORS palette lives in course-character.js (shared with the dry-links
 // blend + its unit test, no circular import). Per-course dryness picks the actual
 // palette (this._pal) at load — see below.
@@ -440,6 +451,13 @@ export class GolfScene {
     const bunkerMaskTex = new THREE.CanvasTexture(this._paintMask(b, ['bunker']));
     bunkerMaskTex.colorSpace = THREE.NoColorSpace;
     bunkerMaskTex.anisotropy = tex.anisotropy;
+    // P2a: a RAW (unblurred) copy of the packed mown/green mask. The turf shader
+    // derives a crisp fwidth mow-line edge from this; the blurred maskTex above stays
+    // for the soft mown gate + green-collar dilation. Same packing / bounds / ppm.
+    const maskRawTex = new THREE.CanvasTexture(this._paintMask(
+      b, ['fairway', 'tee', 'green'], { default: '#ff0000', green: '#ffff00' }, 0));
+    maskRawTex.colorSpace = THREE.NoColorSpace;
+    maskRawTex.anisotropy = tex.anisotropy;
 
     // Stashed so _addGreenPatches can build a second, polygon-offset instance of the
     // SAME shader (shared texture/macro objects — in-place tint updates reach both).
@@ -447,6 +465,17 @@ export class GolfScene {
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
       macro: this._macro || this._hdMacros[0] || null,
       courseDry: this._courseDry, // P1b: drives the turf shader (warm-mix, stripes, far-photo)
+      mownMaskRaw: maskRawTex,    // P2a: crisp fwidth edge source
+      // P2a: per-surface palette (linear) so the shader can composite the base colour
+      // per-fragment with a crisp fwidth mask, overriding the soft splat/tint/collar.
+      pal: {
+        greenA: hexToLinearRGB(this._pal.greenA),
+        fairwayA: hexToLinearRGB(this._pal.fairwayA),
+        rough: hexToLinearRGB(this._pal.rough),
+        base: hexToLinearRGB(this._pal.base),
+        tee: hexToLinearRGB(this._pal.tee),
+        bunker: hexToLinearRGB(this._pal.bunker),
+      },
     };
     const turfMat = makeTurfMaterial(this._turfInputs);
     if (this._hdPatches.length) {
@@ -621,7 +650,11 @@ export class GolfScene {
     // turf shader (mask-gated) so they survive the tiled grass detail.
     fillKind(['fairway'], this._pal.fairwayA, 1.2);
     fillKind(['tee'], this._pal.tee, 1.5);
-    fillKind(['green'], this._pal.greenA, 1.0);
+    // P2a: the green splat is painted near-crisp (0.35) so it doesn't bleed ~0.45 m of
+    // green PAST the polygon; the in-shader fwidth composite overrides the base colour
+    // AT the edge, but where gCrisp==0 (just outside) it falls back to this splat, so a
+    // soft splat here would re-soften the mow line the shader just crisped.
+    fillKind(['green'], this._pal.greenA, 0.35);
     fillKind(['bunker'], this._pal.bunker, 1.2);
     fillKind(['water'], this._pal.water, 1.5);
     return cv;
@@ -632,7 +665,7 @@ export class GolfScene {
   // With a `colors` map, each kind fills with its own color so one canvas can pack
   // several gates (e.g. .r = mown, .g = green). Kinds paint in the ORDER GIVEN —
   // later kinds overpaint earlier ones where polygons touch.
-  _paintMask(b, kinds, colors = null) {
+  _paintMask(b, kinds, colors = null, blurPx = 1) {
     const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
     const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
     const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
@@ -642,7 +675,9 @@ export class GolfScene {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     const px = (x) => (x - b.minX) * ppm, py = (y) => (b.maxY - y) * ppm;
-    ctx.filter = 'blur(1px)';
+    // blurPx 0 -> a RAW (hard-edged) mask; the turf shader crisps it with fwidth
+    // (P2a). blurPx 1 (default) keeps the shipping soft mown gate / green collar.
+    ctx.filter = blurPx > 0 ? `blur(${blurPx}px)` : 'none';
     for (const kind of kinds) {
       ctx.fillStyle = colors ? (colors[kind] || colors.default || '#fff') : '#fff';
       for (const s of this.geo.surfaces) {

@@ -37,8 +37,11 @@ export function makeSandMaterial(bounds, aniso) {
   return mat;
 }
 
-export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisotropy, macro = null, courseDry = 0 }) {
+export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisotropy, macro = null, courseDry = 0, mownMaskRaw = null, pal = null }) {
   const splatTex = baseMap, maskTex = mownMask, bunkerMaskTex = bunkerMask, aniso = anisotropy;
+  // P2a: a RAW (unblurred) mask for the crisp fwidth edge. Falls back to the blurred
+  // mask so the headless material test (no raw mask supplied) still builds.
+  const maskRawTex = mownMaskRaw || mownMask;
   const extX = bounds.maxX - bounds.minX, extY = bounds.maxY - bounds.minY;
   const tileM = 2.0; // grass texture repeats ~every 2m
   const repX = extX / tileM, repY = extY / tileM;
@@ -49,6 +52,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
   const sand = tiled(ASSETS.turf.sand, true, repX, repY, aniso);
   maskTex.wrapS = maskTex.wrapT = THREE.ClampToEdgeWrapping;
   bunkerMaskTex.wrapS = bunkerMaskTex.wrapT = THREE.ClampToEdgeWrapping;
+  maskRawTex.wrapS = maskRawTex.wrapT = THREE.ClampToEdgeWrapping;
 
   const mat = new THREE.MeshStandardMaterial({
     map: splatTex,
@@ -66,6 +70,13 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
     shader.uniforms.uExt = { value: new THREE.Vector2(extX, extY) };
     shader.uniforms.uStripeM = { value: 7.0 }; // mow-band width (m) — a touch wider reads better from the orbit cam
     shader.uniforms.uCourseDry = { value: courseDry }; // P1b: 0 lush parkland .. 1 dry links
+    // P2a: crisp-edge inputs — the RAW mask + per-surface palette (linear). The shader
+    // composites the surface BASE COLOUR per-fragment gated by a fwidth mask so the
+    // green/tan boundary is a crisp ~1px mow line, not the soft splat/tint/collar sum.
+    shader.uniforms.uMaskRaw = { value: maskRawTex };
+    const PV = (a, d) => new THREE.Vector3(...(Array.isArray(a) ? a : d));
+    const P = pal || {};
+    shader.uniforms.uPalGreenA = { value: PV(P.greenA, [0.072, 0.275, 0.055]) };
     // Aerial macro layer (optional) — MATERIAL-FIRST since v24: the photo no longer
     // replaces the lit turf. Its blurred low-frequency copy (uMacroLow / uMacroAvg)
     // TINTS the material's hue/value, and the raw photo only crossfades in at TRUE
@@ -126,8 +137,11 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
               // Greens keep their authored colour; mown fairway keeps its mow structure —
               // pull the tint back on BOTH so the manicured signal (stripes, green
               // treatment) isn't washed flat by the photo. The photo PLACES the surface;
-              // the material grooms it.
-              tw *= 1.0 - 0.5 * g - 0.35 * m;
+              // the material grooms it. P2a: suppress the tint across the green VICINITY
+              // (gVic, a ~4 m dilation) not just on-green — the low-freq aerial otherwise
+              // smears a soft green halo just OUTSIDE the crisp mow line the base composite
+              // made. gVic fades out so the tint returns to full on the open fescue.
+              tw *= clamp(1.0 - 0.9 * gVic - 0.35 * m, 0.0, 1.0);
               grass *= mix(vec3(1.0), tint, tw);
               // FAR PHOTO CROSSFADE — keeps the shipped "real place" overview (raw RGB;
               // a global de-light flattens real fairway/dune/sand albedo into milky grey
@@ -156,6 +170,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
       .replace('#include <common>', `#include <common>
         uniform sampler2D uDetail; uniform vec2 uDetailRepeat;
         uniform sampler2D uMask; uniform sampler2D uBunker; uniform sampler2D uSand;
+        uniform sampler2D uMaskRaw; uniform vec3 uPalGreenA;
         uniform vec2 uExt; uniform float uStripeM; uniform float uCourseDry;
         // Procedural turf grain — evaluated from world XZ so it stays crisp at ANY
         // zoom. A tiled grass photo mip-blurs to a flat average from the elevated
@@ -178,24 +193,42 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // grass path: splat zone color modulated by tiled blade detail + mow stripes
           vec3 gd = texture2D(uDetail, vMapUv * uDetailRepeat).rgb;
           float dl = dot(gd, vec3(0.299, 0.587, 0.114));
-          vec3 grass = diffuseColor.rgb * (0.72 + 0.48 * dl);
+          // P2a CRISP GREEN: the visible green->tan edge is the SUM of three soft
+          // layers (soft splat base, ~1.8 m collar dilation, low-freq aerial tint).
+          // Override the BASE COLOUR at the boundary with the palette green, gated by a
+          // fwidth-AA mask off the RAW (unblurred) green channel. fwidth collapses the
+          // mask's ramp to a ~1px mow line AT the polygon edge regardless of the mask's
+          // 0.45 m/px resolution, so the boundary reads crisp instead of airbrushed.
+          float gRaw = texture2D(uMaskRaw, vMapUv).g;
+          float gAA = max(fwidth(gRaw), 1e-5);
+          float gCrisp = smoothstep(0.5 - gAA, 0.5 + gAA, gRaw);
+          vec3 baseCol = mix(diffuseColor.rgb, uPalGreenA, gCrisp);
+          vec3 grass = baseCol * (0.72 + 0.48 * dl);
           // inject a little of the blade's own chroma so a zone isn't one flat tint
           // (green/yellow flecks); clamped so dark blade pixels can't blow up the hue
           grass *= mix(vec3(1.0), clamp(gd / max(dl, 0.1), 0.6, 1.5), 0.16);
           vec4 mk = texture2D(uMask, vMapUv);
           float m = mk.r;                 // mown gate — semantics unchanged
           float g = mk.g;                 // green gate — packed channel (.g = greens only)
+          // P2a: a GREEN-VICINITY membership (soft ~4 m dilation of the crisp green) used
+          // ONLY to suppress the low-freq aerial tint near greens. uMacroLow is blurred
+          // ~5 m, so the green oval smears a soft GREEN halo just OUTSIDE the crisp mow
+          // line — knocking the tint down in the vicinity is what keeps the boundary crisp.
+          vec2 vo = vec2(4.0) / uExt;
+          float gVic = (texture2D(uMaskRaw, vMapUv + vec2(vo.x, 0.0)).g + texture2D(uMaskRaw, vMapUv - vec2(vo.x, 0.0)).g
+                      + texture2D(uMaskRaw, vMapUv + vec2(0.0, vo.y)).g + texture2D(uMaskRaw, vMapUv - vec2(0.0, vo.y)).g) * 0.25;
+          gVic = max(gVic, gCrisp);
           // Union the NDVI class-map into the mown gate BEFORE the stripe block (see
           // macroPre): widens the mown gate onto NDVI-detected fairway OSM missed; cls is
           // also reused by the sand union below (kept inside #ifdef USE_MAP, GTAO-safe).${macroPre}
-          // Soft fringe/collar (v29): an AVERAGED (not max) 8-tap dilation of the green
-          // channel gives a smooth membership gBlur that ramps 1->0 across ~1.8 m at the
-          // green edge. gEdge (a smoothstep of it) gates the green CHARACTER so the putting
-          // surface fades into a mown collar band instead of stopping at a stamped
-          // cookie-cutter edge (the assessor's "hard green edge"); fr is the graded collar
-          // ring OUTSIDE the green. Both distance-faded (sub-pixel past ~60 m). Derived
-          // from a coverage mask — no encoded magic values, safe under bilinear/mip.
-          vec2 fo = vec2(1.8) / uExt;
+          // Fringe/collar: an AVERAGED (not max) 8-tap dilation of the green channel gives
+          // a smooth membership gBlur just OUTSIDE the green. P2a: gBlur no longer gates the
+          // green CHARACTER (that rides the crisp gCrisp now) — it feeds ONLY the collar
+          // ring fr, so the dilation is TIGHTENED 1.8 m -> 0.6 m: the v29 1.8 m band was a
+          // soft dark halo that smeared the newly-crisp mow line at the close cam. A proper
+          // offset fescue collar is Task 2; this is a tight interim fringe. Distance-faded
+          // (sub-pixel past ~60 m); coverage-mask derived (bilinear/mip safe).
+          vec2 fo = vec2(0.6) / uExt;
           float gBlur = g
             + texture2D(uMask, vMapUv + vec2(fo.x, 0.0)).g
             + texture2D(uMask, vMapUv - vec2(fo.x, 0.0)).g
@@ -207,8 +240,12 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
             + texture2D(uMask, vMapUv - vec2(fo.x, fo.y)).g;
           gBlur *= (1.0 / 9.0);
           float gDistFade = 1.0 - smoothstep(45.0, 70.0, length(vViewPosition));
-          float gEdge = smoothstep(0.12, 0.9, gBlur);            // soft green membership
-          float fr = clamp(gBlur - g, 0.0, 1.0) * gDistFade;     // graded collar ring
+          // P2a: the green CHARACTER (checker/contour/sheen roll below) now rides the
+          // CRISP membership so it stops at the same mow line as the base colour — no
+          // more ~1.8 m soft fade of the putting-surface treatment (v29 checker+contour
+          // still apply INSIDE where gCrisp==1, just with a sharp edge).
+          float gEdge = gCrisp;                                  // crisp green membership
+          float fr = clamp(gBlur - g, 0.0, 1.0) * gDistFade;     // graded collar ring (Task 2)
           float wx = vMapUv.x * uExt.x, wy = vMapUv.y * uExt.y;
           // procedural grain: fine "tooth" (~0.5-4m) + broad patches (~8-20m), so the
           // turf reads as real grass at the orbit camera instead of a flat plastic
@@ -337,9 +374,9 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v32-macro' : 'turf-grain-v32');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v33-macro' : 'turf-grain-v33');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
-  mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex];
+  mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex, ...(mownMaskRaw ? [maskRawTex] : [])];
   return mat;
 }
