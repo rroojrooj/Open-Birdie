@@ -17,10 +17,15 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4 });
   const s = fakeShader();
   mat.onBeforeCompile(s);
-  for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM', 'uCourseDry']) assert.ok(s.uniforms[u], `missing ${u}`);
+  for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM', 'uCourseDry', 'uMaskRaw', 'uPalGreenA']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.equal(s.uniforms.uCourseDry.value, 0, 'courseDry defaults to 0 (lush)');
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v32');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v33');
+  // P2a: the crisp green edge is composited from the RAW mask via fwidth AA, and the
+  // green base colour is overridden with the palette uniform at the boundary.
+  assert.match(s.fragmentShader, /float gCrisp = smoothstep\(0\.5 - gAA, 0\.5 \+ gAA, gRaw\)/);
+  assert.match(s.fragmentShader, /texture2D\(uMaskRaw, vMapUv\)\.g/);
+  assert.match(s.fragmentShader, /mix\(diffuseColor\.rgb, uPalGreenA, gCrisp\)/);
   // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
   // the roughness sheen samples it directly, the map block via the mk swizzle
   assert.match(s.fragmentShader, /texture2D\(uMask, vMapUv\)\.g/);
@@ -45,7 +50,7 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.equal(s.uniforms.uMacroLow.value, macro.low);
   assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
   assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v32-macro');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v33-macro');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
   // v27: the NDVI class-map (uMacroSurfaces) was declared-but-unsampled — it must now
