@@ -16,6 +16,7 @@
     { "name": "ov_high",  "mode": "free", "pose": { "tx": 0,   "ty": -16,  "dist": 320, "pitch": -42, "yaw": 0,   "hOff": 0 }, "note": "high wide survey; HD-patch/course-wide seam check" },
     { "name": "pond",     "mode": "free", "pose": { "tx": 0,   "ty": -16,  "dist": 150, "pitch": -26, "yaw": 0,   "hOff": 0 }, "note": "the origin ponds; water material read + reflector check" },
     { "name": "green",    "mode": "free", "pose": { "tx": 138, "ty": -289, "dist": 70,  "pitch": -24, "yaw": 20,  "hOff": 0 }, "note": "a green complex close-in; fringe/collar + checker read" },
+    { "name": "green_close", "mode": "free", "pose": { "tx": 138, "ty": -289, "dist": 18, "pitch": -12, "yaw": 20, "hOff": 0 }, "note": "P2a: CLOSE green cam (~18m) to actually SEE the mow-line edge + collar — past ~45-70m the collar fades (gDistFade) and the far-photo takes over, so the dist:70 green frame cannot show a lit-turf edge change" },
     { "name": "sand",     "mode": "free", "pose": { "tx": 138, "ty": -289, "dist": 90,  "pitch": -20, "yaw": 200, "hOff": 0 }, "note": "bunker close-in; sand material + (deferred) dot-screen read" }
   ]
 }

@@ -33,6 +33,27 @@ striped/unstable. So the field is worth building ONLY locally around greens (whe
 resolvable), and ONLY for the collar. A course-wide SDF (~100 MB, course/patch UV plumbing) for something
 `fwidth` does free is accidental complexity.
 
+## TASK 0 GATE RESULT (2026-07-07 — spike run live, code reverted, close cam kept)
+
+Ran the fwidth-edge spike on Chambers at a new ~18-26 m CLOSE green cam (added to
+`docs/fixtures/chambers-sweep.json`). **GO on `fwidth`, but Task 1 is bigger than a `gEdge` swap.** Finding
+(3 captured frames): the crisp mow-line **COLOR** edge is NOT owned by `gEdge`, and NOT fixed by reducing the
+splat blur.
+- Swapping `gEdge` (`turf.js:210`) to `smoothstep(0.5±fwidth(g), g)` sharpens the green **character**
+  (checker/sheen/contour ride `gEdge`) but the visible green→tan **colour** boundary stayed soft.
+- Reducing the green/fairway splat `fillKind` blur (1.0→0.35) sharpened the splat but the boundary STILL read soft.
+- **Root cause:** the soft edge is the SUM of three soft contributors — the splat base colour, the `fr` collar
+  (~1.8 m `gBlur` dilation), AND the aerial tint (`uMacroLow`, low-freq, soft) — all painting soft green
+  across the boundary. Sharpening any one doesn't help.
+
+**Revised Task 1 (the real build):** composite the surface BASE COLOUR **in-shader**, gated by a crisp
+`fwidth` mask, so the final green/tan (+ fairway/rough, bunker) boundary is crisp — overriding the soft
+splat+tint+collar AT the boundary. Needs the per-surface palette (`this._pal.greenA/rough/...`) as uniforms +
+a composite block that (a) picks the base colour from the mask channels with `fwidth` AA and (b) lets the
+tint/detail modulate INSIDE each surface without bleeding across the crisp line. Higher blast radius than a
+`gEdge` swap (touches the base-albedo path + interacts with the P1b palette + aerial tint) → this is the
+genuinely multi-day core of P2a. `fwidth` is confirmed the right edge primitive; the SDF stays collar-only.
+
 **Diagnosis already done (grounded — do not re-derive):**
 - `_paintMask(b, kinds)` (`scene.js:635`) rasterizes polys at `ppm = min(2.2, 4096/maxExt)` (~0.45 m/px) with
   `ctx.filter='blur(1px)'`. **`fwidth` wants a SHARP step** → the edge path needs a RAW (unblurred) mask so the
