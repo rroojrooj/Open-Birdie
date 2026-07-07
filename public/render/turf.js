@@ -193,15 +193,25 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // grass path: splat zone color modulated by tiled blade detail + mow stripes
           vec3 gd = texture2D(uDetail, vMapUv * uDetailRepeat).rgb;
           float dl = dot(gd, vec3(0.299, 0.587, 0.114));
-          // P2a CRISP GREEN: the visible green->tan edge is the SUM of three soft
-          // layers (soft splat base, ~1.8 m collar dilation, low-freq aerial tint).
-          // Override the BASE COLOUR at the boundary with the palette green, gated by a
-          // fwidth-AA mask off the RAW (unblurred) green channel. fwidth collapses the
+          // P2a CRISP EDGES: the visible surface->surface boundary is the SUM of three
+          // soft layers (soft splat base, ~1.8 m collar dilation, low-freq aerial tint).
+          // Override the BASE COLOUR at the boundary with the palette colour, gated by a
+          // fwidth-AA mask off the RAW (unblurred) mask channels. fwidth collapses the
           // mask's ramp to a ~1px mow line AT the polygon edge regardless of the mask's
           // 0.45 m/px resolution, so the boundary reads crisp instead of airbrushed.
-          float gRaw = texture2D(uMaskRaw, vMapUv).g;
+          // One raw-mask sample: .r = mown (fairway/tee/green), .g = green only.
+          vec4 mkRaw = texture2D(uMaskRaw, vMapUv);
+          float gRaw = mkRaw.g, mRaw = mkRaw.r;
           float gAA = max(fwidth(gRaw), 1e-5);
           float gCrisp = smoothstep(0.5 - gAA, 0.5 + gAA, gRaw);
+          float mAA = max(fwidth(mRaw), 1e-5);
+          float mCrisp = smoothstep(0.5 - mAA, 0.5 + mAA, mRaw); // crisp mown (fairway) edge
+          // Green gets a full crisp BASE override (a distinct putting-surface colour). The
+          // fairway does NOT: the splat fairway->rough colour is already near-crisp (~0.5 m
+          // blur) and both are close tans/olives — forcing the dry-olive fairwayA over the
+          // whole mown gate recolours the fairway (dark on shaded slopes), scope creep past
+          // "crisp edges". The fairway's soft cue is the STRIPE fade, crisped below via
+          // mCrisp. So the base override stays green-only; mCrisp drives the stripe edge.
           vec3 baseCol = mix(diffuseColor.rgb, uPalGreenA, gCrisp);
           vec3 grass = baseCol * (0.72 + 0.48 * dl);
           // inject a little of the blade's own chroma so a zone isn't one flat tint
@@ -290,7 +300,10 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float sFade = 1.0 - smoothstep(120.0, 280.0, length(vViewPosition));
           // P1b: links are lightly mown — scale stripe strength down (to a low, non-zero
           // floor) by uCourseDry; parkland (0) keeps the bold set.
-          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * m * (1.0 - 0.85 * g - 0.6 * fr) * sFade * (1.0 - 0.7 * uCourseDry);
+          // P2a: gate the stripes on the CRISP mown edge (mCrisp) so they stop at the mow
+          // line instead of the soft ~1 m fade; keep the NDVI union (cls.r) for coverage
+          // OSM lacks (its feather is reconciled in Task 3).
+          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * max(mCrisp, cls.r) * (1.0 - 0.85 * g - 0.6 * fr) * sFade * (1.0 - 0.7 * uCourseDry);
           // GREEN (v29): calm fine grain + a SUBTLE checker mow + a gentle contour roll,
           // all gated by the SOFT edge (gEdge) so the putting-surface character fades
           // across the collar instead of at a hard line. Checker dropped 0.15 -> 0.09 (the

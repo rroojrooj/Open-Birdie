@@ -21,11 +21,14 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   assert.equal(s.uniforms.uCourseDry.value, 0, 'courseDry defaults to 0 (lush)');
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
   assert.equal(mat.customProgramCacheKey(), 'turf-grain-v33');
-  // P2a: the crisp green edge is composited from the RAW mask via fwidth AA, and the
-  // green base colour is overridden with the palette uniform at the boundary.
+  // P2a: crisp edges composited from the RAW mask via fwidth AA. Green (.g) gets a full
+  // base-colour override; the mown/fairway (.r) crisp mask drives the STRIPE edge.
+  assert.match(s.fragmentShader, /vec4 mkRaw = texture2D\(uMaskRaw, vMapUv\)/);
   assert.match(s.fragmentShader, /float gCrisp = smoothstep\(0\.5 - gAA, 0\.5 \+ gAA, gRaw\)/);
-  assert.match(s.fragmentShader, /texture2D\(uMaskRaw, vMapUv\)\.g/);
+  assert.match(s.fragmentShader, /float mCrisp = smoothstep\(0\.5 - mAA, 0\.5 \+ mAA, mRaw\)/);
   assert.match(s.fragmentShader, /mix\(diffuseColor\.rgb, uPalGreenA, gCrisp\)/);
+  // stripes gate on the crisp mown edge (unioned with NDVI coverage)
+  assert.match(s.fragmentShader, /max\(mCrisp, cls\.r\)/);
   // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
   // the roughness sheen samples it directly, the map block via the mk swizzle
   assert.match(s.fragmentShader, /texture2D\(uMask, vMapUv\)\.g/);
