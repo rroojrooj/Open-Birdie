@@ -19,6 +19,7 @@ import { buildHdTerrain, buildCoarseTerrain } from './hd-terrain.js';
 import { makeTerrainSampler } from './terrain-grid.js';
 import { RENDER_CONFIG } from './config.js';
 import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
+import { COLORS, DRY_PALETTE, courseDryFor, blendPalette } from './course-character.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -42,23 +43,9 @@ function pointInPoly(x, y, poly) {
   return inside;
 }
 
-// Surfaces are separated by VALUE (dark rough -> light fairway -> lighter
-// green) so the hole reads as a golf hole, not one flat green carpet — while
-// staying muted enough that the regraded lighting doesn't push them neon.
-const COLORS = {
-  base: '#3c6736',  // lusher corridor/base (much of the visible play ground is unlabeled base)
-  rough: '#4a8038', // lush green rough (Augusta second cut) — deeper than the fairway
-  wood: '#2b4124',
-  range: '#52883f',
-  fairwayA: '#5aa848', fairwayB: '#4f9a40', // vivid lush fairway (mow stripes added in shader)
-  // Greens: muted since material-first (v25) — the splat is now the ACTUAL albedo, not a
-  // 10% residue under the photo drape; #5cab4f read as a neon decal. The fine mow, sheen,
-  // and collar carry "putting surface"; the color stays in the fairway family.
-  greenA: '#4c8f42', greenB: '#447f38',
-  tee: '#63a84f',
-  bunker: '#cbb583',
-  water: '#2f6d97',
-};
+// The lush COLORS palette lives in course-character.js (shared with the dry-links
+// blend + its unit test, no circular import). Per-course dryness picks the actual
+// palette (this._pal) at load — see below.
 
 export class GolfScene {
   constructor(container) {
@@ -260,6 +247,11 @@ export class GolfScene {
     }
     this.geo = geo;
     this.elev = geo.elevation || null;
+    // Course character (P1b): one manual dryness scalar (0 lush parkland .. 1 dry
+    // links) picks the actual turf palette + drives the turf shader (uCourseDry).
+    // Chambers -> tan links; Sawgrass -> unchanged lush green.
+    this._courseDry = courseDryFor(geo.name);
+    this._pal = blendPalette(COLORS, DRY_PALETTE, this._courseDry);
     // HD bundle: a high-res terrain patch + aerial macro within its rect. Sets up the
     // unified sampler (placement) + macro (turf shader) consumed below.
     this._hdAssets = hdList;
@@ -582,7 +574,7 @@ export class GolfScene {
     };
 
     // base
-    ctx.fillStyle = COLORS.base;
+    ctx.fillStyle = this._pal.base;
     ctx.fillRect(0, 0, W, H);
 
     // noise overlay (mottled grass)
@@ -617,20 +609,20 @@ export class GolfScene {
     // wooded ground
     ctx.save();
     ctx.filter = 'blur(3px)';
-    ctx.fillStyle = COLORS.wood;
+    ctx.fillStyle = this._pal.wood;
     for (const w of geo.woods || []) { tracePoly(w); ctx.fill(); }
     ctx.restore();
 
-    fillKind(['rough'], COLORS.rough, 1.5);
-    fillKind(['range'], COLORS.range, 1.5);
+    fillKind(['rough'], this._pal.rough, 1.5);
+    fillKind(['range'], this._pal.range, 1.5);
 
     // mown surfaces — uniform base color; mow stripes are added physically in the
     // turf shader (mask-gated) so they survive the tiled grass detail.
-    fillKind(['fairway'], COLORS.fairwayA, 1.2);
-    fillKind(['tee'], COLORS.tee, 1.5);
-    fillKind(['green'], COLORS.greenA, 1.0);
-    fillKind(['bunker'], COLORS.bunker, 1.2);
-    fillKind(['water'], COLORS.water, 1.5);
+    fillKind(['fairway'], this._pal.fairwayA, 1.2);
+    fillKind(['tee'], this._pal.tee, 1.5);
+    fillKind(['green'], this._pal.greenA, 1.0);
+    fillKind(['bunker'], this._pal.bunker, 1.2);
+    fillKind(['water'], this._pal.water, 1.5);
     return cv;
   }
 
@@ -887,7 +879,7 @@ export class GolfScene {
     const surf = geo.surfaces || [];
     const fairway = surf.filter((s) => s.kind === 'fairway' && s.poly && s.poly.length >= 3);
     const tee = surf.filter((s) => s.kind === 'tee' && s.poly && s.poly.length >= 3);
-    const cFair = new THREE.Color(COLORS.fairwayA), cTee = new THREE.Color(COLORS.tee), cBase = new THREE.Color(COLORS.base);
+    const cFair = new THREE.Color(this._pal.fairwayA), cTee = new THREE.Color(this._pal.tee), cBase = new THREE.Color(this._pal.base);
     const onAny = (polys, x, y) => { for (const s of polys) if (pointInPoly(x, y, s.poly)) return true; return false; };
     return (x, y) => (onAny(tee, x, y) ? cTee : onAny(fairway, x, y) ? cFair : cBase);
   }
