@@ -446,6 +446,7 @@ export class GolfScene {
     this._turfInputs = {
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
       macro: this._macro || this._hdMacros[0] || null,
+      courseDry: this._courseDry, // P1b: drives the turf shader (warm-mix, stripes, far-photo)
     };
     const turfMat = makeTurfMaterial(this._turfInputs);
     if (this._hdPatches.length) {
