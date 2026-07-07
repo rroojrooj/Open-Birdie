@@ -17,9 +17,10 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4 });
   const s = fakeShader();
   mat.onBeforeCompile(s);
-  for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM']) assert.ok(s.uniforms[u], `missing ${u}`);
+  for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM', 'uCourseDry']) assert.ok(s.uniforms[u], `missing ${u}`);
+  assert.equal(s.uniforms.uCourseDry.value, 0, 'courseDry defaults to 0 (lush)');
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v31');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v32');
   // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
   // the roughness sheen samples it directly, the map block via the mk swizzle
   assert.match(s.fragmentShader, /texture2D\(uMask, vMapUv\)\.g/);
@@ -44,7 +45,7 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.equal(s.uniforms.uMacroLow.value, macro.low);
   assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
   assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v31-macro');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v32-macro');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
   // v27: the NDVI class-map (uMacroSurfaces) was declared-but-unsampled — it must now
@@ -61,6 +62,14 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
   // the v23 photo-REPLACEMENT blend is gone — a bad merge restoring it must fail here
   assert.doesNotMatch(s.fragmentShader, /grass = mix\(grass, photo, mw\)/);
+});
+
+test('P1b: courseDry passes through to the uCourseDry uniform (drives warm-mix/stripes/far-photo)', () => {
+  const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4, courseDry: 0.8 });
+  const s = fakeShader();
+  mat.onBeforeCompile(s);
+  assert.equal(s.uniforms.uCourseDry.value, 0.8);
+  assert.match(s.fragmentShader, /uCourseDry/);
 });
 
 test('macro without low/avg (HD-bundle shape) still wires tint uniforms', () => {
