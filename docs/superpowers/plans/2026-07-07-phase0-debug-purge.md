@@ -13,6 +13,20 @@
 framings, by gating out leaked gameplay/debug UI. Ships fast (~half day) so P1's assessment captures are clean
 of leaked UI.
 
+> **BUILT + VERIFIED 2026-07-07.** The UI gate shipped: `framing.js` (pure `isPlayFraming`/`ballReadScale`/
+> `pinReadScale`) wired into `scene.js:_frame`, gating the aim line + ball/pin auto-scale to play framings only.
+> `test/scene-ui-gating.test.mjs` added (294/294 green). Verified live on the render harness: BEFORE free-cam
+> frame showed the dashed aim line + a 6.2×-inflated ball at 113 m; AFTER free-cam frame is clean (aim line
+> hidden, ball/pin at 1×); idle play frame keeps the aim line + readability scale (no gameplay regression).
+> Committed capture fixture: `docs/fixtures/chambers-sweep.json`.
+>
+> **Task-0 diagnosis outcomes (live, Chambers):** (1) the "yellow T" is **NOT a discrete object** — the scene
+> has **0 sprites** (462 meshes, 0 sprites, 0 yellowish materials), so the master-plan "tee sprite" claim was
+> false → it's a surface/classmap artifact, **deferred to P2**. (2) The pond "checker" is **NOT a cheap
+> Reflector-gate** — hiding all 3 Reflectors was pixel-identical (reflOn == reflOff) and no grid shows at the
+> overview → **deferred** (Task 2 skipped; not a P0a-sized fix). The re-scope held: the only actionable P0a
+> work was the UI gate.
+
 **Honest exit bar (not "zero artifacts"):** in the committed 6-frame survey sweep, **no leaked gameplay/debug
 UI** (no dashed aim line, no giant auto-scaled ball/pin, no stray debug glyph); AND a real play/idle-mode frame
 still shows the aim line + normal ball (no gameplay regression); AND the dual-assessor no longer flags a
