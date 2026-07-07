@@ -35,9 +35,11 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   assert.match(s.fragmentShader, /roughnessFactor = mix\(roughnessFactor/);
   assert.match(s.fragmentShader, /float g = mk\.g/);
   // v27: the non-macro variant still defines `cls` (as a zero vec4) so the sand
-  // union line `max(texture2D(uBunker...).r, cls.b...)` compiles in BOTH variants.
+  // union line `max(bCrisp, cls.b...)` compiles in BOTH variants.
   assert.match(s.fragmentShader, /vec4 cls = vec4\(0\.0\)/);
-  assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
+  // P2a: the OSM bunker edge is crisped with fwidth (bCrisp) then unioned with NDVI sand.
+  assert.match(s.fragmentShader, /float bCrisp = smoothstep\(0\.5 - bAA, 0\.5 \+ bAA, bRaw\)/);
+  assert.match(s.fragmentShader, /float bm = max\(bCrisp, cls\.b/);
 });
 
 test('macro turf material: adds aerial tint uniforms + a distinct program', () => {
@@ -66,8 +68,8 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   // mis-order would pass every other assertion. Pin it by source position.
   assert.ok(s.fragmentShader.indexOf('m = max(m, cls.r)') < s.fragmentShader.indexOf('float band = sin('),
     'NDVI mown-union must appear before the stripe block');
-  // …and the sand gate UNIONS NDVI-detected sand (cls.b) into the tiled-sand path.
-  assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
+  // …and the sand gate UNIONS NDVI-detected sand (cls.b) with the crisp OSM bunker edge.
+  assert.match(s.fragmentShader, /float bm = max\(bCrisp, cls\.b/);
   // the v23 photo-REPLACEMENT blend is gone — a bad merge restoring it must fail here
   assert.doesNotMatch(s.fragmentShader, /grass = mix\(grass, photo, mw\)/);
 });

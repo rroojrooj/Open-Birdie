@@ -344,7 +344,13 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           sand = mix(sand, vec3(0.72, 0.68, 0.58), 0.18) * 1.04;
           // Union NDVI-detected sand (cls.b) into the OSM bunker mask, but only OUTSIDE
           // mown ground — m is post-union here, so "no sand where OSM- or NDVI-mown".
-          float bm = max(texture2D(uBunker, vMapUv).r, cls.b * (1.0 - m));
+          // P2a: crisp the OSM bunker edge with fwidth AA so the sand->grass boundary is a
+          // ~1px line, killing the soft desaturated "sand halo" band the blurred mask left
+          // around each bunker. (The NDVI cls.b feather stays; Task 3 reconciles it.)
+          float bRaw = texture2D(uBunker, vMapUv).r;
+          float bAA = max(fwidth(bRaw), 1e-5);
+          float bCrisp = smoothstep(0.5 - bAA, 0.5 + bAA, bRaw);
+          float bm = max(bCrisp, cls.b * (1.0 - m));
           diffuseColor.rgb = mix(grass, sand, bm);
         }
         #endif`)
