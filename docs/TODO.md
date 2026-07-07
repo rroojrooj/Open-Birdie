@@ -29,7 +29,17 @@ a JSON field is dropped in transit; `blendPalette` grass-only, greens excluded, 
 warm-mix endpoint + floors stripes + lowers far-photo for dry courses. 301/301. **Live-verified:** Chambers
 `courseDry=0.85` reads tan-gold links at play (green stays green, no seam) + warmer overview; Sawgrass
 `courseDry=0` proven byte-unchanged. Sub-plan: [`2026-07-07-p1b-tan-palette.md`](superpowers/plans/2026-07-07-p1b-tan-palette.md).
-**Next lanes:** P1a (Puget Sound + world edge) ∥ P2 (SDF crisp surfaces — absorbs the P0a-deferred classmap dots + macro seam).
+
+### P2a Task 1 — SHIPPED (2026-07-08, branch `claude/p2-sdf-surfaces`)
+Crisp surface edges via in-shader `fwidth` composite (v33), incremental commits: **green** (`bbd2827`) — RAW mask
++ `gCrisp` base-colour override + `gEdge=gCrisp` (v29 checker/contour survive) + green-vicinity tint suppression +
+collar 1.8m→0.6m + splat blur 1.0→0.35; **fairway** (`fab55dd`) — `mCrisp` crisp stripe gate (base override
+backed off — recolour regression on shaded slopes); **bunker** (`90f67f0`) — `bCrisp` kills the sand-halo band.
+Verified before/after on a real OSM green (soft ~2m airbrush → crisp mow line) + Chambers/Sawgrass/St Andrews, no
+regression. **Gotcha:** the gate fixture `green_close` pose was a TEE (aerial-painted green, `gCrisp`=0) — repointed
+to a real green (193,-263). Sub-plan (Task 1 checklist + finding): [`2026-07-07-p2a-sdf-surfaces.md`](superpowers/plans/2026-07-07-p2a-sdf-surfaces.md).
+**P2a remaining:** Task 2 collar ring · Task 3 classmap/fwidth double-edge reconciliation · Task 4 (decoupled) dot-screen + HD macro seam · Task 5 full fixture sweep.
+**Other next lanes:** P1a (Puget Sound + world edge).
 
 ## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
 

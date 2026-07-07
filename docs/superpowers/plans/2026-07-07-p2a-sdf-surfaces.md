@@ -100,18 +100,31 @@ voice #1: the existing dist:70 green cam is in the collar-fade + photo zone and 
 
 ---
 
-## Task 1: `fwidth` crisp edges in the shader — incremental green → fairway → bunker
+## Task 1: `fwidth` crisp edges in the shader — incremental green → fairway → bunker — SHIPPED (2026-07-08)
 
 **Files:** `public/render/scene.js` (a RAW, unblurred mask for the edge path), `public/render/turf.js`
 (replace the soft edges; cache key v33); each sub-step its own commit + close-green-cam verify (eng-review #2).
 
-- [ ] **Step 0:** Add a raw (no-blur) mask alongside the existing blurred one (or a flag to `_paintMask`), wired
-  through `_turfInputs` (base + HD-patch).
-- [ ] **Step 1a (GREEN):** replace the `gBlur` 8-tap dilation edge with `gEdge = smoothstep(0.5-fwidth(gRaw),
-  0.5+fwidth(gRaw), gRaw)`. **Verify the v29 checker + contour roll SURVIVE** at the close green cam. Bump cache
-  key v32→v33 + update `hd-turf.test.mjs`. Commit.
-- [ ] **Step 1b (FAIRWAY/ROUGH):** replace the `edgeW` blend with the fwidth edge. Verify + commit.
-- [ ] **Step 1c (BUNKER):** replace the bunker edge (kills the sand halo band). Verify + commit.
+- [x] **Step 0:** RAW (blurPx 0) packed mask built + wired through `_turfInputs` (base + HD-patch share it);
+  linear palette also plumbed. `_paintMask` gained a `blurPx` param. (commit `bbd2827`)
+- [x] **Step 1a (GREEN):** `gCrisp = smoothstep(0.5-fwidth(gRaw), 0.5+fwidth(gRaw), gRaw)` off the raw mask;
+  BASE-COLOUR override `mix(diffuseColor, uPalGreenA, gCrisp)` + `gEdge = gCrisp` (v29 checker/contour verified
+  SURVIVING) + green-vicinity aerial-tint suppression (`gVic`) + collar dilation tightened 1.8m→0.6m + green
+  splat blur 1.0→0.35. v32→v33. Verified before/after on a REAL OSM green (soft ~2m airbrush → crisp mow line).
+  (commit `bbd2827`)
+- [x] **Step 1b (FAIRWAY/ROUGH):** `mCrisp` (fwidth on the raw mown `.r`) crisps the mow-STRIPE gate
+  (`max(mCrisp, cls.r)`). Deliberately did NOT override the fairway base colour — forcing the dry-olive
+  `fairwayA` recolours the whole fairway and reads near-black on shaded slopes (verified regression); the splat
+  fairway edge is already ~crisp. (commit `fab55dd`)
+- [x] **Step 1c (BUNKER):** `bCrisp = fwidth` on the OSM bunker mask → `bm = max(bCrisp, cls.b*(1-m))`; kills the
+  soft desaturated sand-halo band. (commit `90f67f0`)
+
+**KEY FINDING (do not re-derive):** the gate's `green_close` fixture pose (138,-289) was a **TEE**, not a green —
+the green-look there is aerial photo, so `gCrisp` is correctly 0 and the crisp composite can't apply. Burned time
+chasing a soft "green" edge that was aerial-painted tee. Fixture repointed to a real OSM green (193,-263). Nearest
+Chambers greens to the origin holes: (193,-263), (80,-341). **Verified:** Chambers (tan links) + Sawgrass
+(parkland, courseDry 0) + St Andrews (links, rough-OSM) — greens/fairways/bunkers crisp, no regression, no
+egregious OSM-slop artifact. 301/301 tests (cache v33).
 
 ## Task 2: green fringe/collar ring (local SDF or approximate, per Task 0)
 
@@ -178,10 +191,12 @@ Synthesized from this review. Each derives from a specific finding. Checkbox as 
   - Surfaced by: outside-voice #1/#3/#7/#8 — the fixture green cam at dist:70 is in the collar-fade+photo zone; the collar (not the edge) is the real risk
   - Files: `docs/fixtures/chambers-sweep.json`
   - Verify: fwidth edge crisp+stable at the close cam; collar stable via local SDF or an accepted fallback
-- [ ] **T2 (P1, human: ~1-2d / CC: ~2h)** — `turf.js` — fwidth crisp edges on the RAW mask, incremental green→fairway→bunker (protect the v29 checker/contour); cache v33
+- [x] **T2 (P1)** — `turf.js` — fwidth crisp edges on the RAW mask, incremental green→fairway→bunker (v29
+  checker/contour protected); cache v33. SHIPPED `bbd2827`/`fab55dd`/`90f67f0`. NB fairway base-colour override
+  was backed off (recolour regression on shaded slopes) — fairway crisps the STRIPE gate only.
   - Surfaced by: Arch #1 (raw raster) + Code-quality #2 (incremental)
   - Files: `public/render/scene.js`, `public/render/turf.js`
-  - Verify: crisp mow lines at close green cam; v29 checker/contour survive; `npm test` green
+  - Verify: DONE — crisp green/fairway/bunker at close cam; v29 checker/contour survive; 301/301 green
 - [ ] **T3 (P1, human: ~1d / CC: ~1-2h)** — green fringe/collar ring (local per-green SDF or approximate fwidth band, per Task 0)
   - Surfaced by: cross-model A — SDF spent only on the collar, locally
   - Files: `public/render/scene.js`, `public/render/turf.js`
