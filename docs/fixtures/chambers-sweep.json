@@ -1,0 +1,21 @@
+{
+  "_doc": "Pinned capture fixture for the Phase-0a/realism verification sweep (eng-review #1). Makes before/after frames pixel-comparable and re-runnable. Overview/beauty frames are shot in REAL free-cam (enterFreeCam) and the play frame in REAL idle mode, so the sweep exercises the actual camMode gate (framing.js) rather than a hand-posed approximation.",
+  "course": "chambers-bay.json",
+  "captureSize": [1280, 800],
+  "jpegQuality": 0.85,
+  "procedure": [
+    "Start server via launch.json config 'open-birdie-verify' (:8223) + scratchpad sink.js (:9100).",
+    "POST /api/load-course {\"cached\":\"chambers-bay.json\"}; then reload the page; wait ~13s for HD settle.",
+    "In the page: S = window.__birdie.scene; S.renderer.setAnimationLoop(null).",
+    "Per frame: setSize + postfx.setSize to captureSize; for 'free' frames S.enterFreeCam(true) then Object.assign(S.free, pose) + S._freeTargets(); for 'idle' set S.camMode='idle' + S._idleTargets(); copy camera to S.camPosT/lookT; call S._frame() (applies the real framing.js gate + postfx.render()); toDataURL('image/jpeg', q) and POST to http://localhost:9100/<name>.jpg.",
+    "free.pose = ground pivot in SIM coords (tx east, ty north) + dist(m) + pitch(deg) + yaw(deg, 0 = camera south of pivot looking north) + hOff(m)."
+  ],
+  "frames": [
+    { "name": "play",     "mode": "idle", "note": "address view at the active hole; aim line + readability-scaled ball MUST render here (gameplay-UI regression check)" },
+    { "name": "ov_south", "mode": "free", "pose": { "tx": 0,   "ty": -40,  "dist": 220, "pitch": -30, "yaw": 0,   "hOff": 0 }, "note": "wide overview from the south looking north over the origin holes + ponds" },
+    { "name": "ov_high",  "mode": "free", "pose": { "tx": 0,   "ty": -16,  "dist": 320, "pitch": -42, "yaw": 0,   "hOff": 0 }, "note": "high wide survey; HD-patch/course-wide seam check" },
+    { "name": "pond",     "mode": "free", "pose": { "tx": 0,   "ty": -16,  "dist": 150, "pitch": -26, "yaw": 0,   "hOff": 0 }, "note": "the origin ponds; water material read + reflector check" },
+    { "name": "green",    "mode": "free", "pose": { "tx": 138, "ty": -289, "dist": 70,  "pitch": -24, "yaw": 20,  "hOff": 0 }, "note": "a green complex close-in; fringe/collar + checker read" },
+    { "name": "sand",     "mode": "free", "pose": { "tx": 138, "ty": -289, "dist": 90,  "pitch": -20, "yaw": 200, "hOff": 0 }, "note": "bunker close-in; sand material + (deferred) dot-screen read" }
+  ]
+}

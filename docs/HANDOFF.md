@@ -1,5 +1,13 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **ARC SUPERSEDED 2026-07-07 → the phased [Reality Master Plan](superpowers/plans/2026-07-06-reality-master-plan.md).**
+> A dual assessment (vs the 106-photo real library + vs GSPro/EA/TrackMan) scored the build **3/10** and drove
+> a 5-phase roadmap (P0a UI gate → P1a Sound / P1b tan palette → P2 SDF surfaces → P3 bunkers/greens → P4
+> vegetation/atmosphere). **P0a is SHIPPED** (branch `claude/phase0-debug-purge`): `framing.js` gate hides the
+> leaked aim line + 26× ball auto-scale outside a play framing; capture fixture at `docs/fixtures/chambers-sweep.json`.
+> Live diagnosis: the "yellow T" is NOT a sprite (0 sprites in scene) and the pond "checker" is NOT a cheap
+> Reflector-gate — both deferred to P2/later. Start from the master plan + `docs/TODO.md`, not this doc.
+
 > **UPDATE 2026-07-06 (4) — REAL-PHOTO CROSS-CHECK + GREIGE SAND** (branch `claude/course-character-palette`).
 > Built a **~106-photo local reference library** (`reference/chambers-bay/` + `CATALOG.md`) of the real course
 > via parallel web agents, and cross-checked the renders: the sim reads as lush green striped PARKLAND, but

@@ -5,12 +5,20 @@
 A dual assessment (one agent vs the 106-photo real library, one vs the GSPro/EA/TrackMan bar) scored
 the current build **3/10 on both axes** (convergent, independent). The full phased roadmap lives in
 [`superpowers/plans/2026-07-06-reality-master-plan.md`](superpowers/plans/2026-07-06-reality-master-plan.md):
-**P0** debug-artifact purge (~1d: pond checker, "T" sprite, aim-line dashes, halftone override stamps,
-HD patch seams) → **P1a** Puget Sound + world edge (~2–3d) ∥ **P1b** tan-first course identity (~2–3d)
-→ **P2** SDF crisp surfaces + turf light response (~8–13d) → **P3** bunker recess + green complexes
-(~8–12d) → **P4** links vegetation + marine atmosphere (~5–8d). Each phase gets its own sub-plan +
+**P0a** debug-UI visibility gate → **P1a** Puget Sound + world edge (~2–3d) ∥ **P1b** tan-first course
+identity (~2–3d) → **P2** SDF crisp surfaces + turf light response (~8–13d) → **P3** bunker recess + green
+complexes (~8–12d) → **P4** links vegetation + marine atmosphere (~5–8d). Each phase gets its own sub-plan +
 `/plan-eng-review` before build; re-run the dual assessment after each phase. What's RIGHT and must
 never regress: QL1 lidar landform, registration/routing, no HD color seam, sky pipeline.
+
+### P0a — DONE (2026-07-07, branch `claude/phase0-debug-purge`)
+Eng-review + outside voice **re-scoped** P0 → **P0a** (ship the blocking UI gate; defer surface bugs to P2).
+Shipped: `framing.js` gate (aim line + ball/pin 26× auto-scale hidden outside a play framing) wired into
+`scene.js` + `test/scene-ui-gating.test.mjs` (294/294) + `docs/fixtures/chambers-sweep.json`. Verified
+before/after on the harness. **Live diagnosis deferred the rest:** the "yellow T" is NOT a sprite (scene has
+**0 sprites**) → surface/classmap, folded into **P2**; the pond "checker" is NOT a cheap Reflector-gate
+(reflOn == reflOff) → deferred; classmap dot-screen + HD macro seam → **P2** (it rewrites those `turf.js`
+surfaces — do them once). Sub-plan: [`2026-07-07-phase0-debug-purge.md`](superpowers/plans/2026-07-07-phase0-debug-purge.md).
 
 ## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
 

@@ -18,6 +18,7 @@ import { densifyRing, drapeRing } from './drape.js';
 import { buildHdTerrain, buildCoarseTerrain } from './hd-terrain.js';
 import { makeTerrainSampler } from './terrain-grid.js';
 import { RENDER_CONFIG } from './config.js';
+import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -1317,11 +1318,14 @@ export class GolfScene {
     this.lookCur.lerp(this.lookT, k);
     this.camera.lookAt(this.lookCur);
 
-    // keep ball & pin readable at distance
+    // keep ball & pin readable at distance — but ONLY in a play framing, so
+    // survey/overview/beauty shots don't get a 26x ball reading as a debug billboard
     const bd = this.camera.position.distanceTo(this.ball.position);
-    this.ball.scale.setScalar(THREE.MathUtils.clamp(bd * 0.055, 1, 26));
+    this.ball.scale.setScalar(ballReadScale(bd, this.camMode, this.anim));
     const pd = this.camera.position.distanceTo(this.pin.position);
-    this.pin.scale.setScalar(THREE.MathUtils.clamp(pd * 0.013, 1, 6));
+    this.pin.scale.setScalar(pinReadScale(pd, this.camMode, this.anim));
+    // gameplay aim line is an address-view aid — never in non-play framings
+    if (this.aimLine) this.aimLine.visible = isPlayFraming(this.camMode, this.anim);
 
     this._updateMarkers();
     if (this._treeWind) this._treeWind(this.clock.elapsedTime);

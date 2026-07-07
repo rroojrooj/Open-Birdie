@@ -42,34 +42,37 @@ P0 (purge) ──> P1a (Sound) ──> P4 (vegetation+atmosphere polish)
 
 ---
 
-## Phase 0 — Debug-artifact purge (~1 day) — "no shipping sim shows its debug layer"
+## Phase 0a — Debug-UI visibility gate (~half day) — "no shipping sim shows its debug layer"
 
-**Why first:** the assessors flagged these as costing "more credibility than any missing technique,"
-and they contaminate every future verification capture.
+> **RE-SCOPED 2026-07-07** (eng-review + outside voice). The original "purge all 6 artifacts" P0 was split:
+> the surface-material bugs moved to **P2** (which rewrites those exact `turf.js` surfaces — fixing them now
+> would be thrown away). Sub-plan: [`2026-07-07-phase0-debug-purge.md`](2026-07-07-phase0-debug-purge.md).
 
-**Scope (each item needs a short diagnosis first — root cause, not cosmetic hiding):**
-1. **Pond renders as a blue grid/checker placeholder** (`pro_ov_south` left-center). Suspects: broken/
-   missing water texture on the on-course ponds, or the reflection/foam path rendering a debug pattern
-   at this camera. Fix = correct material; a flat animated-normal + fresnel water is acceptable (hours,
-   per the pro-sim reality check).
-2. **Floating yellow "T" glyph** (verified in `pro_sand`) — the tee marker rendering as a bare sprite.
-   Replace with a proper small tee-marker mesh or hide beyond N metres camera distance.
-3. **Dashed white polyline + stray blue path line** visible in overview/hole captures (aim line and/or
-   OSM path-line rendering). Gameplay UI must not render in non-play framings: fade the aim line with
-   camera distance/mode; decide whether path polylines should render at all (real cart paths are in
-   the aerial already).
-4. **Halftone/dot-pattern override stamps** (orange dotted patches, `pro_ov_high` left edge) — the
-   override/curated-bunker fill pattern. Make the fill match the real sand material (no dot screen).
-5. **HD patch tonal seams** (rectangular value steps, `pro_ov_high`) — the long-deferred "macro color
-   edge-feathering" polish from the HD compiler arc. Feather patch-edge color into the course-wide layer.
-6. **Baked cloud shadows in the drape read as dirt stains** (fight the live sun) — assess only:
-   if a cheap luma high-pass/normalization on the far-photo layer helps, take it; else document as
-   accepted limitation (full de-shadowing is out of scope — the "de-light went milky" lesson).
+**Why first:** the assessors flagged leaked debug/gameplay UI as costing "more credibility than any missing
+technique," and it contaminates every future verification capture. The **surface** artifacts don't need
+purging before P1 — they're addressed properly where those surfaces get rewritten.
 
-**Files (likely):** `public/render/scene.js` (markers, aim line, water build), `public/render/turf.js`
-(override fill), `tools/hd-course/*` or `scene.js` `_macro` (patch feathering), water material module.
-**Exit criteria:** the 6-frame sweep shows zero placeholder/debug artifacts; play + overview
-unregressed; 291+ tests green.
+**Scope (P0a — the genuinely-blocking UI leaks):**
+1. **Leaked gameplay UI in survey framings** — the dashed white aim line (`LineDashedMaterial`, verified
+   NOT camMode-gated — it rides along in every non-replay mode) and, newly caught, the **auto-scaled ball
+   (up to 26×) and pin (6×)** at survey distance (`scene.js:1322-1324`) reading as debug billboards. Gate
+   both behind a single `_isPlayFraming()` predicate; keep play-mode behaviour exactly as-is.
+2. **The "yellow T" glyph** (`pro_sand`) — **UNDIAGNOSED** (correction: it is NOT a "tee marker sprite" —
+   there is no sprite/tee mesh in `public/render/`). Hypothesis to test in Task 0: **classmap-channel bleed**
+   (the mask packs greens as `#ffff00` = yellow, `scene.js:444`), which would make it and the deferred
+   orange "dot-screen" one root cause. Route by diagnosis (gate if UI / fix-with-P2 if classmap bleed).
+3. **Pond blue "checker"** — keep in P0a **only if** Task 0 finds a cheap Reflector distance-gate (mesh
+   visibility, no shader). If it needs a shader-LOD arc → defer.
+
+**Deferred to P2 / later (the surface-material bugs P2 rewrites anyway):**
+- Classmap/override **dot-screen** → P2 SDF classmap composite (fixed once, with the T if shared root cause).
+- **HD patch macro tonal seam** → P2 `turf.js` edge-blend rewrite (the "macro edge-feather" polish moves there).
+- **Baked cloud shadows** in the drape → assess-only, later (full de-lighting out of scope).
+
+**Files (likely):** `public/render/scene.js` (aim line, ball/pin scale, `_isPlayFraming`), a committed capture
+fixture, `test/scene-ui-gating.test.mjs`. **Exit criteria (honest, not "zero artifacts"):** the committed
+6-frame sweep shows **no leaked gameplay/debug UI**; a real idle play frame still shows aim line + normal
+ball; residual surface artifacts allowed as known-deferred; the UI-gating unit test + full suite green.
 
 ---
 
@@ -140,6 +143,12 @@ are authored splines with mow-line edges. Also turf is albedo-only — stripes a
    band); stripe width 7 m → 3–4 m. Fixes the "vinyl/beach-towel" play-height read.
 3. **Classmap/SDF reconciliation**: NDVI classmap unions stay for coverage, but crisp OSM-known edges
    take precedence over the feathered classmap where both exist.
+4. **Absorbs the P0a-deferred surface bugs** (do them once, here): the classmap/override **dot-screen**
+   (a NoColorSpace packed-mask leak — fix the composite so it renders smooth coverage; if it shares the
+   "yellow T" root cause from P0a Task 0, this fixes both) and the **HD patch macro tonal seam** (the
+   "macro edge-feather" — the SDF edge-blend rewrite dissolves it). Do NOT touch `courseFingerprint`
+   inputs; the safe edit surface is the `turf.js` composite + the non-fingerprinted macro-tint build,
+   never HD patch selection/bounds (`elevation.patches` is scenery-exempt only while unmoved).
 
 **Constraint carried from history:** every `turf.js` change bumps `customProgramCacheKey` + updates
 `hd-turf.test.mjs`; GTAO recompile trap (new samples inside `#ifdef USE_MAP`).
