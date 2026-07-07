@@ -20,6 +20,17 @@ before/after on the harness. **Live diagnosis deferred the rest:** the "yellow T
 (reflOn == reflOff) → deferred; classmap dot-screen + HD macro seam → **P2** (it rewrites those `turf.js`
 surfaces — do them once). Sub-plan: [`2026-07-07-phase0-debug-purge.md`](superpowers/plans/2026-07-07-phase0-debug-purge.md).
 
+### P1b — DONE (2026-07-07, branch `claude/p1b-tan-palette`)
+Eng-review + outside voice **re-architected** "paint the splat tan" → one manual `courseDry` scalar drives
+**four** coordinated colour sources (the splat alone is overridden by blades, the shader warm-mix, and the
+far-photo). Shipped: `course-character.js` (COLORS moved here + `DRY_PALETTE` + `COURSE_DRY` map, client-side —
+a JSON field is dropped in transit; `blendPalette` grass-only, greens excluded, `courseDry=0` byte-identical);
+`scene.js` paints splat + `_fairwayZoneColor` blades from `this._pal`; `turf.js` `uCourseDry` (v32) pulls the
+warm-mix endpoint + floors stripes + lowers far-photo for dry courses. 301/301. **Live-verified:** Chambers
+`courseDry=0.85` reads tan-gold links at play (green stays green, no seam) + warmer overview; Sawgrass
+`courseDry=0` proven byte-unchanged. Sub-plan: [`2026-07-07-p1b-tan-palette.md`](superpowers/plans/2026-07-07-p1b-tan-palette.md).
+**Next lanes:** P1a (Puget Sound + world edge) ∥ P2 (SDF crisp surfaces — absorbs the P0a-deferred classmap dots + macro seam).
+
 ## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
 
 Cross-checked the sim's renders against the REAL Chambers Bay (gathered a **~106-photo local reference

@@ -11,6 +11,17 @@
 play and overview; TPC Sawgrass stays **lush green parkland** (unchanged). One manual course-level dryness
 scalar `courseDry ∈ [0,1]` drives every colour source coherently. #1 gap from both assessors; critical path to P2.
 
+> **BUILT + VERIFIED 2026-07-07.** All 5 tasks shipped (T5 auto-detector stays deferred). `course-character.js`
+> (COLORS moved here + DRY_PALETTE + COURSE_DRY map + `blendPalette` greens-excluded) → `scene.js` paints splat
+> + blades from `this._pal`; `turf.js` `uCourseDry` (v32, on base + HD-patch mats) pulls the warm-mix endpoint,
+> floors the stripes, and lowers the far-photo weight for dry courses. 301/301 green (course-character +
+> hd-turf tests). **Live-verified on Chambers (`courseDry=0.85`):** the PLAY view is a convincing tan-gold
+> fescue links with the putting green staying green and no blade seam; the OVERVIEW reads clearly
+> warmer/tan (the far-photo no longer washes it fully green). **Sawgrass no-regression PROVEN:** `courseDry=0`
+> → `blendPalette` returns COLORS byte-identical (live: `palRough=#4a8038`) AND every shader edit is a no-op
+> at `uCourseDry=0` (`1.0-0.7*0=1.0`, `warmEnd=warm`). Tuning knob = `COURSE_DRY['Chambers Bay']` + `DRY_PALETTE`
+> if a later assessor wants the overview even tanner.
+
 **Target palette (`reference/chambers-bay/CATALOG.md`):** dry rough **#c0a666** (gold-tan, dominant), fairway
 **#5e7d3d** (cool olive), green **#6b894a** (stays green — NOT tan), sand **#b7a98b** (already shipped).
 

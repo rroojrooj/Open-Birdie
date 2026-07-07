@@ -6,7 +6,9 @@
 > vegetation/atmosphere). **P0a is SHIPPED** (branch `claude/phase0-debug-purge`): `framing.js` gate hides the
 > leaked aim line + 26× ball auto-scale outside a play framing; capture fixture at `docs/fixtures/chambers-sweep.json`.
 > Live diagnosis: the "yellow T" is NOT a sprite (0 sprites in scene) and the pond "checker" is NOT a cheap
-> Reflector-gate — both deferred to P2/later. Start from the master plan + `docs/TODO.md`, not this doc.
+> Reflector-gate — both deferred to P2/later. **P1b (tan palette) is SHIPPED** (branch `claude/p1b-tan-palette`): one manual
+> `courseDry` scalar (`course-character.js`) drives 4 coordinated colour sources — Chambers reads tan-gold
+> links, Sawgrass unchanged, greens stay green. Start from the master plan + `docs/TODO.md`, not this doc.
 
 > **UPDATE 2026-07-06 (4) — REAL-PHOTO CROSS-CHECK + GREIGE SAND** (branch `claude/course-character-palette`).
 > Built a **~106-photo local reference library** (`reference/chambers-bay/` + `CATALOG.md`) of the real course
