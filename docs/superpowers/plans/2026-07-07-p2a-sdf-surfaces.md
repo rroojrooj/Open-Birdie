@@ -141,15 +141,19 @@ Turf-shader-only; no scene.js/palette plumbing (collar colour derived in-shader 
   greens): distinct lighter-green apron ring, crisp inner + soft outer, no sticker at mid, no egregious artifact;
   v29 checker/contour + Task-1 crisp edge + P1b tan unregressed. Non-green fragments byte-unchanged. 301/301 (v34).
 
-## Task 3: classmap/fwidth reconciliation (kill the double edge)
+## Task 3: classmap/fwidth reconciliation — SHIPPED (2026-07-08, commit `ca7cf03`, cache v34→v35)
 
-**Files:** `public/render/turf.js` (the classmap union).
+The most visible double edge was the **pale desaturated sand halo** ringing every OSM bunker (crisp `bCrisp`
+edge + soft `cls.b` NDVI feather); the fairway mown-feather double edge was subtle.
 
-- [ ] **Step 1:** Where the crisp OSM `fwidth` edge and the feathered NDVI classmap describe the SAME boundary,
-  suppress the classmap's ~7-17 m feather so you don't get one crisp + one soft edge. Keep the classmap union
-  ONLY for coverage OSM genuinely lacks (NDVI-only fairway). If a per-fragment "is this OSM-authored" signal is
-  needed, encode it (e.g. the raw OSM mask presence gates the classmap feather off).
-- [ ] **Step 2:** Verify: no double edge on Chambers/Sawgrass; NDVI-only coverage still fills; `npm test` green.
+- [x] **Step 1:** `osmNear` = a **4-tap MAX dilation** of the RAW OSM mask (mown `.r` OR bunker `.b`) over ~5m — a
+  per-fragment "OSM authored a surface nearby" signal (this is the encoded OSM-authored signal outside-voice #4
+  called for). In `macroPre`, before the mown union: `cls.r *= 1-osmNear; cls.b *= 1-osmNear`. Where OSM already
+  authored the boundary the crisp OSM edge OWNS it (NDVI feather removed); NDVI survives only in genuine OSM gaps
+  (`osmNear==0`), so its coverage role is preserved.
+- [x] **Step 2:** Verified — Chambers: bunker sand halo GONE (edges clean/crisp); fairway unchanged (its NDVI mown
+  was redundant with OSM); overview clean, no coverage holes/rings, no over-suppression. Sawgrass: bunkers clean,
+  green complex + water healthy. 301/301 (v35). (The classmap dot-screen + macro seam are still Task 4.)
 
 ## Task 4 (DECOUPLED — separate commit, optionally its own PR): absorb the P0a-deferred dot-screen + macro seam
 
@@ -206,10 +210,11 @@ Synthesized from this review. Each derives from a specific finding. Checkbox as 
   - Surfaced by: cross-model A — SDF spent only on the collar, locally (fell back to the gate-sanctioned approx)
   - Files: `public/render/turf.js`
   - Verify: DONE — distinct apron ring on Chambers/Sawgrass/St Andrews, crisp inner + soft outer, no sticker; 301/301
-- [ ] **T4 (P1, human: ~3-4h / CC: ~45min)** — `turf.js` — classmap reconciliation (suppress the crisp-OSM vs feathered-NDVI double edge)
+- [x] **T4 (P1)** — `turf.js` — classmap reconciliation — SHIPPED `ca7cf03` (v35). `osmNear` (4-tap MAX dilation
+  of the raw OSM mask, ~5m) suppresses `cls.r`/`cls.b` where OSM authored the boundary; NDVI fills gaps only.
   - Surfaced by: outside-voice #4 — different UV spaces; precedence needs a per-fragment OSM-authored signal
   - Files: `public/render/turf.js`
-  - Verify: no double edge; NDVI-only coverage still fills
+  - Verify: DONE — bunker sand halo gone on Chambers/Sawgrass, coverage intact, no over-suppression; 301/301
 - [ ] **T5 (P2, human: ~3-4h / CC: ~45min)** — DECOUPLED (own commit/PR) — absorb the P0a dot-screen + macro seam
   - Surfaced by: outside-voice #6 — different root cause; keep off the edge-rewrite revert path
   - Files: `public/render/turf.js`, `public/render/scene.js`

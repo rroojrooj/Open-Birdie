@@ -45,7 +45,14 @@ mow line, soft outer edge into the rough, distance-faded). Approximate collar (0
 `1-gCrisp`), composited in the base colour so it gets full grain/lighting; colour derived in-shader from
 `uPalGreenA` (`*vec3(1.25,1.15,0.90)`, tunable). Replaced the old `gBlur`/`fr` placeholder (net cleanup). No
 scene.js/palette change. Verified on Chambers/Sawgrass/St Andrews; 301/301.
-**P2a remaining:** Task 3 classmap/fwidth double-edge reconciliation · Task 4 (decoupled) dot-screen + HD macro seam · Task 5 full fixture sweep.
+
+### P2a Task 3 — SHIPPED (2026-07-08, `ca7cf03`, cache v35)
+Classmap/`fwidth` **double-edge reconciliation**: the crisp OSM edges + the feathered NDVI classmap union stacked a
+crisp line + a soft NDVI halo on the same boundary (most visible: a pale desaturated sand halo ringing every OSM
+bunker). Fix: `osmNear` (a 4-tap MAX dilation of the raw OSM mask, mown∪bunker, ~5m) suppresses `cls.r`/`cls.b`
+where OSM authored the boundary, so the crisp OSM edge owns it; NDVI survives only in genuine OSM gaps. turf.js-only.
+Verified: bunker halo gone on Chambers + Sawgrass, coverage intact, no over-suppression.
+**P2a remaining:** Task 4 (decoupled) dot-screen + HD macro seam · Task 5 full fixture sweep.
 **Other next lanes:** P1a (Puget Sound + world edge).
 
 ## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
