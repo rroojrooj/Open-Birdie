@@ -126,17 +126,20 @@ Chambers greens to the origin holes: (193,-263), (80,-341). **Verified:** Chambe
 (parkland, courseDry 0) + St Andrews (links, rough-OSM) — greens/fairways/bunkers crisp, no regression, no
 egregious OSM-slop artifact. 301/301 tests (cache v33).
 
-## Task 2: green fringe/collar ring (local SDF or approximate, per Task 0)
+## Task 2: green fringe/collar ring — SHIPPED (2026-07-08, commit `8ac822d`, cache v33→v34)
 
-**Files:** `public/render/scene.js` (local per-green SDF build, only if Task 0 chose it), `public/render/turf.js`
-(collar band), maybe a small `sdf-local.js` + test.
+Chose the **approximate collar (option b)** — no per-green/whole-course SDF (over-engineering for a thin ring).
+Turf-shader-only; no scene.js/palette plumbing (collar colour derived in-shader from `uPalGreenA`).
 
-- [ ] **Step 1:** Per Task 0's decision, either (a) build a LOCAL per-green SDF (higher res, only the green's
-  neighbourhood) and render the collar offset band, or (b) render an approximate collar (a second fwidth band on
-  a dilated green mask). Gate the band by the green-cam range (the collar is a play/mid feature). Keep inside
-  `#ifdef USE_MAP`.
-- [ ] **Step 2:** Verify: greens show a distinct fringe/collar ring at the close + green cams; no sticker read
-  in the play-to-mid range. Commit.
+- [x] **Step 1:** `collarBand = clamp(gDil,0,1) * (1-gCrisp) * gDistFade` — `gDil` is an 8-tap dilation of the RAW
+  green mask at 0.8m (soft OUTER edge into the rough); `(1-gCrisp)` = crisp INNER mow line; distance-faded 45→70m
+  (far photo owns past ~60m). Composited in the BASE colour as a 3-way stack rough(splat)→collar apron→putting
+  surface, so the collar gets the same grain/warm-mix/sun-rake/desat (reads as mown grass, not a decal).
+  `collarCol = uPalGreenA * vec3(1.25,1.15,0.90)` (tunable apron knobs — lighter+warmer). Removed the old blurred
+  `gBlur`/`fr` machinery (net cleanup); stripes now suppressed on the collar via `collarBand`.
+- [x] **Step 2:** Verified on Chambers (links) + Sawgrass (parkland, green-on-green) + St Andrews (rough-OSM, 88
+  greens): distinct lighter-green apron ring, crisp inner + soft outer, no sticker at mid, no egregious artifact;
+  v29 checker/contour + Task-1 crisp edge + P1b tan unregressed. Non-green fragments byte-unchanged. 301/301 (v34).
 
 ## Task 3: classmap/fwidth reconciliation (kill the double edge)
 
@@ -197,10 +200,12 @@ Synthesized from this review. Each derives from a specific finding. Checkbox as 
   - Surfaced by: Arch #1 (raw raster) + Code-quality #2 (incremental)
   - Files: `public/render/scene.js`, `public/render/turf.js`
   - Verify: DONE — crisp green/fairway/bunker at close cam; v29 checker/contour survive; 301/301 green
-- [ ] **T3 (P1, human: ~1d / CC: ~1-2h)** — green fringe/collar ring (local per-green SDF or approximate fwidth band, per Task 0)
-  - Surfaced by: cross-model A — SDF spent only on the collar, locally
-  - Files: `public/render/scene.js`, `public/render/turf.js`
-  - Verify: distinct collar ring at the green cam; no sticker read at play/mid
+- [x] **T3 (P1)** — green fringe/collar ring — SHIPPED `8ac822d` (cache v34). Chose the APPROXIMATE collar (0.8m
+  raw-mask dilation, crisp inner via 1-gCrisp, composited in baseCol as a lighter apron green derived from
+  uPalGreenA) — no SDF; turf.js-only. Removed the old gBlur/fr placeholder.
+  - Surfaced by: cross-model A — SDF spent only on the collar, locally (fell back to the gate-sanctioned approx)
+  - Files: `public/render/turf.js`
+  - Verify: DONE — distinct apron ring on Chambers/Sawgrass/St Andrews, crisp inner + soft outer, no sticker; 301/301
 - [ ] **T4 (P1, human: ~3-4h / CC: ~45min)** — `turf.js` — classmap reconciliation (suppress the crisp-OSM vs feathered-NDVI double edge)
   - Surfaced by: outside-voice #4 — different UV spaces; precedence needs a per-fragment OSM-authored signal
   - Files: `public/render/turf.js`

@@ -38,7 +38,14 @@ backed off — recolour regression on shaded slopes); **bunker** (`90f67f0`) —
 Verified before/after on a real OSM green (soft ~2m airbrush → crisp mow line) + Chambers/Sawgrass/St Andrews, no
 regression. **Gotcha:** the gate fixture `green_close` pose was a TEE (aerial-painted green, `gCrisp`=0) — repointed
 to a real green (193,-263). Sub-plan (Task 1 checklist + finding): [`2026-07-07-p2a-sdf-surfaces.md`](superpowers/plans/2026-07-07-p2a-sdf-surfaces.md).
-**P2a remaining:** Task 2 collar ring · Task 3 classmap/fwidth double-edge reconciliation · Task 4 (decoupled) dot-screen + HD macro seam · Task 5 full fixture sweep.
+
+### P2a Task 2 — SHIPPED (2026-07-08, `8ac822d`, cache v34)
+Green fringe/**collar ring**: a ~0.8m lighter-green apron just outside the crisp putting-surface edge (crisp inner
+mow line, soft outer edge into the rough, distance-faded). Approximate collar (0.8m raw-mask dilation gated by
+`1-gCrisp`), composited in the base colour so it gets full grain/lighting; colour derived in-shader from
+`uPalGreenA` (`*vec3(1.25,1.15,0.90)`, tunable). Replaced the old `gBlur`/`fr` placeholder (net cleanup). No
+scene.js/palette change. Verified on Chambers/Sawgrass/St Andrews; 301/301.
+**P2a remaining:** Task 3 classmap/fwidth double-edge reconciliation · Task 4 (decoupled) dot-screen + HD macro seam · Task 5 full fixture sweep.
 **Other next lanes:** P1a (Puget Sound + world edge).
 
 ## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
