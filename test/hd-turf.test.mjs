@@ -20,13 +20,17 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM', 'uCourseDry', 'uMaskRaw', 'uPalGreenA']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.equal(s.uniforms.uCourseDry.value, 0, 'courseDry defaults to 0 (lush)');
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v33');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v34');
   // P2a: crisp edges composited from the RAW mask via fwidth AA. Green (.g) gets a full
   // base-colour override; the mown/fairway (.r) crisp mask drives the STRIPE edge.
   assert.match(s.fragmentShader, /vec4 mkRaw = texture2D\(uMaskRaw, vMapUv\)/);
   assert.match(s.fragmentShader, /float gCrisp = smoothstep\(0\.5 - gAA, 0\.5 \+ gAA, gRaw\)/);
   assert.match(s.fragmentShader, /float mCrisp = smoothstep\(0\.5 - mAA, 0\.5 \+ mAA, mRaw\)/);
-  assert.match(s.fragmentShader, /mix\(diffuseColor\.rgb, uPalGreenA, gCrisp\)/);
+  // P2a Task 2: base-colour stack rough(splat) -> collar apron -> putting surface.
+  assert.match(s.fragmentShader, /vec3 baseCol = mix\(diffuseColor\.rgb, collarCol, collarBand\)/);
+  assert.match(s.fragmentShader, /mix\(baseCol, uPalGreenA, gCrisp\)/);
+  // the collar apron rides collarBand (crisp inner via 1-gCrisp, distance-faded)
+  assert.match(s.fragmentShader, /float collarBand = clamp\(gDil, 0\.0, 1\.0\) \* \(1\.0 - gCrisp\)/);
   // stripes gate on the crisp mown edge (unioned with NDVI coverage)
   assert.match(s.fragmentShader, /max\(mCrisp, cls\.r\)/);
   // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
@@ -55,7 +59,7 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.equal(s.uniforms.uMacroLow.value, macro.low);
   assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
   assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v33-macro');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v34-macro');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
   // v27: the NDVI class-map (uMacroSurfaces) was declared-but-unsampled — it must now
