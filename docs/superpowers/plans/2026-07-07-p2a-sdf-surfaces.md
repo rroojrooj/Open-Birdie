@@ -155,15 +155,26 @@ edge + soft `cls.b` NDVI feather); the fairway mown-feather double edge was subt
   was redundant with OSM); overview clean, no coverage holes/rings, no over-suppression. Sawgrass: bunkers clean,
   green complex + water healthy. 301/301 (v35). (The classmap dot-screen + macro seam are still Task 4.)
 
-## Task 4 (DECOUPLED — separate commit, optionally its own PR): absorb the P0a-deferred dot-screen + macro seam
+## Task 4 (DECOUPLED): dot-screen SHIPPED (2026-07-08, `c85aa5f`, v36); HD "macro seam" RE-DIAGNOSED + deferred
 
-> Outside-voice #6: these have a DIFFERENT root cause than the edge work (classmap NoColorSpace stipple /
-> macro-tint feathering). Co-location in `turf.js` is not logical coupling — keep them off the edge-rewrite
-> revert path. Do them AFTER Tasks 1-3 land, as their own commit(s).
+> Outside-voice #6: different root cause than the edge work. Own commit(s), after Tasks 1-3.
 
-- [ ] **Step 1:** Fix the classmap dot-screen (the NoColorSpace packed-mask stipple → smooth coverage) and
-  feather the HD-patch macro-tint edge into the course-wide tint. Do NOT touch `courseFingerprint` inputs.
-- [ ] **Step 2:** Verify `ov_high`: no dot-screen, no rectangular tonal seam; unregressed elsewhere.
+- [x] **Step 1a — DOT-SCREEN (the real eyesore) FIXED:** the runtime NDVI classmap is per-pixel scatter (false
+  positives); rendered raw it's a checker/halftone stipple. Confirmed via a live classmap→black swap. Fix:
+  scene.js blurs the classmap into SMOOTH coverage at LOAD (4px canvas blur) + turf.js thresholds the sample
+  (`cls.r/b = smoothstep(0.45,0.75,·)`, v35→v36) so only confident coverage adds surface. Verified GONE at
+  play/mid on Chambers; fairways/greens/stripes intact. 301/301.
+- [ ] **Step 1b — HD "macro seam": RE-DIAGNOSED, deferred (NOT a macro-tint feather).** The plan assumed a
+  macro-tint edge to feather. Live investigation disproved it: **all 18 HD patches + the coarse mesh share ONE
+  turf material bound to ONE (course) macro** (`_turfInputs.macro === this._macro`), so there is no per-patch
+  tint/avg/classmap difference to feather. The residual overview artifacts (a faint tan hatch + a fairway
+  patch-boundary tonal line) PERSIST with the classmap off → they're far-photo/HD-relief interactions at HD-patch
+  boundaries (geometry/lighting + the far photo over fine lidar relief), NOT the classmap and NOT the tint. They
+  are **overview/far-range only** (play/mid is clean). A real fix belongs in `hd-terrain.js` patch-boundary
+  normal/relief blending — which risks the **QL1 relief** (a hard "never regress" gotcha) — so it is out of scope
+  for a shader/tint change and deferred. Recommend re-scoping as its own plan if the overview polish is wanted.
+- [x] **Step 2:** Verified `ov_high` + play/mid: dot-screen gone; the HD-relief overview hatch/seam is the
+  deferred item above; unregressed elsewhere.
 
 ## Task 5: tune + verify on the sweep (the REAL gate)
 
@@ -215,10 +226,12 @@ Synthesized from this review. Each derives from a specific finding. Checkbox as 
   - Surfaced by: outside-voice #4 — different UV spaces; precedence needs a per-fragment OSM-authored signal
   - Files: `public/render/turf.js`
   - Verify: DONE — bunker sand halo gone on Chambers/Sawgrass, coverage intact, no over-suppression; 301/301
-- [ ] **T5 (P2, human: ~3-4h / CC: ~45min)** — DECOUPLED (own commit/PR) — absorb the P0a dot-screen + macro seam
+- [~] **T5 (P2)** — DECOUPLED — dot-screen SHIPPED `c85aa5f` (v36: load-blur + threshold the classmap). HD "macro
+  seam" RE-DIAGNOSED as HD-patch-boundary far-photo/relief (all patches share one macro — NOT a tint feather),
+  overview-only, deferred (fix risks QL1 relief; belongs in an `hd-terrain.js` plan). See Task 4 above.
   - Surfaced by: outside-voice #6 — different root cause; keep off the edge-rewrite revert path
-  - Files: `public/render/turf.js`, `public/render/scene.js`
-  - Verify: no dot-screen/seam at `ov_high`; unregressed elsewhere
+  - Files: `public/render/scene.js`, `public/render/turf.js`
+  - Verify: DONE — dot-screen gone at play/mid + ov_high; HD-relief overview hatch/seam deferred; 301/301
 - [ ] **T6 (P1, human: ~3-4h / CC: ~1h)** — verify on the fixture (close green cam) + a rough-OSM course, before/after
   - Surfaced by: outside-voice #2/#8 — near/play scope only; crisp amplifies OSM slop
   - Files: `docs/fixtures/chambers-sweep.json`

@@ -52,7 +52,16 @@ crisp line + a soft NDVI halo on the same boundary (most visible: a pale desatur
 bunker). Fix: `osmNear` (a 4-tap MAX dilation of the raw OSM mask, mown∪bunker, ~5m) suppresses `cls.r`/`cls.b`
 where OSM authored the boundary, so the crisp OSM edge owns it; NDVI survives only in genuine OSM gaps. turf.js-only.
 Verified: bunker halo gone on Chambers + Sawgrass, coverage intact, no over-suppression.
-**P2a remaining:** Task 4 (decoupled) dot-screen + HD macro seam · Task 5 full fixture sweep.
+
+### P2a Task 4 — dot-screen SHIPPED (2026-07-08, `c85aa5f`, cache v36); HD seam deferred
+The runtime NDVI classmap is per-pixel **noise** (false positives) → a checker/halftone **dot-screen** on the
+turf (confirmed by a live classmap→black swap). Fix: blur the classmap into smooth coverage at LOAD (scene.js,
+4px canvas blur) + threshold the sample in-shader (`cls.r/b = smoothstep(0.45,0.75,·)`) so only confident coverage
+survives. Dot-screen GONE at play/mid; fairways/stripes intact. **HD "macro seam" RE-DIAGNOSED + deferred:** all
+18 HD patches share ONE material+macro (no per-patch tint to feather — the plan's premise was wrong); the residual
+overview hatch/seam persists with the classmap off → it's far-photo/HD-relief at patch boundaries, overview-only,
+and a real fix (hd-terrain.js relief blending) risks the QL1 relief → out of scope, own plan if wanted.
+**P2a remaining:** Task 5 full fixture sweep + tune (+ optional HD-seam sub-plan).
 **Other next lanes:** P1a (Puget Sound + world edge).
 
 ## Real-photo cross-check + greige sand — DONE (2026-07-06, branch `claude/course-character-palette`)
