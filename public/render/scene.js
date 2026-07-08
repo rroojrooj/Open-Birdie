@@ -341,7 +341,24 @@ export class GolfScene {
       // turf shader actually SAMPLE this; here we only deliver the texture.
       if (geo.aerial.classes) {
         const cls = new THREE.TextureLoader().load('/api/course-classmap',
-          () => console.log('[render] classmap loaded'),
+          (tex) => {
+            // P2a-T4: the runtime NDVI classmap is per-pixel scatter (false positives that
+            // NDVI misreads as mown/sand) — rendered raw it's a "dot-screen" stipple on the
+            // turf. Blur it into SMOOTH coverage at load: isolated noise averages toward 0,
+            // contiguous real regions stay high (the turf shader then thresholds the
+            // low-amplitude survivors so only confident coverage adds surface).
+            try {
+              const im = tex.image;
+              if (im && im.width) {
+                const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
+                const c = cv.getContext('2d');
+                c.filter = 'blur(4px)';
+                c.drawImage(im, 0, 0);
+                tex.image = cv; tex.needsUpdate = true;
+              }
+            } catch (e) { /* keep the raw texture on failure */ }
+            console.log('[render] classmap loaded + smoothed');
+          },
           undefined,
           () => console.warn('[render] classmap failed to load — OSM-only surfaces'));
         cls.colorSpace = THREE.NoColorSpace;               // data, not colour
