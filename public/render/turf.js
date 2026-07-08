@@ -100,7 +100,13 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           vec2 clsUv = (uCourseMin + vMapUv * uExt - uMacroMin) / uMacroSize;
           vec4 cls = (clsUv.x >= 0.0 && clsUv.x <= 1.0 && clsUv.y >= 0.0 && clsUv.y <= 1.0)
             ? texture2D(uMacroSurfaces, clsUv) : vec4(0.0);
-          m = max(m, cls.r);        // extend the mown gate onto NDVI-detected fairway` : `
+          // P2a-T3: reconcile the crisp OSM edge with the feathered NDVI classmap — where OSM
+          // authored a surface within ~5 m (osmNear), suppress the NDVI feather so the crisp
+          // OSM edge owns the boundary (no crisp-line + soft-halo double edge, e.g. the pale
+          // sand halo around bunkers). NDVI still fills genuine OSM gaps (osmNear==0).
+          cls.r *= 1.0 - osmNear;
+          cls.b *= 1.0 - osmNear;
+          m = max(m, cls.r);        // extend the mown gate onto NDVI fairway OSM missed` : `
           vec4 cls = vec4(0.0);`;
     const macroBlend = macro ? `
           { vec2 wXY = uCourseMin + vMapUv * uExt;
@@ -246,6 +252,18 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float gVic = (texture2D(uMaskRaw, vMapUv + vec2(vo.x, 0.0)).g + texture2D(uMaskRaw, vMapUv - vec2(vo.x, 0.0)).g
                       + texture2D(uMaskRaw, vMapUv + vec2(0.0, vo.y)).g + texture2D(uMaskRaw, vMapUv - vec2(0.0, vo.y)).g) * 0.25;
           gVic = max(gVic, gCrisp);
+          // P2a-T3: OSM-VICINITY — is an OSM-authored surface (mown .r or bunker .b) within
+          // ~5 m? A 4-tap MAX dilation of the RAW OSM mask. Used in macroPre to suppress the
+          // feathered NDVI classmap where OSM already authored the boundary crisply, so we
+          // don't stack a crisp OSM edge + a soft NDVI halo (the double edge). NDVI survives
+          // only in genuine OSM gaps (osmNear==0).
+          vec2 no = vec2(5.0) / uExt;
+          vec4 no1 = texture2D(uMaskRaw, vMapUv + vec2(no.x, 0.0));
+          vec4 no2 = texture2D(uMaskRaw, vMapUv - vec2(no.x, 0.0));
+          vec4 no3 = texture2D(uMaskRaw, vMapUv + vec2(0.0, no.y));
+          vec4 no4 = texture2D(uMaskRaw, vMapUv - vec2(0.0, no.y));
+          float osmNear = max(max(mkRaw.r, mkRaw.b),
+            max(max(max(no1.r, no1.b), max(no2.r, no2.b)), max(max(no3.r, no3.b), max(no4.r, no4.b))));
           // Union the NDVI class-map into the mown gate BEFORE the stripe block (see
           // macroPre): widens the mown gate onto NDVI-detected fairway OSM missed; cls is
           // also reused by the sand union below (kept inside #ifdef USE_MAP, GTAO-safe).${macroPre}
@@ -387,7 +405,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v35-collar-macro' : 'turf-grain-v35-collar');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v36-precedence-macro' : 'turf-grain-v36-precedence');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex, ...(surfaceMaskRaw ? [maskRawTex] : [])];
