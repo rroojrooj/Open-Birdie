@@ -209,13 +209,28 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           float mCrisp = smoothstep(0.5 - mAA, 0.5 + mAA, mRaw); // crisp mown (fairway) edge
           float bAA = max(fwidth(bRaw), 1e-5);
           float bCrisp = smoothstep(0.5 - bAA, 0.5 + bAA, bRaw); // crisp bunker edge
-          // Green gets a full crisp BASE override (a distinct putting-surface colour). The
-          // fairway does NOT: the splat fairway->rough colour is already near-crisp (~0.5 m
-          // blur) and both are close tans/olives — forcing the dry-olive fairwayA over the
-          // whole mown gate recolours the fairway (dark on shaded slopes), scope creep past
-          // "crisp edges". The fairway's soft cue is the STRIPE fade, crisped below via
-          // mCrisp. So the base override stays green-only; mCrisp drives the stripe edge.
-          vec3 baseCol = mix(diffuseColor.rgb, uPalGreenA, gCrisp);
+          // P2a Task 2 — GREEN COLLAR/FRINGE: a ~0.8 m apron ring just OUTSIDE the crisp
+          // putting-surface edge. An 8-tap dilation of the RAW green mask is a soft ramp
+          // (the collar's soft OUTER edge into the rough); (1-gCrisp) gives the crisp INNER
+          // mow line; distance-faded (a play/mid feature — the far photo owns past ~60 m).
+          float gDistFade = 1.0 - smoothstep(45.0, 70.0, length(vViewPosition));
+          vec2 co = vec2(0.8) / uExt;
+          float gDil = (gRaw
+            + texture2D(uMaskRaw, vMapUv + vec2(co.x, 0.0)).g + texture2D(uMaskRaw, vMapUv - vec2(co.x, 0.0)).g
+            + texture2D(uMaskRaw, vMapUv + vec2(0.0, co.y)).g + texture2D(uMaskRaw, vMapUv - vec2(0.0, co.y)).g
+            + texture2D(uMaskRaw, vMapUv + co).g + texture2D(uMaskRaw, vMapUv - co).g
+            + texture2D(uMaskRaw, vMapUv + vec2(co.x, -co.y)).g + texture2D(uMaskRaw, vMapUv + vec2(-co.x, co.y)).g) * (1.0 / 9.0);
+          float collarBand = clamp(gDil, 0.0, 1.0) * (1.0 - gCrisp) * gDistFade;
+          // Base-colour stack: rough(splat) -> collar apron -> putting surface. The green
+          // gets a full crisp override (a distinct putting colour); the collar an apron green
+          // (lighter + warmer) UNDER it; the fairway gets NO base override (splat is already
+          // ~crisp; forcing dry-olive recolours + darkens shaded slopes — its soft cue is the
+          // STRIPE fade, crisped below via mCrisp). Compositing the collar in baseCol means
+          // the downstream grain / warm-mix / sun-rake / desat all apply to it, so it reads
+          // as real mown grass, not a flat decal.
+          vec3 collarCol = clamp(uPalGreenA * vec3(1.25, 1.15, 0.90), 0.0, 1.0);
+          vec3 baseCol = mix(diffuseColor.rgb, collarCol, collarBand);
+          baseCol = mix(baseCol, uPalGreenA, gCrisp);
           vec3 grass = baseCol * (0.72 + 0.48 * dl);
           // inject a little of the blade's own chroma so a zone isn't one flat tint
           // (green/yellow flecks); clamped so dark blade pixels can't blow up the hue
@@ -234,31 +249,11 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // Union the NDVI class-map into the mown gate BEFORE the stripe block (see
           // macroPre): widens the mown gate onto NDVI-detected fairway OSM missed; cls is
           // also reused by the sand union below (kept inside #ifdef USE_MAP, GTAO-safe).${macroPre}
-          // Fringe/collar: an AVERAGED (not max) 8-tap dilation of the green channel gives
-          // a smooth membership gBlur just OUTSIDE the green. P2a: gBlur no longer gates the
-          // green CHARACTER (that rides the crisp gCrisp now) — it feeds ONLY the collar
-          // ring fr, so the dilation is TIGHTENED 1.8 m -> 0.6 m: the v29 1.8 m band was a
-          // soft dark halo that smeared the newly-crisp mow line at the close cam. A proper
-          // offset fescue collar is Task 2; this is a tight interim fringe. Distance-faded
-          // (sub-pixel past ~60 m); coverage-mask derived (bilinear/mip safe).
-          vec2 fo = vec2(0.6) / uExt;
-          float gBlur = g
-            + texture2D(uMask, vMapUv + vec2(fo.x, 0.0)).g
-            + texture2D(uMask, vMapUv - vec2(fo.x, 0.0)).g
-            + texture2D(uMask, vMapUv + vec2(0.0, fo.y)).g
-            + texture2D(uMask, vMapUv - vec2(0.0, fo.y)).g
-            + texture2D(uMask, vMapUv + vec2(fo.x, fo.y)).g
-            + texture2D(uMask, vMapUv + vec2(fo.x, -fo.y)).g
-            + texture2D(uMask, vMapUv + vec2(-fo.x, fo.y)).g
-            + texture2D(uMask, vMapUv - vec2(fo.x, fo.y)).g;
-          gBlur *= (1.0 / 9.0);
-          float gDistFade = 1.0 - smoothstep(45.0, 70.0, length(vViewPosition));
-          // P2a: the green CHARACTER (checker/contour/sheen roll below) now rides the
-          // CRISP membership so it stops at the same mow line as the base colour — no
-          // more ~1.8 m soft fade of the putting-surface treatment (v29 checker+contour
-          // still apply INSIDE where gCrisp==1, just with a sharp edge).
+          // P2a: the green CHARACTER (checker/contour/sheen roll below) rides the CRISP
+          // membership so it stops at the same mow line as the base colour. (v29 checker +
+          // contour still apply INSIDE where gCrisp==1, just with a sharp edge.) The collar
+          // apron is composited above in baseCol (gDil / collarBand computed there).
           float gEdge = gCrisp;                                  // crisp green membership
-          float fr = clamp(gBlur - g, 0.0, 1.0) * gDistFade;     // graded collar ring (Task 2)
           float wx = vMapUv.x * uExt.x, wy = vMapUv.y * uExt.y;
           // procedural grain: fine "tooth" (~0.5-4m) + broad patches (~8-20m), so the
           // turf reads as real grass at the orbit camera instead of a flat plastic
@@ -306,7 +301,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // P2a: gate the stripes on the CRISP mown edge (mCrisp) so they stop at the mow
           // line instead of the soft ~1 m fade; keep the NDVI union (cls.r) for coverage
           // OSM lacks (its feather is reconciled in Task 3).
-          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * max(mCrisp, cls.r) * (1.0 - 0.85 * g - 0.6 * fr) * sFade * (1.0 - 0.7 * uCourseDry);
+          grass *= 1.0 + (0.38 * stripe + 0.17 * stripe2) * max(mCrisp, cls.r) * (1.0 - 0.85 * g - 0.6 * collarBand) * sFade * (1.0 - 0.7 * uCourseDry);
           // GREEN (v29): calm fine grain + a SUBTLE checker mow + a gentle contour roll,
           // all gated by the SOFT edge (gEdge) so the putting-surface character fades
           // across the collar instead of at a hard line. Checker dropped 0.15 -> 0.09 (the
@@ -320,7 +315,6 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           grass *= 1.0 + 0.09 * ((smoothstep(-0.6, 0.6, gb1) - 0.5) + (smoothstep(-0.6, 0.6, gb2) - 0.5)) * gEdge * sFade;
           float gRoll = tFbm(vec2(wx, wy) * 0.06 + 7.0) - 0.5;   // ~16 m gentle undulation
           grass *= 1.0 + 0.05 * gRoll * gEdge;                  // shaped green, not a flat disc
-          grass *= 1.0 - 0.16 * fr;                             // graded darker collar ring
           // Procedural sun-play — directional shading from a low-frequency undulation
           // field so the sun visibly rakes across gentle rolls instead of lighting a
           // flat sheet. The DIRECTIONAL gradient (one flank of a roll lit, the other
@@ -393,7 +387,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v34-rgb-macro' : 'turf-grain-v34-rgb');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v35-collar-macro' : 'turf-grain-v35-collar');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex, ...(surfaceMaskRaw ? [maskRawTex] : [])];
