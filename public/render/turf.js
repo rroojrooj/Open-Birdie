@@ -100,6 +100,11 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           vec2 clsUv = (uCourseMin + vMapUv * uExt - uMacroMin) / uMacroSize;
           vec4 cls = (clsUv.x >= 0.0 && clsUv.x <= 1.0 && clsUv.y >= 0.0 && clsUv.y <= 1.0)
             ? texture2D(uMacroSurfaces, clsUv) : vec4(0.0);
+          // P2a-T4: the classmap is blurred smooth at load (kills the per-pixel dot-screen);
+          // threshold here so only CONFIDENT (contiguous) coverage adds surface — blurred
+          // isolated noise sits at low amplitude and is dropped, real regions stay high.
+          cls.r = smoothstep(0.45, 0.75, cls.r);
+          cls.b = smoothstep(0.45, 0.75, cls.b);
           // P2a-T3: reconcile the crisp OSM edge with the feathered NDVI classmap — where OSM
           // authored a surface within ~5 m (osmNear), suppress the NDVI feather so the crisp
           // OSM edge owns the boundary (no crisp-line + soft-halo double edge, e.g. the pale
@@ -405,7 +410,7 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v36-precedence-macro' : 'turf-grain-v36-precedence');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v37-smoothing-macro' : 'turf-grain-v37-smoothing');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
   mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex, ...(surfaceMaskRaw ? [maskRawTex] : [])];
