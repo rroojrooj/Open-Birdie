@@ -6,13 +6,17 @@ import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 
 const require = createRequire(import.meta.url);
-const { resolveTask0Output } = require('./output-path.cjs');
+const { canonicalizeWithMissing, resolveTask0Output } = require('./output-path.cjs');
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const ROLES = ['address', 'close-green', 'close-bunker', 'landing', 'hole-overview', 'high-overview', 'horizon', 'ui'];
 export const BANDS = ['address', 'feature', 'hole', 'overview', 'horizon', 'ui'];
 const ID_PATTERN = '^[a-z0-9][a-z0-9-]{0,63}$';
 const finiteNumber = { type: 'number', minimum: -20000, maximum: 20000 };
+
+export function canonicalizePath(input) {
+  return canonicalizeWithMissing(input);
+}
 const poseSchema = {
   type: 'object',
   additionalProperties: false,

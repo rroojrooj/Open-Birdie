@@ -515,6 +515,12 @@ function comparisonEnvironment() {
   return {
     platform: 'win32',
     arch: 'x64',
+    os: {
+      platform: 'win32',
+      release: '10.0.26100',
+      version: 'Windows 11',
+      arch: 'x64',
+    },
     electron: '42.4.0',
     chrome: '148.0.0',
     page: { devicePixelRatio: 1 },
@@ -713,6 +719,136 @@ test('comparison verifies each artifact against its success manifest hash', () =
       error.details.reportedSha256 !== error.details.actualSha256,
   );
   assert.equal(fs.existsSync(path.join(temp, 'out')), false);
+});
+
+test('comparison rejects empty or incomplete success manifests before publishing output', () => {
+  const mutations = [
+    ['schemaVersion', (manifest) => { manifest.schemaVersion = 2; }],
+    ['suite.sha256', (manifest) => { delete manifest.suite.sha256; }],
+    ['capture.qualityProfile', (manifest) => { delete manifest.capture.qualityProfile; }],
+    ['inputs', (manifest) => { manifest.inputs = []; }],
+    ['results', (manifest) => { manifest.results = []; }],
+    ['course.ok', (manifest) => { manifest.results[0].ok = false; }],
+    ['course.frames', (manifest) => { manifest.results[0].frames = []; }],
+    ['course.environment', (manifest) => { delete manifest.results[0].environment.gpuInfo; }],
+  ];
+  for (const [label, mutate] of mutations) {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-incomplete-'));
+    const before = path.join(temp, 'before');
+    const after = path.join(temp, 'after');
+    const output = path.join(temp, 'out');
+    writeComparisonRun(before);
+    const manifest = writeComparisonRun(after);
+    mutate(manifest);
+    fs.writeFileSync(path.join(after, 'manifest.json'), JSON.stringify(manifest));
+    assert.throws(
+      () => runComparison(
+        { mode: 'compare', before, after, output, threshold: 2 },
+        { stdout: SILENT_STDOUT },
+      ),
+      (error) => error.code === 'COMPARE_MANIFEST_INVALID' &&
+        error.details.side === 'After',
+      label,
+    );
+    assert.equal(fs.existsSync(output), false, `${label} must never publish a final directory`);
+  }
+});
+
+test('comparison rejects decoded PNG dimensions that contradict the frame manifest', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-decoded-size-'));
+  const before = path.join(temp, 'before');
+  const after = path.join(temp, 'after');
+  const output = path.join(temp, 'out');
+  writeComparisonRun(before);
+  const manifest = writeComparisonRun(after);
+  const imagePath = path.join(after, 'course', 'frame.png');
+  const bytes = pngBuffer(3, 2, (index) => index % 2 ? [30, 40, 50, 255] : [90, 80, 70, 255]);
+  fs.writeFileSync(imagePath, bytes);
+  manifest.results[0].frames[0].sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+  fs.writeFileSync(path.join(after, 'manifest.json'), JSON.stringify(manifest));
+  assert.throws(
+    () => runComparison(
+      { mode: 'compare', before, after, output, threshold: 2 },
+      { stdout: SILENT_STDOUT },
+    ),
+    (error) => error.code === 'COMPARE_ARTIFACT_INVALID' &&
+      error.details.frameId === 'frame' &&
+      error.details.expected === '2x2' &&
+      error.details.actual === '3x2',
+  );
+  assert.equal(fs.existsSync(output), false);
+});
+
+test('comparison output cannot equal, contain, or nest inside either input run', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-overlap-'));
+  const before = path.join(temp, 'before');
+  const after = path.join(temp, 'after');
+  writeComparisonRun(before);
+  writeComparisonRun(after);
+  for (const output of [
+    before,
+    path.join(before, 'comparison'),
+    temp,
+    after,
+    path.join(after, 'comparison'),
+  ]) {
+    assert.throws(
+      () => runComparison(
+        { mode: 'compare', before, after, output, threshold: 2 },
+        { stdout: SILENT_STDOUT },
+      ),
+      (error) => error.code === 'COMPARE_OUTPUT_OVERLAP',
+      output,
+    );
+  }
+});
+
+test('comparison publishes by staging rename and cleans only its owned staging on injected failure', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-transaction-'));
+  const before = path.join(temp, 'before');
+  const after = path.join(temp, 'after');
+  const output = path.join(temp, 'final-comparison');
+  writeComparisonRun(before);
+  writeComparisonRun(after);
+  let observedStaging;
+  assert.throws(
+    () => runComparison(
+      { mode: 'compare', before, after, output, threshold: 2 },
+      {
+        stdout: SILENT_STDOUT,
+        stagingNonce: () => 'fixed-nonce',
+        beforePublish: ({ stagingDir, finalDir }) => {
+          observedStaging = stagingDir;
+          assert.equal(finalDir, output);
+          assert.match(path.basename(stagingDir), /^final-comparison[.]staging-\d+-fixed-nonce$/);
+          assert.equal(path.dirname(stagingDir), temp);
+          assert.equal(fs.existsSync(path.join(stagingDir, 'comparison.json')), true);
+          assert.equal(fs.existsSync(path.join(stagingDir, 'report.md')), true);
+          assert.equal(fs.existsSync(path.join(stagingDir, 'diffs', 'course--frame.png')), true);
+          assert.equal(fs.existsSync(finalDir), false);
+          const error = new Error('injected before publish');
+          error.code = 'INJECTED_FAILURE';
+          throw error;
+        },
+      },
+    ),
+    (error) => error.code === 'INJECTED_FAILURE',
+  );
+  assert.equal(fs.existsSync(output), false);
+  assert.equal(fs.existsSync(observedStaging), false);
+  assert.equal(fs.existsSync(path.join(before, 'manifest.json')), true);
+  assert.equal(fs.existsSync(path.join(after, 'manifest.json')), true);
+
+  const retried = runComparison(
+    { mode: 'compare', before, after, output, threshold: 2 },
+    { stdout: SILENT_STDOUT, stagingNonce: () => 'retry-nonce' },
+  );
+  assert.equal(retried.output, output);
+  assert.equal(fs.existsSync(path.join(output, 'comparison.json')), true);
+  assert.equal(
+    fs.readdirSync(temp).some((name) => name.startsWith('final-comparison.staging-')),
+    false,
+  );
 });
 
 test('nonblank detector rejects transparent, black, and one-color placeholders', () => {

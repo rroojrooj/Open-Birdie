@@ -11,6 +11,7 @@ import {
   VisualCaptureError,
   buildCourseInputManifest,
   buildSharedRootManifest,
+  canonicalizePath,
   parseCliArgs,
   resolveSuite,
   validateJobPaths,
@@ -19,6 +20,7 @@ import {
 import {
   comparePngBuffers,
   createComparisonReport,
+  inspectComparisonPng,
   inspectNonblankPng,
 } from './metrics.mjs';
 
@@ -64,18 +66,92 @@ function readSuccessManifest(runDir, side) {
       cause,
     });
   }
-  if (manifest?.ok !== true || !Array.isArray(manifest.results)) {
-    throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest is not a successful capture manifest`, {
+  const invalid = (message, details = {}) => {
+    throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest ${message}`, {
       stage: 'compare',
-      details: { side, manifest: manifestFile },
+      details: { side, manifest: manifestFile, ...details },
+    });
+  };
+  if (manifest?.ok !== true || manifest.schemaVersion !== 1) {
+    invalid('is not a successful schema-v1 capture manifest');
+  }
+  if (!manifest.suite || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(manifest.suite.id || '') ||
+      !/^[a-f0-9]{64}$/.test(manifest.suite.sha256 || '')) {
+    invalid('has invalid suite identity evidence');
+  }
+  const capture = manifest.capture;
+  if (!capture ||
+      !Number.isInteger(capture.width) || capture.width <= 0 ||
+      !Number.isInteger(capture.height) || capture.height <= 0 ||
+      !Number.isFinite(capture.deviceScaleFactor) || capture.deviceScaleFactor <= 0 ||
+      typeof capture.qualityProfile !== 'string' || !capture.qualityProfile.trim()) {
+    invalid('has invalid capture configuration evidence');
+  }
+  if (!Array.isArray(manifest.inputs) || manifest.inputs.length === 0) {
+    invalid('has no course input evidence');
+  }
+  const inputIds = new Set();
+  for (const input of manifest.inputs) {
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(input?.courseId || '') ||
+        !/^[a-f0-9]{64}$/.test(input?.contentHash || '') ||
+        inputIds.has(input.courseId)) {
+      invalid('has invalid or duplicate course input evidence', { courseId: input?.courseId });
+    }
+    inputIds.add(input.courseId);
+  }
+  if (!Array.isArray(manifest.results) || manifest.results.length === 0) {
+    invalid('has no successful course results');
+  }
+  let totalFrames = 0;
+  const resultIds = new Set();
+  for (const course of manifest.results) {
+    if (course?.ok !== true ||
+        !/^[a-z0-9][a-z0-9-]{0,63}$/.test(course?.course || '') ||
+        resultIds.has(course.course) ||
+        typeof course.expectedName !== 'string' || !course.expectedName.trim() ||
+        !Array.isArray(course.frames) || course.frames.length === 0) {
+      invalid('has an invalid, duplicate, or empty course result', { courseId: course?.course });
+    }
+    resultIds.add(course.course);
+    totalFrames += course.frames.length;
+    const environment = course.environment;
+    const gpuDevices = environment?.gpuInfo?.gpuDevice;
+    const activeGpu = Array.isArray(gpuDevices)
+      ? gpuDevices.find((device) => device.active)
+      : null;
+    if (!environment ||
+        !['platform', 'arch', 'electron', 'chrome'].every((field) =>
+          typeof environment[field] === 'string' && environment[field]) ||
+        !environment.os ||
+        !['platform', 'release', 'version', 'arch'].every((field) =>
+          typeof environment.os[field] === 'string' && environment.os[field]) ||
+        environment.page?.devicePixelRatio !== capture.deviceScaleFactor ||
+        !activeGpu ||
+        !Number.isInteger(activeGpu.vendorId) ||
+        !Number.isInteger(activeGpu.deviceId) ||
+        typeof activeGpu.deviceString !== 'string' || !activeGpu.deviceString ||
+        typeof activeGpu.driverVersion !== 'string' || !activeGpu.driverVersion ||
+        !environment.webgl ||
+        !['webglVersion', 'unmaskedVendor', 'unmaskedRenderer'].every((field) =>
+          typeof environment.webgl[field] === 'string' && environment.webgl[field])) {
+      invalid('has incomplete OS, GPU, WebGL, or DPR identity evidence', { courseId: course.course });
+    }
+  }
+  if (totalFrames === 0 || !sameValue([...inputIds].sort(), [...resultIds].sort())) {
+    invalid('does not match non-empty course inputs to captured results', {
+      inputCourseIds: [...inputIds].sort(),
+      resultCourseIds: [...resultIds].sort(),
+      totalFrames,
     });
   }
   return manifest;
 }
 
 function comparisonEnvironment(environment = {}) {
-  const activeGpu = environment.gpuInfo?.gpuDevice?.find((device) => device.active) ||
-    environment.gpuInfo?.gpuDevice?.[0] || null;
+  const gpuDevices = Array.isArray(environment.gpuInfo?.gpuDevice)
+    ? environment.gpuInfo.gpuDevice
+    : [];
+  const activeGpu = gpuDevices.find((device) => device.active) || gpuDevices[0] || null;
   return {
     platform: environment.platform ?? null,
     arch: environment.arch ?? null,
@@ -265,7 +341,28 @@ function readVerifiedArtifact(runDir, courseId, frame) {
       },
     });
   }
-  return { artifactPath, buffer, sha256 };
+  let decoded;
+  try {
+    decoded = inspectComparisonPng(buffer);
+  } catch (cause) {
+    throw new VisualCaptureError('COMPARE_ARTIFACT_INVALID', 'Comparison frame artifact cannot be decoded', {
+      stage: 'compare',
+      details: { courseId, frameId: frame.id },
+      cause,
+    });
+  }
+  if (decoded.width !== frame.width || decoded.height !== frame.height) {
+    throw new VisualCaptureError('COMPARE_ARTIFACT_INVALID', 'Comparison frame dimensions contradict its manifest', {
+      stage: 'compare',
+      details: {
+        courseId,
+        frameId: frame.id,
+        expected: `${frame.width}x${frame.height}`,
+        actual: `${decoded.width}x${decoded.height}`,
+      },
+    });
+  }
+  return { artifactPath, buffer, sha256, ...decoded };
 }
 
 function defaultComparisonOutput(beforeDir, afterDir, root = ROOT) {
@@ -275,17 +372,74 @@ function defaultComparisonOutput(beforeDir, afterDir, root = ROOT) {
   return path.join(root, '.shots', 'visual', 'comparisons', `${slug}-${timestamp}`);
 }
 
+function comparisonPath(input, label) {
+  try {
+    return canonicalizePath(input);
+  } catch (cause) {
+    throw new VisualCaptureError('COMPARE_PATH_INVALID', `${label} path cannot be resolved safely`, {
+      stage: 'compare',
+      details: { label, path: input },
+      cause,
+    });
+  }
+}
+
+function pathsOverlap(left, right) {
+  return left === right ||
+    left.startsWith(`${right}${path.sep}`) ||
+    right.startsWith(`${left}${path.sep}`);
+}
+
+function assertComparisonOutputSeparated(outputDir, beforeDir, afterDir) {
+  for (const [side, inputDir] of [['before', beforeDir], ['after', afterDir]]) {
+    if (pathsOverlap(outputDir, inputDir)) {
+      throw new VisualCaptureError('COMPARE_OUTPUT_OVERLAP', 'Comparison output must be separate from both input runs', {
+        stage: 'compare',
+        recovery: 'Choose an --output directory that neither contains nor is contained by an input run.',
+        details: { side, input: inputDir, output: outputDir },
+      });
+    }
+  }
+}
+
+function cleanupOwnedComparisonStaging(stagingDir, finalParent, expectedBasename) {
+  if (!fs.existsSync(stagingDir)) return;
+  const parent = fs.realpathSync.native(finalParent);
+  const stat = fs.lstatSync(stagingDir);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new VisualCaptureError('COMPARE_CLEANUP_REFUSED', 'Refusing to clean a replaced comparison staging path', {
+      stage: 'compare-cleanup',
+      details: { stagingDir },
+    });
+  }
+  const staging = fs.realpathSync.native(stagingDir);
+  if (path.dirname(staging) !== parent || path.basename(staging) !== expectedBasename) {
+    throw new VisualCaptureError('COMPARE_CLEANUP_REFUSED', 'Refusing to clean staging outside its canonical parent', {
+      stage: 'compare-cleanup',
+      details: { stagingDir: staging, expectedParent: parent, expectedBasename },
+    });
+  }
+  fs.rmSync(staging, { recursive: true, force: false });
+}
+
 export function runComparison(options, {
   root = ROOT,
   stdout = process.stdout,
+  stagingNonce = () => crypto.randomBytes(6).toString('hex'),
+  beforePublish = () => {},
 } = {}) {
-  const beforeDir = path.resolve(root, options.before);
-  const afterDir = path.resolve(root, options.after);
-  const outputDir = path.resolve(root, options.output || defaultComparisonOutput(beforeDir, afterDir, root));
+  const beforeDir = comparisonPath(path.resolve(root, options.before), 'Before');
+  const afterDir = comparisonPath(path.resolve(root, options.after), 'After');
+  const requestedOutput = path.resolve(
+    root,
+    options.output || defaultComparisonOutput(beforeDir, afterDir, root),
+  );
+  const outputDir = comparisonPath(requestedOutput, 'Output');
   const threshold = options.threshold ?? 2;
   if (!Number.isInteger(threshold) || threshold < 0 || threshold > 255) {
     throw new VisualCaptureError('ARGS_INVALID', '--threshold must be an integer from 0 to 255');
   }
+  assertComparisonOutputSeparated(outputDir, beforeDir, afterDir);
   if (fs.existsSync(outputDir)) {
     throw new VisualCaptureError('COMPARE_OUTPUT_EXISTS', 'Comparison output directory already exists', {
       stage: 'compare',
@@ -306,10 +460,33 @@ export function runComparison(options, {
     });
   }
 
-  fs.mkdirSync(path.join(outputDir, 'diffs'), { recursive: true });
+  const finalParent = path.dirname(outputDir);
+  fs.mkdirSync(finalParent, { recursive: true });
+  if (comparisonPath(outputDir, 'Output') !== outputDir) {
+    throw new VisualCaptureError('COMPARE_PATH_INVALID', 'Output canonical identity changed while preparing it', {
+      stage: 'compare',
+      details: { output: outputDir },
+    });
+  }
+  const nonce = stagingNonce();
+  if (!/^[a-z0-9-]{1,64}$/.test(nonce)) {
+    throw new VisualCaptureError('COMPARE_PATH_INVALID', 'Comparison staging nonce is invalid', {
+      stage: 'compare',
+    });
+  }
+  const stagingBasename = `${path.basename(outputDir)}.staging-${process.pid}-${nonce}`;
+  const stagingDir = path.join(finalParent, stagingBasename);
+  if (fs.existsSync(stagingDir) || comparisonPath(stagingDir, 'Staging') !== stagingDir) {
+    throw new VisualCaptureError('COMPARE_OUTPUT_EXISTS', 'Comparison staging directory already exists or is unsafe', {
+      stage: 'compare',
+      details: { staging: stagingDir },
+    });
+  }
+  fs.mkdirSync(stagingDir);
   const frames = [];
   const artifacts = [];
   try {
+    fs.mkdirSync(path.join(stagingDir, 'diffs'));
     for (const key of sortedKeys(beforeIndex.frames)) {
       const beforeRecord = beforeIndex.frames.get(key);
       const afterRecord = afterIndex.frames.get(key);
@@ -321,9 +498,10 @@ export function runComparison(options, {
       const beforePath = beforeArtifact.artifactPath;
       const afterPath = afterArtifact.artifactPath;
       const diffName = `${courseId}--${beforeFrame.id}.png`;
-      const diffPath = path.join(outputDir, 'diffs', diffName);
+      const stagingDiffPath = path.join(stagingDir, 'diffs', diffName);
+      const publishedDiffPath = path.join(outputDir, 'diffs', diffName);
       const compared = comparePngBuffers(beforeArtifact.buffer, afterArtifact.buffer, { threshold });
-      atomicText(diffPath, compared.diffPng);
+      atomicText(stagingDiffPath, compared.diffPng);
       frames.push({
         courseId,
         courseLabel: beforeRecord.course.expectedName || courseId,
@@ -341,7 +519,7 @@ export function runComparison(options, {
         diffFile: `diffs/${diffName}`,
         metrics: compared.metrics,
       });
-      artifacts.push({ beforePath, afterPath, diffPath });
+      artifacts.push({ beforePath, afterPath, diffPath: publishedDiffPath });
     }
     const changedFrames = frames.filter((frame) => frame.metrics.classification === 'pixel-change').length;
     const comparison = {
@@ -365,14 +543,16 @@ export function runComparison(options, {
       },
       frames,
     };
-    atomicJson(path.join(outputDir, 'comparison.json'), comparison);
-    atomicText(path.join(outputDir, 'report.md'), createComparisonReport({
+    atomicJson(path.join(stagingDir, 'comparison.json'), comparison);
+    atomicText(path.join(stagingDir, 'report.md'), createComparisonReport({
       comparison,
       artifacts,
       outputDir,
       beforeLabel: path.basename(beforeDir),
       afterLabel: path.basename(afterDir),
     }));
+    beforePublish({ stagingDir, finalDir: outputDir, comparison });
+    fs.renameSync(stagingDir, outputDir);
     const summary = {
       ok: true,
       output: outputDir,
@@ -383,9 +563,14 @@ export function runComparison(options, {
     stdout.write(`${JSON.stringify(summary)}\n`);
     return summary;
   } catch (error) {
-    // This directory was just created by this process and is the only tree we
-    // ever remove. Existing user paths are rejected before this point.
-    fs.rmSync(outputDir, { recursive: true, force: true });
+    try {
+      cleanupOwnedComparisonStaging(stagingDir, finalParent, stagingBasename);
+    } catch (cleanupError) {
+      error.cleanupFailure = cleanupError.toJSON?.() || {
+        code: cleanupError.code,
+        message: cleanupError.message,
+      };
+    }
     throw error;
   }
 }

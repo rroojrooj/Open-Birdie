@@ -185,6 +185,11 @@ function decodeComparisonPng(buffer, side) {
   }
 }
 
+export function inspectComparisonPng(buffer, side = 'Artifact') {
+  const decoded = decodeComparisonPng(buffer, side);
+  return { width: decoded.width, height: decoded.height };
+}
+
 /**
  * Compare two decoded PNGs without allowing a tolerance to alter the raw
  * measurements. `threshold` is an inclusive per-channel tolerance in 0..255:
