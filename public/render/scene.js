@@ -21,6 +21,7 @@ import { RENDER_CONFIG } from './config.js';
 import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
 import { COLORS, DRY_PALETTE, courseDryFor, blendPalette } from './course-character.js';
 import { installLoadingTracker } from './capture-readiness.js';
+import { normalizePerformanceRequest } from './capture-performance.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -1455,12 +1456,10 @@ export class GolfScene {
     };
   }
 
-  async sampleVisualCapturePerformance({ durationMs = 2000, route = [], claim = 'performance' } = {}) {
-    const sampleDuration = Math.max(250, Number(durationMs) || 2000);
-    const performanceClaim = claim === 'performance';
+  async sampleVisualCapturePerformance(options = {}) {
+    const { sampleDuration, performanceClaim, routeFrames } = normalizePerformanceRequest(options);
     const minimumWarmupFrames = performanceClaim ? 300 : 10;
     const minimumWarmupMs = performanceClaim ? 5000 : 1000;
-    const routeFrames = Array.isArray(route) ? route : (Array.isArray(route?.frames) ? route.frames : []);
     const info = this.renderer.info;
     const previousAutoReset = info.autoReset;
     this.renderer.setAnimationLoop(null);

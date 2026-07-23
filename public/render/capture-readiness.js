@@ -80,25 +80,43 @@ export function installLoadingTracker(manager, { now } = {}) {
 
 const sortedUnique = (values) => [...new Set((values || []).filter((value) => typeof value === 'string'))].sort();
 
+export function buildHdAckEvidence(requestIds, response) {
+  const ackRequestIds = sortedUnique(requestIds);
+  if (!response?.ok) return { ackRequestIds, acknowledgedIds: [] };
+  const responseIds = Array.isArray(response.acknowledgedIds)
+    ? response.acknowledgedIds
+    : Array.isArray(response.bundleIds)
+      ? response.bundleIds
+      : ackRequestIds;
+  return { ackRequestIds, acknowledgedIds: sortedUnique(responseIds) };
+}
+
 export function validateHdPolicy(hd = {}, policy = 'optional') {
   if (!['required', 'optional', 'forbidden'].includes(policy)) {
     return { ok: false, policy, violations: ['HD_POLICY_UNKNOWN'] };
   }
   const advertisedIds = sortedUnique(hd.advertisedIds);
   const loadedIds = sortedUnique(hd.loadedIds);
+  const ackRequestIds = sortedUnique(hd.ackRequestIds);
+  const acknowledgedIds = sortedUnique(hd.acknowledgedIds);
   const failures = Array.isArray(hd.failures) ? hd.failures : [];
   const violations = [];
   if (policy === 'required') {
     if (!advertisedIds.length) violations.push('HD_REQUIRED_EMPTY');
     if (failures.length) violations.push('HD_FAILURES');
-    if (advertisedIds.length !== loadedIds.length ||
-        advertisedIds.some((id, index) => id !== loadedIds[index])) {
+    const loadedMismatch = advertisedIds.length !== loadedIds.length ||
+      advertisedIds.some((id, index) => id !== loadedIds[index]);
+    const acknowledgedMismatch = advertisedIds.length !== acknowledgedIds.length ||
+      advertisedIds.some((id, index) => id !== acknowledgedIds[index]);
+    if (loadedMismatch || acknowledgedMismatch) {
       violations.push('HD_ID_SET_MISMATCH');
     }
     if (!hd.ack?.ok) violations.push('HD_ACK_REQUIRED');
   } else if (policy === 'forbidden') {
     if (advertisedIds.length) violations.push('HD_FORBIDDEN_ADVERTISED');
     if (loadedIds.length) violations.push('HD_FORBIDDEN_LOADED');
+    if (ackRequestIds.length) violations.push('HD_FORBIDDEN_ACK_REQUEST');
+    if (acknowledgedIds.length) violations.push('HD_FORBIDDEN_ACKNOWLEDGED');
     if (failures.length) violations.push('HD_FORBIDDEN_FAILURES');
     if (hd.ack != null) violations.push('HD_FORBIDDEN_ACK');
   }
@@ -107,6 +125,8 @@ export function validateHdPolicy(hd = {}, policy = 'optional') {
     policy,
     advertisedIds,
     loadedIds,
+    ackRequestIds,
+    acknowledgedIds,
     failures: clone(failures),
     ack: hd.ack == null ? null : clone(hd.ack),
     violations,

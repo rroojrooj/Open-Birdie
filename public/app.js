@@ -1,7 +1,7 @@
 // Open-Birdie UI glue: SSE <-> HUD <-> 3D scene.
 import { GolfScene } from './render/scene.js';
 import { loadHdBundle } from './render/hd-bundle.js';
-import { validateHdPolicy, waitForCaptureReady } from './render/capture-readiness.js';
+import { buildHdAckEvidence, validateHdPolicy, waitForCaptureReady } from './render/capture-readiness.js';
 import { toPar, forwardLabel, verdict } from './scoring.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +19,9 @@ let clubPresets = {};
 let prevOver = false;   // round-over auto-open latch (open the card once, not every state event)
 let reviewHole = null;  // index of a played hole being reviewed on the scorecard
 let captureCourse = null;
-let captureHd = { advertisedIds: [], loadedIds: [], failures: [], ack: null };
+let captureHd = {
+  advertisedIds: [], loadedIds: [], ackRequestIds: [], acknowledgedIds: [], failures: [], ack: null,
+};
 
 const CLUBS = [
   ['DR', 'DR'], ['3W', 'W3'], ['3H', 'H3'], ['4i', 'I4'], ['5i', 'I5'], ['6i', 'I6'],
@@ -76,6 +78,8 @@ async function loadGeometry() {
   captureHd = {
     advertisedIds: metas.map((meta) => meta.bundleId),
     loadedIds: [],
+    ackRequestIds: [],
+    acknowledgedIds: [],
     failures: [],
     ack: null,
   };
@@ -113,14 +117,18 @@ async function loadGeometry() {
   // names the FULL advertised bundle set (the server requires the exact active set);
   // physics is server-side, so it stays HD even if a client texture decode failed.
   if (metas.length) {
+    const requestedBundleIds = metas.map((meta) => meta.bundleId);
+    captureHd.ackRequestIds = [...requestedBundleIds];
     try {
       const response = await fetch('/api/course-runtime-ready', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courseRevision: geo.courseRevision, bundleIds: metas.map((m) => m.bundleId), mode, primaryNonce }),
+        body: JSON.stringify({ courseRevision: geo.courseRevision, bundleIds: requestedBundleIds, mode, primaryNonce }),
       });
       captureHd.ack = await response.json();
+      Object.assign(captureHd, buildHdAckEvidence(requestedBundleIds, captureHd.ack));
     } catch (e) {
       captureHd.ack = { ok: false, error: e?.message || String(e) };
+      Object.assign(captureHd, buildHdAckEvidence(requestedBundleIds, captureHd.ack));
       /* LAN mirror / transient — the server's readiness timeout covers it */
     }
   }

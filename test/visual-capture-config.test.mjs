@@ -7,7 +7,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { PNG } from 'pngjs';
+import { createRequire } from 'node:module';
 
+import { normalizePerformanceRequest } from '../public/render/capture-performance.js';
 import {
   VisualCaptureError,
   assertCourseIdentity,
@@ -42,6 +44,8 @@ const ALL_ROLES = [
   ['horizon', 'horizon'],
   ['ui', 'ui'],
 ];
+const require = createRequire(import.meta.url);
+const { buildPerformanceRequest } = require('../tools/visual-capture/performance-request.cjs');
 
 test('renderer capability rejects software identities and invalid capture state', () => {
   for (const renderer of ['Google SwiftShader', 'Mesa llvmpipe', 'Software Rasterizer']) {
@@ -125,6 +129,30 @@ test('capture API remains query-gated while the scene starts with a live animati
   assert.ok(gate >= 0 && api > gate, 'capture API must only be installed inside the query gate');
   assert.match(sceneSource, /this[.]_animationLoopLive = true;\s*this[.]_captureFixedTime = null;\s*this[.]renderer[.]setAnimationLoop\(this[.]_liveFrame\)/);
   assert.match(sceneSource, /finally\s*{\s*info[.]autoReset = previousAutoReset;[\s\S]*this[.]renderer[.]setAnimationLoop\(this[.]_liveFrame\)/);
+});
+
+test('performance request defaults to diagnostic and clamps claims to 60 seconds', () => {
+  assert.deepEqual(normalizePerformanceRequest(), {
+    sampleDuration: 2000,
+    performanceClaim: false,
+    routeFrames: [],
+  });
+  assert.equal(normalizePerformanceRequest({ durationMs: 2000, claim: 'performance' }).sampleDuration, 60000);
+  assert.equal(normalizePerformanceRequest({ durationMs: 90000, claim: 'performance' }).sampleDuration, 90000);
+  assert.equal(normalizePerformanceRequest({ durationMs: 100, claim: 'diagnostic-only' }).sampleDuration, 250);
+});
+
+test('runner performance request uses 60 seconds only for perf jobs', () => {
+  assert.deepEqual(buildPerformanceRequest({ mode: 'perf' }, [{ id: 'route-a' }]), {
+    durationMs: 60000,
+    claim: 'performance',
+    route: [{ id: 'route-a' }],
+  });
+  assert.deepEqual(buildPerformanceRequest({ mode: 'smoke' }, []), {
+    durationMs: 2000,
+    claim: 'diagnostic-only',
+    route: [],
+  });
 });
 
 function frame(role, band, index) {
@@ -751,6 +779,35 @@ test('dirty iteration is marked, require-clean rejects it, and success publishes
     (error) => error.code === 'WORKTREE_DIRTY',
   );
   assert.equal(fs.existsSync(path.join(outputRoot, 'must-not-exist')), false);
+});
+
+test('perf mode reaches the child with perf mode and the 15-minute default timeout', async () => {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-perf-route-'));
+  const options = parseCliArgs([
+    'perf',
+    '--suite', 'synthetic-smoke',
+    '--data-dir', path.resolve('test/fixtures/visual-capture-data'),
+    '--output', outputRoot,
+  ]);
+  const seen = {};
+  await runCapture(options, {
+    root: path.resolve('.'),
+    gitStateImpl: async () => ({ sha: 'abc123', dirty: false }),
+    runIdFactory: () => 'perf-run',
+    spawnCourse: async (job, childOptions) => {
+      seen.job = job;
+      seen.childOptions = childOptions;
+      return { ok: true, course: job.course.id, frames: [{ id: 'overview' }] };
+    },
+    stdout: { write() {} },
+    stderr: { write() {} },
+  });
+  assert.equal(seen.job.mode, 'perf');
+  assert.equal(seen.childOptions.timeoutMs, 900000);
+  await assert.rejects(
+    runCapture({ ...options, mode: 'compare' }),
+    (error) => error.code === 'MODE_NOT_IMPLEMENTED',
+  );
 });
 
 test('failed course preserves staging evidence and never publishes success manifest', async () => {

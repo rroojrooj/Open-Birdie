@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PNG } = require('pngjs');
 const { resolveTask0Output } = require('./output-path.cjs');
+const { buildPerformanceRequest } = require('./performance-request.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const FIXTURE_DATA = path.join(ROOT, 'test', 'fixtures', 'visual-capture-data');
@@ -246,12 +247,9 @@ async function run() {
         fs.writeFileSync(path.join(OUTPUT_DIR, 'page.png'), pagePng);
       }
     }
+    const performanceRequest = buildPerformanceRequest(JOB, course.frames);
     const performanceSample = await win.webContents.executeJavaScript(
-      `window.__birdie.visualCapture.samplePerformance({
-        durationMs: ${JOB?.mode === 'perf' ? 60000 : 2000},
-        claim: ${JSON.stringify(JOB?.mode === 'perf' ? 'performance' : 'diagnostic-only')},
-        route: ${JSON.stringify(course.frames)}
-      })`,
+      `window.__birdie.visualCapture.samplePerformance(${JSON.stringify(performanceRequest)})`,
       true,
     );
     const finalPageState = await win.webContents.executeJavaScript(

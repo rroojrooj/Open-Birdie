@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import test from 'node:test';
 import {
   CaptureReadinessTimeout,
+  buildHdAckEvidence,
   installLoadingTracker,
   validateHdPolicy,
   waitForCaptureReady,
@@ -16,12 +17,30 @@ import { vegetationTextureCommands } from '../public/render/vegetation.js';
 const require = createRequire(import.meta.url);
 const { resolveTask0Output } = require('../tools/visual-capture/output-path.cjs');
 
+test('HD acknowledgement evidence records request IDs but only acknowledges successful IDs', () => {
+  assert.deepEqual(buildHdAckEvidence(['bundle-b', 'bundle-a'], { ok: false, code: 'REJECTED' }), {
+    ackRequestIds: ['bundle-a', 'bundle-b'],
+    acknowledgedIds: [],
+  });
+  assert.deepEqual(buildHdAckEvidence(['bundle-b', 'bundle-a'], { ok: true }), {
+    ackRequestIds: ['bundle-a', 'bundle-b'],
+    acknowledgedIds: ['bundle-a', 'bundle-b'],
+  });
+  assert.deepEqual(buildHdAckEvidence(['bundle-b', 'bundle-a'], {
+    ok: true,
+    acknowledgedIds: ['bundle-a'],
+  }), {
+    ackRequestIds: ['bundle-a', 'bundle-b'],
+    acknowledgedIds: ['bundle-a'],
+  });
+});
+
 const ready = (over = {}) => ({
   course: { name: 'Synthetic Visual', revision: 1 },
   runtimeReady: true,
   environment: { state: 'ready' },
   loader: { active: [], started: 3, completed: 3, failures: [] },
-  hd: { advertisedIds: [], loadedIds: [], failures: [], ack: null },
+  hd: { advertisedIds: [], loadedIds: [], ackRequestIds: [], acknowledgedIds: [], failures: [], ack: null },
   postfx: 'effect-composer',
   ...over,
 });
@@ -64,6 +83,8 @@ test('required HD policy detects a middle-bundle failure and compares exact ID s
   const middleFailure = {
     advertisedIds: ['bundle-a', 'bundle-b', 'bundle-c'],
     loadedIds: ['bundle-c', 'bundle-a'],
+    ackRequestIds: ['bundle-a', 'bundle-b', 'bundle-c'],
+    acknowledgedIds: ['bundle-a', 'bundle-b', 'bundle-c'],
     failures: [{ bundleId: 'bundle-b', hole: 2, message: 'decode failed' }],
     ack: { ok: true, mode: 'hd' },
   };
@@ -71,31 +92,55 @@ test('required HD policy detects a middle-bundle failure and compares exact ID s
   assert.equal(result.ok, false);
   assert.deepEqual(result.advertisedIds, ['bundle-a', 'bundle-b', 'bundle-c']);
   assert.deepEqual(result.loadedIds, ['bundle-a', 'bundle-c']);
+  assert.deepEqual(result.acknowledgedIds, ['bundle-a', 'bundle-b', 'bundle-c']);
   assert.deepEqual(result.failures, middleFailure.failures);
   assert.deepEqual(result.violations, ['HD_FAILURES', 'HD_ID_SET_MISMATCH']);
 
   assert.equal(validateHdPolicy({
     advertisedIds: ['bundle-a', 'bundle-b'],
     loadedIds: ['bundle-b', 'bundle-a'],
+    ackRequestIds: ['bundle-a', 'bundle-b'],
+    acknowledgedIds: ['bundle-b', 'bundle-a'],
     failures: [],
     ack: { ok: true },
   }, 'required').ok, true);
+
+  const acknowledgedMismatch = validateHdPolicy({
+    advertisedIds: ['bundle-a', 'bundle-b'],
+    loadedIds: ['bundle-a', 'bundle-b'],
+    ackRequestIds: ['bundle-a', 'bundle-b'],
+    acknowledgedIds: ['bundle-a'],
+    failures: [],
+    ack: { ok: true },
+  }, 'required');
+  assert.equal(acknowledgedMismatch.ok, false);
+  assert.deepEqual(acknowledgedMismatch.violations, ['HD_ID_SET_MISMATCH']);
 });
 
 test('optional HD policy settles with visible failures; forbidden requires every HD set empty', () => {
   const failedOptional = {
     advertisedIds: ['bundle-a'],
     loadedIds: [],
+    ackRequestIds: ['bundle-a'],
+    acknowledgedIds: [],
     failures: [{ bundleId: 'bundle-a', message: 'missing texture' }],
     ack: null,
   };
   const optional = validateHdPolicy(failedOptional, 'optional');
   assert.equal(optional.ok, true);
   assert.deepEqual(optional.failures, failedOptional.failures);
-  assert.equal(validateHdPolicy({ advertisedIds: [], loadedIds: [], failures: [], ack: null }, 'forbidden').ok, true);
+  assert.equal(validateHdPolicy({
+    advertisedIds: [], loadedIds: [], ackRequestIds: [], acknowledgedIds: [], failures: [], ack: null,
+  }, 'forbidden').ok, true);
   assert.deepEqual(
     validateHdPolicy(failedOptional, 'forbidden').violations,
-    ['HD_FORBIDDEN_ADVERTISED', 'HD_FORBIDDEN_FAILURES'],
+    ['HD_FORBIDDEN_ADVERTISED', 'HD_FORBIDDEN_ACK_REQUEST', 'HD_FORBIDDEN_FAILURES'],
+  );
+  assert.deepEqual(
+    validateHdPolicy({
+      advertisedIds: [], loadedIds: [], ackRequestIds: [], acknowledgedIds: ['bundle-a'], failures: [], ack: null,
+    }, 'forbidden').violations,
+    ['HD_FORBIDDEN_ACKNOWLEDGED'],
   );
 });
 

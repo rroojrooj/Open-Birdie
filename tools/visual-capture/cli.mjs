@@ -360,7 +360,7 @@ export async function runCapture(options, {
   stdout = process.stdout,
   stderr = process.stderr,
 } = {}) {
-  if (options.mode === 'perf' || options.mode === 'compare') {
+  if (options.mode === 'compare') {
     throw new VisualCaptureError('MODE_NOT_IMPLEMENTED', `${options.mode} is parsed but is completed by a later SP-00 task`);
   }
   const resolvedSuite = resolveSuite(options.suite, { root });
