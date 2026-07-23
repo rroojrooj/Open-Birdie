@@ -291,7 +291,7 @@ function readBody(req) {
 }
 
 // auto-load the most recently cached course on startup
-const cached = listCached();
+const cached = process.env.BIRDIE_NO_AUTOLOAD ? [] : listCached();
 if (cached.length) {
   try {
     activateCourse(loadCached(cached[0].file));
@@ -302,10 +302,11 @@ if (cached.length) {
 if (SPEED_SCALE !== 1) console.log(`[OC] BIRDIE_SPEED_SCALE=${SPEED_SCALE} — scaling incoming ball speed`);
 const ready = new Promise((resolve) => {
   server.listen(HTTP_PORT, HTTP_HOST, () => {
+    const actualPort = server.address().port;
     const exposed = HTTP_HOST !== '127.0.0.1' && HTTP_HOST !== 'localhost';
-    console.log(`[HTTP] Open-Birdie UI: http://localhost:${HTTP_PORT}` +
+    console.log(`[HTTP] Open-Birdie UI: http://localhost:${actualPort}` +
       (exposed ? `  (exposed on ${HTTP_HOST} — trusted networks only)` : '  (localhost only — set BIRDIE_HOST=0.0.0.0 to mirror on your LAN)'));
-    resolve({ httpPort: HTTP_PORT });
+    resolve({ httpPort: actualPort });
   });
 });
 oc.start();

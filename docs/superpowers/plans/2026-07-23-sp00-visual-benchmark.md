@@ -1,17 +1,17 @@
 # SP-00 Visual Benchmark Harness and Baseline Implementation Plan
 
-> **Status:** Draft for engineering review  
-> **Parent specification:** `docs/superpowers/specs/2026-07-23-pro-visuals-program-design.md`  
-> **Parent master plan:** `docs/superpowers/plans/2026-07-23-pro-visuals-master-plan.md`  
-> **Program test strategy:** `docs/superpowers/plans/2026-07-23-pro-visuals-test-plan.md`  
-> **Target branch:** `codex/sp00-visual-benchmark`  
-> **Base commit:** `fe8e677` (`main`, 2026-07-23)  
+> **Status:** Engineering-cleared; implementation in progress
+> **Parent specification:** `docs/superpowers/specs/2026-07-23-pro-visuals-program-design.md`
+> **Parent master plan:** `docs/superpowers/plans/2026-07-23-pro-visuals-master-plan.md`
+> **Program test strategy:** `docs/superpowers/plans/2026-07-23-pro-visuals-test-plan.md`
+> **Target branch:** `codex/sp00-visual-benchmark`
+> **Base commit:** `fe8e677` (`main`, 2026-07-23)
 > **Owner/module:** Rendering verification / `tools/visual-capture`, with a narrow browser seam in
-> `public/app.js` and `public/render/scene.js`  
+> `public/app.js` and `public/render/scene.js`
 > **Estimated effort:** Human team: 2-3 days. Agent-assisted implementation: 4-8 focused hours plus
-> the named-GPU capture run.  
+> the named-GPU capture run.
 > **Dependencies:** Node 22+, Electron 42, the existing Three.js renderer, and local real-course caches for
-> the full baseline. The committed synthetic smoke fixture has no network dependency.  
+> the full baseline. The committed synthetic smoke fixture has no network dependency.
 > **Required prior state:** The 301-test `main` baseline passes. No SP-01+ visual changes are required.
 
 ---
@@ -1193,19 +1193,36 @@ incorporated. There is no cross-model tension.
 
 To be completed after implementation:
 
-- **Task-0 outcome:** pending.
-- **Commits:** pending.
+- **Task-0 outcome:** **CHANGE**. Hidden Electron produced exact-size, nonblank canvas and page PNGs
+  through the real post-processing path on hardware WebGL, and shut down cleanly. Cross-process pixel drift
+  still exceeds the pinned synthetic gate, so Tasks 2-7 must not claim baseline determinism yet.
+- **Commits:** Task-0 implementation commit `test(visual): prove deterministic renderer capture`.
 - **PR:** pending/not requested.
-- **Tests:** pending.
-- **Synthetic capture:** pending.
+- **Tests:** `node --test test/visual-capture-readiness.test.mjs` passed 4/4; `npm test` passed 305/305;
+  `git diff --check`, `node --check server.js`, and `node --check tools/visual-capture/electron-runner.cjs`
+  passed.
+- **Synthetic capture:** two final independent runs passed readiness and image validation at 1280x720,
+  DPR 1, `document.visibilityState=visible`, HDR environment `ready`, loader 14/14 with zero outstanding or
+  failed items, and `postfx.render` still marker. Canvas luminance range was 200.
 - **Real baseline capture:** pending.
-- **Comparison/stability:** pending.
+- **Comparison/stability:** final canvas repeat: mean absolute channel delta `0.08075/255`, max delta `42`,
+  `10,322 / 921,600 = 1.1200%` pixels above the `2/255` threshold. Final page repeat:
+  mean `0.07050/255`, max `40`, `9,070 / 921,600 = 0.9842%`. Both exceed the required `0.05%`;
+  exact PNG hashes also differ. The likely remaining seam is cross-process GPU/post-processing/shadow
+  rasterization, not unseeded visible vegetation or camera time.
 - **Performance environment/results:** pending.
-- **Renderer resource counts:** pending.
-- **Artifact locations:** pending.
-- **Plan deviations:** pending.
-- **Known remaining artifacts:** pending.
-- **Follow-ups routed to SP-01+:** pending.
+- **Renderer resource counts:** 20 geometries, 50 textures, 58 compiled programs after eight fixed-time
+  warm-up stills. Final-pass `renderer.info.render` reports one fullscreen post-process draw and one triangle,
+  so scene-pass timing/counting remains Task 6 work.
+- **Artifact locations:** ignored local evidence under `.shots/visual/task0-probes/probe-h` and `probe-i`.
+- **Plan deviations:** the initial fixture frame was changed from idle to the planned real free-camera
+  overview after the first repeat exposed larger foreground/readability drift. No generalized CLI, schema,
+  comparison service, or GPU timer queries were added.
+- **Known remaining artifacts:** Electron emits its upstream `console-message` deprecation warning; page
+  console contains existing Three Clock/shadow-map deprecations and the development CSP warning. No page
+  error-level messages were observed.
+- **Follow-ups routed to SP-01+:** none. The repeatability CHANGE is owned by SP-00 and must be resolved
+  before SP-01 begins.
 
 ---
 

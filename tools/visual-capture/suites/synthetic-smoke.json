@@ -1,0 +1,21 @@
+{
+  "id": "synthetic-smoke",
+  "course": "synthetic-visual.json",
+  "width": 1280,
+  "height": 720,
+  "frames": [
+    {
+      "id": "overview",
+      "mode": "free",
+      "time": 12.5,
+      "pose": {
+        "tx": 0,
+        "ty": 145,
+        "dist": 260,
+        "pitch": -32,
+        "yaw": 0,
+        "hOff": 0
+      }
+    }
+  ]
+}
