@@ -133,9 +133,20 @@ export function validateHdPolicy(hd = {}, policy = 'optional') {
   };
 }
 
-export function outstandingSubsystems(snapshot, { hdPolicy = 'optional' } = {}) {
+export function outstandingSubsystems(snapshot, {
+  hdPolicy = 'optional',
+  expectedCourse,
+  expectedRevision,
+} = {}) {
   const outstanding = [];
-  if (!snapshot?.course?.name || !Number.isInteger(snapshot?.course?.revision)) outstanding.push('course');
+  if (!snapshot?.course?.name || !Number.isInteger(snapshot?.course?.revision)) {
+    outstanding.push('course');
+  } else {
+    if (expectedCourse && snapshot.course.name !== expectedCourse) outstanding.push('course-identity');
+    if (Number.isInteger(expectedRevision) && snapshot.course.revision !== expectedRevision) {
+      outstanding.push('course-revision');
+    }
+  }
   if (!snapshot?.runtimeReady) outstanding.push('runtime');
   if (!['ready', 'fallback'].includes(snapshot?.environment?.state)) outstanding.push('environment');
   if ((snapshot?.loader?.active || []).length) outstanding.push('loader');
@@ -146,6 +157,8 @@ export function outstandingSubsystems(snapshot, { hdPolicy = 'optional' } = {}) 
   for (const violation of validateHdPolicy(hd, hdPolicy).violations) {
     outstanding.push(`hd-policy:${violation}`);
   }
+  if (snapshot?.fonts?.state !== 'ready') outstanding.push('fonts');
+  if (snapshot?.shaderCompile?.state !== 'ready') outstanding.push('shader-compile');
   if (snapshot?.postfx !== 'effect-composer') outstanding.push('postfx');
   return outstanding;
 }
@@ -157,6 +170,8 @@ export async function waitForCaptureReady({
   timeoutMs = 15_000,
   requiredSettledFrames = 3,
   hdPolicy = 'optional',
+  expectedCourse,
+  expectedRevision,
 } = {}) {
   if (typeof status !== 'function' || typeof nextFrame !== 'function') {
     throw new TypeError('status and nextFrame functions are required');
@@ -167,7 +182,11 @@ export async function waitForCaptureReady({
   let outstanding = ['not-polled'];
   for (;;) {
     lastSnapshot = await status();
-    outstanding = outstandingSubsystems(lastSnapshot, { hdPolicy });
+    outstanding = outstandingSubsystems(lastSnapshot, {
+      hdPolicy,
+      expectedCourse,
+      expectedRevision,
+    });
     settledFrames = outstanding.length ? 0 : settledFrames + 1;
     if (settledFrames >= requiredSettledFrames) {
       return { snapshot: clone(lastSnapshot), settledFrames, elapsedMs: now() - startedAt };

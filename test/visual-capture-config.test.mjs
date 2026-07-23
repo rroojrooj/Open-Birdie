@@ -1369,6 +1369,119 @@ test('dirty iteration is marked, require-clean rejects it, and success publishes
   assert.equal(fs.existsSync(path.join(outputRoot, 'must-not-exist')), false);
 });
 
+test('capture refuses to publish when suite bytes, course inputs, or Git state change mid-run', async (t) => {
+  const makeFixture = () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-input-snapshot-'));
+    const dataDir = path.join(temp, 'data');
+    const coursesDir = path.join(dataDir, 'courses');
+    const output = path.join(temp, 'output');
+    const suitePath = path.join(temp, 'suite.json');
+    fs.mkdirSync(coursesDir, { recursive: true });
+    fs.writeFileSync(path.join(coursesDir, 'synthetic.json'), JSON.stringify({
+      name: 'Synthetic Visual',
+    }));
+    fs.writeFileSync(suitePath, JSON.stringify({
+      schemaVersion: 1,
+      id: 'snapshot-test',
+      capture: { width: 1280, height: 720, deviceScaleFactor: 1 },
+      courses: [{
+        id: 'synthetic',
+        cacheFile: 'synthetic.json',
+        expectedName: 'Synthetic Visual',
+        frames: [{
+          id: 'overview',
+          role: 'hole-overview',
+          mode: 'idle',
+          band: 'overview',
+          judges: ['snapshot provenance'],
+        }],
+      }],
+    }));
+    return {
+      temp,
+      dataDir,
+      output,
+      suitePath,
+      cachePath: path.join(coursesDir, 'synthetic.json'),
+    };
+  };
+  const optionsFor = (fixture) => ({
+    mode: 'capture',
+    suite: fixture.suitePath,
+    dataDir: fixture.dataDir,
+    output: fixture.output,
+    port: 0,
+    courseTimeoutMs: 1000,
+    showWindow: false,
+    requireClean: false,
+  });
+  const dependenciesFor = (fixture, overrides = {}) => ({
+    root: path.resolve('.'),
+    gitStateImpl: async () => ({ sha: 'abc123', dirty: false }),
+    runIdFactory: () => 'snapshot-run',
+    spawnCourse: async (job) => ({
+      ok: true,
+      course: job.course.id,
+      frames: [{ id: 'overview' }],
+    }),
+    stdout: { write() {} },
+    stderr: { write() {} },
+    ...overrides,
+  });
+
+  await t.test('suite bytes', async () => {
+    const fixture = makeFixture();
+    t.after(() => fs.rmSync(fixture.temp, { recursive: true, force: true }));
+    await assert.rejects(
+      runCapture(optionsFor(fixture), dependenciesFor(fixture, {
+        spawnCourse: async (job) => {
+          fs.appendFileSync(fixture.suitePath, '\n');
+          return { ok: true, course: job.course.id, frames: [{ id: 'overview' }] };
+        },
+      })),
+      (error) => error.code === 'CAPTURE_INPUT_CHANGED' &&
+        error.details.changes.some((change) => change.kind === 'suite'),
+    );
+    assert.equal(fs.existsSync(path.join(fixture.output, 'snapshot-run')), false);
+  });
+
+  await t.test('course inputs', async () => {
+    const fixture = makeFixture();
+    t.after(() => fs.rmSync(fixture.temp, { recursive: true, force: true }));
+    await assert.rejects(
+      runCapture(optionsFor(fixture), dependenciesFor(fixture, {
+        spawnCourse: async (job) => {
+          fs.writeFileSync(fixture.cachePath, JSON.stringify({
+            name: 'Synthetic Visual',
+            mutation: true,
+          }));
+          return { ok: true, course: job.course.id, frames: [{ id: 'overview' }] };
+        },
+      })),
+      (error) => error.code === 'CAPTURE_INPUT_CHANGED' &&
+        error.details.changes.some((change) => change.kind === 'course-inputs'),
+    );
+    assert.equal(fs.existsSync(path.join(fixture.output, 'snapshot-run')), false);
+  });
+
+  await t.test('Git state', async () => {
+    const fixture = makeFixture();
+    t.after(() => fs.rmSync(fixture.temp, { recursive: true, force: true }));
+    let calls = 0;
+    await assert.rejects(
+      runCapture(optionsFor(fixture), dependenciesFor(fixture, {
+        gitStateImpl: async () => (++calls === 1
+          ? { sha: 'abc123', dirty: false }
+          : { sha: 'def456', dirty: true }),
+      })),
+      (error) => error.code === 'CAPTURE_INPUT_CHANGED' &&
+        error.details.changes.some((change) => change.kind === 'git'),
+    );
+    assert.equal(calls, 2);
+    assert.equal(fs.existsSync(path.join(fixture.output, 'snapshot-run')), false);
+  });
+});
+
 test('perf mode reaches the child with perf mode and the 15-minute default timeout', async () => {
   const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-perf-route-'));
   const options = parseCliArgs([

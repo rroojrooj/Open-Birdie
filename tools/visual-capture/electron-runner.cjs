@@ -138,6 +138,7 @@ async function run() {
     await win.webContents.executeJavaScript(
       `window.__birdie.visualCapture.waitUntilReady({
         expectedCourse: ${JSON.stringify(course.expectedName)},
+        expectedRevision: 1,
         timeoutMs: ${capture.readinessTimeoutMs},
         requiredSettledFrames: ${capture.settleFrames},
         hdPolicy: ${JSON.stringify(course.hdPolicy)}

@@ -46,6 +46,8 @@ const stableJson = (value) => {
   return JSON.stringify(value);
 };
 
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
 function sameValue(left, right) {
   return stableJson(left) === stableJson(right);
 }
@@ -903,6 +905,60 @@ function runId(suiteId) {
   return `${suiteId}-${new Date().toISOString().replaceAll(':', '').replaceAll('.', '-')}`;
 }
 
+async function assertCaptureInputsUnchanged({
+  suitePath,
+  suiteSha256,
+  courses,
+  dataDir,
+  inputs,
+  git,
+  gitStateImpl,
+  root,
+}) {
+  const changes = [];
+  try {
+    const currentSuiteSha256 = sha256(fs.readFileSync(suitePath));
+    if (currentSuiteSha256 !== suiteSha256) {
+      changes.push({
+        kind: 'suite',
+        beforeSha256: suiteSha256,
+        afterSha256: currentSuiteSha256,
+      });
+    }
+  } catch (error) {
+    changes.push({ kind: 'suite', unreadable: error?.message || String(error) });
+  }
+
+  try {
+    const currentInputs = courses.map((course) => buildCourseInputManifest(dataDir, course));
+    if (!sameValue(currentInputs, inputs)) {
+      changes.push({ kind: 'course-inputs', before: inputs, after: currentInputs });
+    }
+  } catch (error) {
+    changes.push({
+      kind: 'course-inputs',
+      unreadable: error?.message || String(error),
+      code: error?.code || null,
+    });
+  }
+
+  const currentGit = await gitStateImpl({ cwd: root });
+  if (!sameValue(currentGit, git)) {
+    changes.push({ kind: 'git', before: git, after: currentGit });
+  }
+  if (changes.length) {
+    throw new VisualCaptureError(
+      'CAPTURE_INPUT_CHANGED',
+      'Suite, course inputs, or Git state changed while capture was running',
+      {
+        stage: 'publication',
+        recovery: 'Stop concurrent edits, restore a stable worktree, and rerun the full capture.',
+        details: { changes },
+      },
+    );
+  }
+}
+
 export async function runCapture(options, {
   root = ROOT,
   electronPath = path.join(root, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron'),
@@ -917,7 +973,9 @@ export async function runCapture(options, {
     return runComparison(options, { root, stdout });
   }
   const resolvedSuite = resolveSuite(options.suite, { root });
-  const suite = validateSuite(JSON.parse(fs.readFileSync(resolvedSuite.path, 'utf8')));
+  const suiteBytes = fs.readFileSync(resolvedSuite.path);
+  const suiteSha256 = sha256(suiteBytes);
+  const suite = validateSuite(JSON.parse(suiteBytes.toString('utf8')));
   const selectedCourses = options.course
     ? suite.courses.filter((course) => course.id === options.course)
     : suite.courses;
@@ -1004,6 +1062,16 @@ export async function runCapture(options, {
         }),
       };
     });
+    await assertCaptureInputsUnchanged({
+      suitePath: resolvedSuite.path,
+      suiteSha256,
+      courses: selectedCourses,
+      dataDir,
+      inputs,
+      git,
+      gitStateImpl,
+      root,
+    });
     const manifest = {
       ok: true,
       schemaVersion: 1,
@@ -1011,7 +1079,7 @@ export async function runCapture(options, {
         id: suite.id,
         sourceKind: resolvedSuite.kind,
         basename: path.basename(resolvedSuite.path),
-        sha256: crypto.createHash('sha256').update(fs.readFileSync(resolvedSuite.path)).digest('hex'),
+        sha256: suiteSha256,
       },
       selection: {
         requestedCourse: options.course || null,

@@ -9,6 +9,7 @@ const scene = new GolfScene($('scene'));
 // Readiness nonce handed only to the loopback Electron primary client (absent on LAN mirrors).
 const query = new URLSearchParams(location.search);
 const primaryNonce = query.get('primaryNonce') || '';
+const visualCaptureEnabled = query.get('visualCapture') === '1';
 window.__birdie = { scene, get state() { return state; } };
 
 let state = null;
@@ -22,6 +23,20 @@ let captureCourse = null;
 let captureHd = {
   advertisedIds: [], loadedIds: [], ackRequestIds: [], acknowledgedIds: [], failures: [], ack: null,
 };
+let captureFonts = { state: visualCaptureEnabled ? 'loading' : 'not-requested' };
+if (visualCaptureEnabled) {
+  if (!document.fonts?.ready) {
+    captureFonts = { state: 'unsupported' };
+  } else {
+    Promise.resolve(document.fonts.ready).then(
+      () => { captureFonts = { state: 'ready' }; },
+      (error) => {
+        captureFonts = { state: 'failed', error: error?.message || String(error) };
+        console.error('[visual-capture] font settlement failed', error);
+      },
+    );
+  }
+}
 
 const CLUBS = [
   ['DR', 'DR'], ['3W', 'W3'], ['3H', 'H3'], ['4i', 'I4'], ['5i', 'I5'], ['6i', 'I6'],
@@ -110,6 +125,7 @@ async function loadGeometry() {
   }
   const mode = hdAssets.length ? 'hd' : 'procedural';
   scene.loadCourse(geo, { hdAssets });
+  if (visualCaptureEnabled) await scene.compileVisualCaptureShaders();
   lastHoleKey = '';
   if (state) applyState(state);
   // Acknowledge readiness so the server activates the matching physics. HD courses are
@@ -144,6 +160,8 @@ if (query.get('visualCapture') === '1') {
         environment: render.environment,
         loader: render.loader,
         hd: JSON.parse(JSON.stringify(captureHd)),
+        fonts: { ...captureFonts },
+        shaderCompile: render.shaderCompile,
         postfx: render.postfx,
       };
     },

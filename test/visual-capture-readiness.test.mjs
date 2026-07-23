@@ -41,6 +41,8 @@ const ready = (over = {}) => ({
   environment: { state: 'ready' },
   loader: { active: [], started: 3, completed: 3, failures: [] },
   hd: { advertisedIds: [], loadedIds: [], ackRequestIds: [], acknowledgedIds: [], failures: [], ack: null },
+  fonts: { state: 'ready' },
+  shaderCompile: { state: 'ready', revision: 1 },
   postfx: 'effect-composer',
   ...over,
 });
@@ -53,6 +55,8 @@ test('readiness timeout preserves the last snapshot and names every outstanding 
     environment: { state: 'loading', detail: 'studio.hdr' },
     loader: { active: ['/late.png'], started: 1, completed: 0, failures: [] },
     hd: { advertisedIds: ['one', 'two'], loadedIds: [], failures: [], ack: null },
+    fonts: { state: 'loading' },
+    shaderCompile: { state: 'compiling', revision: 1 },
     postfx: null,
   };
   await assert.rejects(
@@ -69,7 +73,8 @@ test('readiness timeout preserves the last snapshot and names every outstanding 
       assert.equal(error.code, 'VISUAL_CAPTURE_TIMEOUT');
       assert.deepEqual(error.outstanding, [
         'course', 'runtime', 'environment', 'loader', 'hd-assets',
-        'hd-policy:HD_ID_SET_MISMATCH', 'hd-policy:HD_ACK_REQUIRED', 'postfx',
+        'hd-policy:HD_ID_SET_MISMATCH', 'hd-policy:HD_ACK_REQUIRED',
+        'fonts', 'shader-compile', 'postfx',
       ]);
       for (const subsystem of error.outstanding) assert.match(error.message, new RegExp(subsystem));
       assert.equal(error.lastSnapshot.environment.state, 'loading');
@@ -162,6 +167,46 @@ test('readiness requires consecutive settled frames and resets on regression', a
   });
   assert.equal(polls, 4);
   assert.equal(result.settledFrames, 2);
+});
+
+test('readiness rejects the wrong course and revision inside the settled-frame gate', async () => {
+  let time = 0;
+  await assert.rejects(
+    waitForCaptureReady({
+      status: () => ready({ course: { name: 'Wrong Course', revision: 2 } }),
+      nextFrame: () => { time += 6; },
+      now: () => time,
+      timeoutMs: 10,
+      requiredSettledFrames: 2,
+      expectedCourse: 'Synthetic Visual',
+      expectedRevision: 1,
+    }),
+    (error) => error instanceof CaptureReadinessTimeout &&
+      error.outstanding.includes('course-identity') &&
+      error.outstanding.includes('course-revision'),
+  );
+});
+
+test('readiness cannot settle while fonts or shader compilation are incomplete', async () => {
+  let time = 0;
+  const snapshots = [
+    ready({ fonts: { state: 'loading' } }),
+    ready(),
+    ready({ shaderCompile: { state: 'compiling', revision: 1 } }),
+    ready(),
+    ready(),
+  ];
+  const result = await waitForCaptureReady({
+    status: () => snapshots.shift(),
+    nextFrame: () => { time += 1; },
+    now: () => time,
+    timeoutMs: 20,
+    requiredSettledFrames: 2,
+    expectedCourse: 'Synthetic Visual',
+    expectedRevision: 1,
+  });
+  assert.equal(result.settledFrames, 2);
+  assert.equal(snapshots.length, 0);
 });
 
 test('loading tracker chains existing callbacks and balances successful and failed loads', () => {

@@ -117,6 +117,8 @@ export class GolfScene {
     window.addEventListener('resize', () => this.resize());
     new ResizeObserver(() => this.resize()).observe(container);
     this._liveFrame = () => this._frame();
+    this._visualCaptureCourseRevision = 0;
+    this.shaderCompileStatus = { state: 'waiting-for-course', revision: 0 };
     this._animationLoopLive = true;
     this._captureFixedTime = null;
     this.renderer.setAnimationLoop(this._liveFrame);
@@ -237,6 +239,11 @@ export class GolfScene {
 
   // ---------- course construction ----------
   loadCourse(geo, { hdAssets = null } = {}) {
+    this._visualCaptureCourseRevision += 1;
+    this.shaderCompileStatus = {
+      state: 'pending',
+      revision: this._visualCaptureCourseRevision,
+    };
     this._treeWind = this._grassWind = this._waterUpdate = this._waterMeshList = this._terrain = null; // drop stale per-course refs
     this._fairwayGrassMesh = this._fairwayGrassWind = this._fairwayGrassCenter = this._fgGeo = this._fgGroup = this._fairwayZoneColorFn = null;
     // HD bundles (one per built hole) each own their textures. hdAssets may be an
@@ -395,6 +402,27 @@ export class GolfScene {
 
     this.courseGroup = group;
     this.scene.add(group);
+  }
+
+  async compileVisualCaptureShaders() {
+    const revision = this._visualCaptureCourseRevision;
+    this.shaderCompileStatus = { state: 'compiling', revision };
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+      if (revision === this._visualCaptureCourseRevision) {
+        this.shaderCompileStatus = { state: 'ready', revision };
+      }
+    } catch (error) {
+      if (revision === this._visualCaptureCourseRevision) {
+        this.shaderCompileStatus = {
+          state: 'failed',
+          revision,
+          error: error?.message || String(error),
+        };
+      }
+      console.error('[visual-capture] shader compilation failed', error);
+    }
+    return { ...this.shaderCompileStatus };
   }
 
   _bounds(geo) {
@@ -1365,6 +1393,7 @@ export class GolfScene {
       loader: this.loadingTracker.status(),
       postfx: this.postfx ? 'effect-composer' : null,
       geometryReady: !!this.geo,
+      shaderCompile: { ...this.shaderCompileStatus },
     };
   }
 
