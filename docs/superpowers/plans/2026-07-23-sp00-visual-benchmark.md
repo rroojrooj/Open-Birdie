@@ -1193,14 +1193,17 @@ incorporated. There is no cross-model tension.
 
 To be completed after implementation:
 
-- **Task-0 outcome:** **CHANGE**. Hidden Electron produced exact-size, nonblank canvas and page PNGs
-  through the real post-processing path on hardware WebGL, and shut down cleanly. Cross-process pixel drift
-  still exceeds the pinned synthetic gate, so Tasks 2-7 must not claim baseline determinism yet.
-- **Commits:** Task-0 implementation commit `test(visual): prove deterministic renderer capture`.
+- **Task-0 outcome:** **GO**. Hidden Electron produced exact-size, nonblank canvas and page PNGs
+  through the real post-processing path on hardware WebGL, and shut down cleanly. The original CHANGE was
+  traced to Three's `GTAOPass._generateNoise()`: each process constructed the denoise simplex-noise texture
+  from `Math.random()`. Open-Birdie now supplies the same 64x64 RGBA algorithm from a local seeded generator,
+  without disabling or retuning GTAO, shadows, bloom, grading, or SMAA.
+- **Commits:** Task-0 implementation commit `test(visual): prove deterministic renderer capture`; deterministic
+  GTAO correction commit `fix(visual): seed GTAO denoise noise`.
 - **PR:** pending/not requested.
-- **Tests:** `node --test test/visual-capture-readiness.test.mjs` passed 7/7; `npm test` passed 308/308;
-  `git diff --check`, `node --check server.js`, and `node --check tools/visual-capture/electron-runner.cjs`
-  passed.
+- **Tests:** `node --test test/gtao-noise.test.mjs test/visual-capture-readiness.test.mjs` passed 11/11;
+  `npm test` passed 312/312; `git diff --check`, `node --check public/render/gtao-noise.js`,
+  `node --check public/render/postfx.js`, and `node --check tools/visual-capture/electron-runner.cjs` passed.
 - **Synthetic capture:** two final independent runs passed readiness and image validation at 1280x720,
   DPR 1, `document.visibilityState=visible`, HDR environment `ready`, loader 14/14 with zero outstanding or
   failed items, forbidden-HD policy with all advertised/loaded/failure/ack sets empty, and `postfx.render`
@@ -1209,24 +1212,29 @@ To be completed after implementation:
   straw `74789c8188c8b46a33a99a4edb2aa3182934c5feb7660d6dcfcfe2693d7699b4`; flower
   `2a445b7cd433bfa013ae17b24bdebfc542c31012617db9b3f8c078e5df39a946`.
 - **Real baseline capture:** pending.
-- **Comparison/stability:** final canvas repeat: mean absolute channel delta `0.08075/255`, max delta `42`,
-  `10,322 / 921,600 = 1.1200%` pixels above the `2/255` threshold. Final page repeat:
-  mean `0.07050/255`, max `40`, `9,070 / 921,600 = 0.9842%`. Both exceed the required `0.05%`;
-  exact PNG hashes also differ. The likely remaining seam is cross-process GPU/post-processing/shadow
-  rasterization, not unseeded visible vegetation or camera time.
+- **Comparison/stability:** before the fix (`probe-j` vs `probe-k`), the canvas repeat had mean absolute
+  channel delta `0.08075/255`, max delta `42`, and `10,322 / 921,600 = 1.1200%` pixels above the `2/255`
+  threshold; the page repeat had mean `0.07050/255`, max `40`, and
+  `9,070 / 921,600 = 0.9842%`. After the seeded GTAO denoise texture
+  (`probe-deterministic-gtao-final-a` vs `probe-deterministic-gtao-final-b`), both canvas and page repeats
+  have mean absolute channel delta `0/255`, max delta `0`, and
+  `0 / 921,600 = 0.0000%` changed pixels. Both PNG pairs are byte-identical, passing the required
+  `<=0.05%` gate without widening tolerance.
 - **Performance environment/results:** pending.
 - **Renderer resource counts:** 20 geometries, 50 textures, 58 compiled programs after eight fixed-time
   warm-up stills. Final-pass `renderer.info.render` reports one fullscreen post-process draw and one triangle,
   so scene-pass timing/counting remains Task 6 work.
-- **Artifact locations:** ignored local evidence under `.shots/visual/task0-probes/probe-j` and `probe-k`.
+- **Artifact locations:** before-fix evidence is under `.shots/visual/task0-probes/probe-j` and `probe-k`;
+  passing after-fix evidence is under `.shots/visual/task0-probes/probe-deterministic-gtao-final-a` and
+  `probe-deterministic-gtao-final-b`. All are ignored local artifacts.
 - **Plan deviations:** the initial fixture frame was changed from idle to the planned real free-camera
   overview after the first repeat exposed larger foreground/readability drift. No generalized CLI, schema,
   comparison service, or GPU timer queries were added.
 - **Known remaining artifacts:** Electron emits its upstream `console-message` deprecation warning; page
   console contains existing Three Clock/shadow-map deprecations and the development CSP warning. No page
   error-level messages were observed.
-- **Follow-ups routed to SP-01+:** none. The repeatability CHANGE is owned by SP-00 and must be resolved
-  before SP-01 begins.
+- **Follow-ups routed to SP-01+:** none. The SP-00 repeatability gate is resolved and no longer blocks the
+  remaining SP-00 harness tasks.
 
 ---
 

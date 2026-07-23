@@ -12,6 +12,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RENDER_CONFIG } from './config.js';
+import { replaceGtaoNoiseTexture } from './gtao-noise.js';
 
 // Cinematic grade in display space (after tone-map/sRGB): gentle contrast +
 // saturation, a warm-highlight / cool-shadow split-tone, and a soft vignette.
@@ -53,6 +54,7 @@ export class PostFX {
     // never haloes over the 12000m far plane (the reason plain SAO was omitted).
     if (RENDER_CONFIG.gtao) {
       const gtao = new GTAOPass(scene, camera, size.x, size.y);
+      replaceGtaoNoiseTexture(gtao);
       gtao.output = GTAOPass.OUTPUT.Default;
       gtao.updateGtaoMaterial({
         radius: 1.6, distanceExponent: 2.0, thickness: 1.0,
