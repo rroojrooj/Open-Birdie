@@ -84,7 +84,8 @@ function readSuccessManifest(runDir, side) {
       !Number.isInteger(capture.width) || capture.width <= 0 ||
       !Number.isInteger(capture.height) || capture.height <= 0 ||
       !Number.isFinite(capture.deviceScaleFactor) || capture.deviceScaleFactor <= 0 ||
-      typeof capture.qualityProfile !== 'string' || !capture.qualityProfile.trim()) {
+      typeof capture.qualityProfile !== 'string' || !capture.qualityProfile.trim() ||
+      !['shown', 'hidden'].includes(capture.windowMode)) {
     invalid('has invalid capture configuration evidence');
   }
   if (!Array.isArray(manifest.inputs) || manifest.inputs.length === 0) {
@@ -233,7 +234,7 @@ function collectCompatibility(before, after, beforeIndex, afterIndex) {
   for (const field of ['id', 'sha256']) {
     compareMismatch(mismatches, `suite.${field}`, before.suite?.[field], after.suite?.[field]);
   }
-  for (const field of ['width', 'height', 'deviceScaleFactor', 'qualityProfile']) {
+  for (const field of ['width', 'height', 'deviceScaleFactor', 'qualityProfile', 'windowMode']) {
     compareMismatch(mismatches, `capture.${field}`, before.capture?.[field], after.capture?.[field]);
   }
   compareMismatch(
@@ -1016,7 +1017,10 @@ export async function runCapture(options, {
         requestedCourse: options.course || null,
         courseIds: selectedCourses.map((course) => course.id),
       },
-      capture: suite.capture,
+      capture: {
+        ...suite.capture,
+        windowMode: options.showWindow ? 'shown' : 'hidden',
+      },
       git,
       evidence: git.dirty ? 'iteration-dirty' : 'clean',
       dataRoot: buildSharedRootManifest(dataDir, { sourceKind: options.dataDir ? 'explicit' : 'default' }),

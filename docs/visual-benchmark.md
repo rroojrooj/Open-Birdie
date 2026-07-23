@@ -59,7 +59,8 @@ npm run visual:compare -- --before "C:\path\to\before-run" --after "C:\path\to\a
 ```
 
 Only compare runs from matching suite data, capture dimensions, DPR, course/frame set, targets, OS, Electron,
-GPU, WebGL, visibility, and quality profile. The comparison preflight rejects incompatible evidence.
+GPU, WebGL, window mode, and quality profile. Every manifest records `capture.windowMode` as `shown` or
+`hidden`, and the comparison preflight rejects a mismatch.
 
 ## Missing course data
 
@@ -87,9 +88,9 @@ The default root is `.shots\visual`. Successful capture layout:
 ```
 
 `manifest.json` records the suite ID/basename/hash, requested course and selected course IDs, normalized
-capture settings, Git SHA and dirty state, sanitized data-root identity/hash, per-course input hashes, frames,
-renderer/capability identity, HD policy, console/runtime events, renderer resource totals, and CPU/GPU timing
-evidence. A failed run stays in its owned
+capture settings including explicit shown/hidden window mode, Git SHA and dirty state, sanitized data-root
+identity/hash, per-course input hashes, frames, renderer/capability identity, HD policy, console/runtime
+events, renderer resource totals, and CPU/GPU timing evidence. A failed run stays in its owned
 `.staging-<pid>` directory with `failure.json`; it is not published as a successful manifest. Use
 `--require-clean` for named release evidence.
 

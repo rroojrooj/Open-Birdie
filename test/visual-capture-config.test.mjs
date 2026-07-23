@@ -557,6 +557,7 @@ function writeComparisonRun(root, {
   height = 2,
   dpr = 1,
   target = 'canvas',
+  windowMode = 'hidden',
   label = 'Course',
   pixel = () => [10, 20, 30, 255],
   environment = comparisonEnvironment(),
@@ -569,7 +570,13 @@ function writeComparisonRun(root, {
     ok: true,
     schemaVersion: 1,
     suite: { id: suiteId, sha256: suiteSha },
-    capture: { width, height, deviceScaleFactor: dpr, qualityProfile: 'current-default' },
+    capture: {
+      width,
+      height,
+      deviceScaleFactor: dpr,
+      qualityProfile: 'current-default',
+      windowMode,
+    },
     git: { sha: 'commit-may-differ', dirty: false },
     dataRoot: { contentHash: 'd'.repeat(64) },
     inputs: [{ courseId, contentHash: 'e'.repeat(64) }],
@@ -647,6 +654,7 @@ test('comparison rejects every manifest mismatch with a typed complete mismatch 
     width: 3,
     dpr: 2,
     target: 'page',
+    windowMode: 'shown',
     environment: {
       ...comparisonEnvironment(),
       electron: '43.0.0',
@@ -662,7 +670,7 @@ test('comparison rejects every manifest mismatch with a typed complete mismatch 
     ),
     (error) => error.code === 'COMPARE_INCOMPATIBLE' &&
       Array.isArray(error.details.mismatches) &&
-      ['suite.id', 'suite.sha256', 'capture.width', 'capture.deviceScaleFactor',
+      ['suite.id', 'suite.sha256', 'capture.width', 'capture.deviceScaleFactor', 'capture.windowMode',
         'dataRoot.contentHash', 'courses', 'environment.electron', 'environment.webgl']
         .every((field) => error.details.mismatches.some((entry) => entry.field === field)),
   );
@@ -732,6 +740,7 @@ test('comparison rejects empty or incomplete success manifests before publishing
     ['schemaVersion', (manifest) => { manifest.schemaVersion = 2; }],
     ['suite.sha256', (manifest) => { delete manifest.suite.sha256; }],
     ['capture.qualityProfile', (manifest) => { delete manifest.capture.qualityProfile; }],
+    ['capture.windowMode', (manifest) => { delete manifest.capture.windowMode; }],
     ['inputs', (manifest) => { manifest.inputs = []; }],
     ['results', (manifest) => { manifest.results = []; }],
     ['course.ok', (manifest) => { manifest.results[0].ok = false; }],
@@ -1343,6 +1352,7 @@ test('dirty iteration is marked, require-clean rejects it, and success publishes
   assert.equal(manifest.evidence, 'iteration-dirty');
   assert.match(manifest.suite.sha256, /^[a-f0-9]{64}$/);
   assert.equal(manifest.capture.deviceScaleFactor, 1);
+  assert.equal(manifest.capture.windowMode, 'hidden');
   assert.equal(manifest.results[0].frames[0].band, 'overview');
   assert.deepEqual(manifest.results[0].frames[0].judges, ['deterministic synthetic overview']);
   assert.equal(JSON.stringify(manifest).includes(path.resolve('test/fixtures/visual-capture-data')), false);
