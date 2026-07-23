@@ -1372,6 +1372,28 @@ B. "Hard gate" below refers to the program's visual-release gates, not SP-00 har
   vegetation placement/shadows to SP-06, and signature course identity/water/landmarks to SP-08. SP-00 no
   longer blocks those phases; its evidence is now their before-state.
 
+### 13.9 Final branch-review closure
+
+- The final branch review found two important harness gaps: suite/course/Git provenance was sampled only
+  before a long run, and the readiness API did not enforce course identity, font settlement, or shader
+  compilation. Commit `ea8e8e0` closes both findings.
+- The suite is now parsed and hashed from one byte buffer. Immediately before publication, the CLI
+  re-hashes that suite and every selected course input and rechecks Git SHA/dirty state; any drift fails
+  with `CAPTURE_INPUT_CHANGED` and leaves only staging/failure evidence. Mutation tests cover suite bytes,
+  course cache content, and Git state changes.
+- Readiness now validates the expected course and revision inside the settled-frame loop and requires both
+  `document.fonts.ready` and `WebGLRenderer.compileAsync` to complete. Regression/timeout tests cover wrong
+  course/revision and unsettled font/compiler states.
+- Final verification on `ea8e8e0`: focused capture/readiness tests 66/66; complete `npm test` 374/374;
+  `git diff --check` clean. A hardware Electron smoke with `--require-clean` published
+  `.shots/visual/sp00-review-fix-clean/synthetic-smoke-2026-07-23T191527-267Z` with `dirty:false`,
+  `fonts.state:"ready"`, `shaderCompile.state:"ready"` at revision 1, zero fatal events, zero page-console
+  errors, and the unchanged deterministic frame hash
+  `2af60e639f2e042c74bc0e9167cb9f0bf97a3efc3ace2f0f20245c80c6104ec1`.
+- The three-course still and 60-second performance artifacts in 13.5-13.7 remain the accepted before-state
+  visual/performance evidence from `a069d80`. They predate the two publication/readiness hardening changes;
+  the clean `ea8e8e0` smoke is the real-renderer proof of those new gates.
+
 ---
 
 ## GSTACK REVIEW REPORT
