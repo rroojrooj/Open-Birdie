@@ -729,7 +729,9 @@ export function validateChildResult(job, result) {
     typeof result.performance?.cpu === 'object' &&
     typeof result.performance?.gpu?.supported === 'boolean' &&
     Array.isArray(result.pageConsole) &&
-    Array.isArray(result.fatalEvents);
+    !result.pageConsole.some((entry) => entry?.level === 'error') &&
+    Array.isArray(result.fatalEvents) &&
+    result.fatalEvents.length === 0;
   if (!evidenceValid) {
     throw childResultInvalid('Child result is missing required capability, renderer, timing, or event evidence', {
       expectedCourse: job.course.id,
@@ -915,6 +917,20 @@ export async function runCapture(options, {
   }
   const resolvedSuite = resolveSuite(options.suite, { root });
   const suite = validateSuite(JSON.parse(fs.readFileSync(resolvedSuite.path, 'utf8')));
+  const selectedCourses = options.course
+    ? suite.courses.filter((course) => course.id === options.course)
+    : suite.courses;
+  if (options.course && selectedCourses.length !== 1) {
+    throw new VisualCaptureError('COURSE_NOT_IN_SUITE', `Course "${options.course}" is not in suite "${suite.id}"`, {
+      stage: 'preflight',
+      recovery: 'Choose a course ID declared by the selected suite, or omit --course.',
+      details: {
+        course: options.course,
+        suite: suite.id,
+        availableCourses: suite.courses.map((course) => course.id),
+      },
+    });
+  }
   const dataDir = path.resolve(root, options.dataDir || (options.mode === 'smoke'
     ? path.join('test', 'fixtures', 'visual-capture-data')
     : 'data'));
@@ -927,7 +943,7 @@ export async function runCapture(options, {
       details: git,
     });
   }
-  const inputs = suite.courses.map((course) => buildCourseInputManifest(dataDir, course));
+  const inputs = selectedCourses.map((course) => buildCourseInputManifest(dataDir, course));
   fs.mkdirSync(outputRoot, { recursive: true });
   const id = runIdFactory(suite.id);
   const finalDir = path.join(outputRoot, id);
@@ -935,8 +951,8 @@ export async function runCapture(options, {
   fs.mkdirSync(stagingRoot);
   const results = [];
   try {
-    for (const [index, course] of suite.courses.entries()) {
-      stderr.write(`[visual] ${index + 1}/${suite.courses.length} ${course.id}\n`);
+    for (const [index, course] of selectedCourses.entries()) {
+      stderr.write(`[visual] ${index + 1}/${selectedCourses.length} ${course.id}\n`);
       const courseOutputDir = path.join(stagingRoot, course.id);
       const resultFile = path.join(courseOutputDir, 'result.json');
       const jobFile = path.join(stagingRoot, `${course.id}.job.json`);
@@ -962,7 +978,7 @@ export async function runCapture(options, {
       // shareable evidence, so remove them before publishing a successful run.
       fs.unlinkSync(jobFile);
     }
-    const courseSpecs = new Map(suite.courses.map((course) => [course.id, course]));
+    const courseSpecs = new Map(selectedCourses.map((course) => [course.id, course]));
     const publishedResults = results.map((result) => {
       const courseSpec = courseSpecs.get(result.course);
       const frameSpecs = new Map((courseSpec?.frames || []).map((frame) => [frame.id, frame]));
@@ -995,6 +1011,10 @@ export async function runCapture(options, {
         sourceKind: resolvedSuite.kind,
         basename: path.basename(resolvedSuite.path),
         sha256: crypto.createHash('sha256').update(fs.readFileSync(resolvedSuite.path)).digest('hex'),
+      },
+      selection: {
+        requestedCourse: options.course || null,
+        courseIds: selectedCourses.map((course) => course.id),
       },
       capture: suite.capture,
       git,

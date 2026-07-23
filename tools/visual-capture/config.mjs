@@ -241,13 +241,14 @@ export function parseCliArgs(argv) {
     const flag = argv[index];
     if (flag === '--require-clean') output.requireClean = true;
     else if (flag === '--show-window') output.showWindow = true;
-    else if (['--suite', '--data-dir', '--output', '--port', '--course-timeout-ms'].includes(flag)) {
+    else if (['--suite', '--data-dir', '--output', '--port', '--course-timeout-ms', '--course'].includes(flag)) {
       const value = valueAfter(argv, index, flag);
       index += 1;
       if (flag === '--suite') output.suite = value;
       else if (flag === '--data-dir') output.dataDir = value;
       else if (flag === '--output') output.output = value;
       else if (flag === '--port') output.port = Number(value);
+      else if (flag === '--course') output.course = value;
       else output.courseTimeoutMs = Number(value);
     } else {
       throw new VisualCaptureError('ARGS_INVALID', `Unknown argument: ${flag}`);
@@ -258,6 +259,9 @@ export function parseCliArgs(argv) {
   }
   if (!Number.isInteger(output.courseTimeoutMs) || output.courseTimeoutMs < 1000) {
     throw new VisualCaptureError('ARGS_INVALID', '--course-timeout-ms must be an integer of at least 1000');
+  }
+  if (output.course && !(new RegExp(ID_PATTERN)).test(output.course)) {
+    throw new VisualCaptureError('ARGS_INVALID', '--course must be a safe course ID (lowercase letters, digits, and hyphens)');
   }
   return output;
 }

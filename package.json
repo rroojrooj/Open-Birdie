@@ -17,6 +17,10 @@
     "build:hd-hole": "node tools/hd-course/cli.mjs build",
     "validate:hd-bundle": "node tools/validate-hd-bundle.js",
     "smoke:hd-providers": "node tools/smoke-hd-providers.mjs",
+    "visual:capture": "node tools/visual-capture/cli.mjs capture",
+    "visual:smoke": "node tools/visual-capture/cli.mjs smoke",
+    "visual:compare": "node tools/visual-capture/cli.mjs compare",
+    "visual:perf": "node tools/visual-capture/cli.mjs perf",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win"
   },

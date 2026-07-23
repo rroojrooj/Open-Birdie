@@ -435,7 +435,8 @@ test('CLI parser recognizes all modes and capture flags', () => {
   assert.equal(parseCliArgs(['smoke']).courseTimeoutMs, 180000);
   assert.deepEqual(parseCliArgs([
     'capture', '--suite', 'baseline', '--data-dir', '.\\data', '--output', '.\\out',
-    '--port', '8123', '--course-timeout-ms', '9000', '--require-clean', '--show-window',
+    '--port', '8123', '--course-timeout-ms', '9000', '--course', 'chambers-bay',
+    '--require-clean', '--show-window',
   ]), {
     mode: 'capture',
     suite: 'baseline',
@@ -443,9 +444,14 @@ test('CLI parser recognizes all modes and capture flags', () => {
     output: '.\\out',
     port: 8123,
     courseTimeoutMs: 9000,
+    course: 'chambers-bay',
     requireClean: true,
     showWindow: true,
   });
+  assert.throws(
+    () => parseCliArgs(['capture', '--course', '..\\other-course']),
+    (error) => error.code === 'ARGS_INVALID' && /--course/.test(error.message),
+  );
   assert.throws(() => parseCliArgs(['unknown']), /ARGS_INVALID/);
 });
 
@@ -1133,6 +1139,31 @@ test('child result validation requires capability, timing, reset, and event evid
   }
 });
 
+test('child result validation cannot publish page console errors or fatal runtime events', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-result-runtime-errors-'));
+  const job = artifactJob(temp);
+  const base = {
+    ok: true,
+    course: 'synthetic',
+    frames: [
+      writeArtifact(temp, 'canvas-frame', 'canvas'),
+      writeArtifact(temp, 'page-frame', 'page'),
+    ],
+    ...diagnosticEvidence(),
+  };
+  for (const mutate of [
+    (result) => { result.pageConsole.push({ level: 'error', message: 'shader failed' }); },
+    (result) => { result.fatalEvents.push({ type: 'render-process-gone' }); },
+  ]) {
+    const result = structuredClone(base);
+    mutate(result);
+    assert.throws(
+      () => validateChildResult(job, result),
+      (error) => error.code === 'CHILD_RESULT_INVALID',
+    );
+  }
+});
+
 test('child result validation decodes every PNG and rejects wrong dimensions or blank bytes', () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-result-image-'));
   const job = artifactJob(temp);
@@ -1351,6 +1382,62 @@ test('perf mode reaches the child with perf mode and the 15-minute default timeo
   });
   assert.equal(seen.job.mode, 'perf');
   assert.equal(seen.childOptions.timeoutMs, 900000);
+});
+
+test('--course filters work to one suite member without changing suite identity', async () => {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-course-filter-'));
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-course-filter-data-'));
+  fs.mkdirSync(path.join(dataRoot, 'courses'));
+  fs.writeFileSync(
+    path.join(dataRoot, 'courses', 'chambers-bay.json'),
+    JSON.stringify({ name: 'Chambers Bay' }),
+  );
+  const options = parseCliArgs([
+    'capture',
+    '--suite', 'baseline',
+    '--course', 'chambers-bay',
+    '--data-dir', dataRoot,
+    '--output', outputRoot,
+  ]);
+  const seen = [];
+  await runCapture(options, {
+    root: path.resolve('.'),
+    gitStateImpl: async () => ({ sha: 'abc123', dirty: false }),
+    runIdFactory: () => 'one-course-run',
+    spawnCourse: async (job) => {
+      seen.push(job.course.id);
+      return { ok: true, course: job.course.id, frames: job.course.frames.map(({ id }) => ({ id })) };
+    },
+    stdout: { write() {} },
+    stderr: { write() {} },
+  });
+  assert.deepEqual(seen, ['chambers-bay']);
+  const manifest = JSON.parse(fs.readFileSync(path.join(outputRoot, 'one-course-run', 'manifest.json')));
+  assert.equal(manifest.suite.id, 'baseline');
+  assert.deepEqual(manifest.selection, {
+    requestedCourse: 'chambers-bay',
+    courseIds: ['chambers-bay'],
+  });
+  assert.deepEqual(manifest.inputs.map(({ courseId }) => courseId), ['chambers-bay']);
+  assert.deepEqual(manifest.results.map(({ course }) => course), ['chambers-bay']);
+});
+
+test('--course rejects a safe ID that is not a member of the selected suite', async () => {
+  await assert.rejects(
+    runCapture({
+      ...parseCliArgs(['capture', '--suite', 'synthetic-smoke', '--course', 'chambers-bay']),
+      dataDir: path.resolve('test/fixtures/visual-capture-data'),
+      output: fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-unknown-course-')),
+    }, {
+      root: path.resolve('.'),
+      gitStateImpl: async () => ({ sha: 'abc123', dirty: false }),
+      stdout: { write() {} },
+      stderr: { write() {} },
+    }),
+    (error) => error.code === 'COURSE_NOT_IN_SUITE' &&
+      error.details.course === 'chambers-bay' &&
+      error.details.suite === 'synthetic-smoke',
+  );
 });
 
 test('failed course preserves staging evidence and never publishes success manifest', async () => {
