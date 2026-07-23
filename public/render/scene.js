@@ -21,7 +21,11 @@ import { RENDER_CONFIG } from './config.js';
 import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
 import { COLORS, DRY_PALETTE, courseDryFor, blendPalette } from './course-character.js';
 import { installLoadingTracker } from './capture-readiness.js';
-import { normalizePerformanceRequest } from './capture-performance.js';
+import {
+  classifyAnimationCadence,
+  disjointQueryDisposition,
+  normalizePerformanceRequest,
+} from './capture-performance.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -1495,14 +1499,22 @@ export class GolfScene {
     const collectQueries = () => {
       if (!timerExtension) return;
       const disjoint = !!gl.getParameter(timerExtension.GPU_DISJOINT_EXT);
+      const disposition = disjointQueryDisposition({
+        disjoint,
+        pendingCount: pendingQueries.length,
+      });
+      if (disposition.discardAll) {
+        discardedDisjoint += disposition.discardedDisjoint;
+        pendingQueries.splice(0).forEach((query) => gl.deleteQuery(query));
+        return;
+      }
       for (let index = pendingQueries.length - 1; index >= 0; index -= 1) {
         const query = pendingQueries[index];
         if (!gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) continue;
         pendingQueries.splice(index, 1);
         const nanoseconds = Number(gl.getQueryParameter(query, gl.QUERY_RESULT));
         gl.deleteQuery(query);
-        if (disjoint) discardedDisjoint += 1;
-        else if (!Number.isFinite(nanoseconds) || nanoseconds <= 0) discardedInvalid += 1;
+        if (!Number.isFinite(nanoseconds) || nanoseconds <= 0) discardedInvalid += 1;
         else gpuSamples.push(nanoseconds / 1e6);
       }
     };
@@ -1594,24 +1606,20 @@ export class GolfScene {
       const medianGpu = sortedGpu.length % 2
         ? sortedGpu[Math.floor(sortedGpu.length / 2)]
         : (sortedGpu[sortedGpu.length / 2 - 1] + sortedGpu[sortedGpu.length / 2]) / 2;
-      const cadenceThrottled = performanceClaim &&
-        sorted.length > 0 &&
-        sortedGpu.length > 0 &&
-        median >= 250 &&
-        median > sortedGpu[Math.min(sortedGpu.length - 1, Math.ceil(sortedGpu.length * 0.95) - 1)] * 5;
+      const cadenceQualification = classifyAnimationCadence({
+        samples: sorted.length,
+        medianMs: median,
+      });
+      if (!cadenceQualification.qualifying) {
+        cadenceQualification.recovery = 'Rerun visual:perf with --show-window so rAF is not occlusion-throttled.';
+      }
       return {
         evidenceClass: performanceClaim
-          ? (cadenceThrottled ? 'performance-non-qualifying' : 'performance')
+          ? (cadenceQualification.qualifying ? 'performance' : 'performance-non-qualifying')
           : 'diagnostic-only',
         requestedPerformanceClaim: performanceClaim,
-        performanceClaim: performanceClaim && !cadenceThrottled,
-        cadenceQualification: cadenceThrottled
-          ? {
-            qualifying: false,
-            reason: 'animation-cadence-throttled',
-            recovery: 'Rerun visual:perf with --show-window so rAF is not occlusion-throttled.',
-          }
-          : { qualifying: true, reason: null },
+        performanceClaim: performanceClaim && cadenceQualification.qualifying,
+        cadenceQualification,
         routeFrames: routeFrames.map((frame) => frame.id || null),
         warmup: resetPoint,
         sample: {

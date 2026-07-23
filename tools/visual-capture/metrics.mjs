@@ -48,6 +48,12 @@ export function classifyRendererCapability(input) {
   if (compositing !== 'enabled') {
     reasons.push({ code: 'GPU_COMPOSITING_DISABLED', detail: compositing ?? 'missing' });
   }
+  for (const feature of ['webgl', 'webgl2']) {
+    const status = input.gpuFeatureStatus?.[feature];
+    if (typeof status === 'string' && /software|unavailable|disabled/i.test(status)) {
+      reasons.push({ code: 'WEBGL_GPU_DISABLED', detail: { feature, status } });
+    }
+  }
   if (input.devicePixelRatio !== 1) {
     reasons.push({ code: 'DPR_MISMATCH', detail: input.devicePixelRatio });
   }

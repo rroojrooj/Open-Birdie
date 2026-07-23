@@ -9,7 +9,11 @@ import test from 'node:test';
 import { PNG } from 'pngjs';
 import { createRequire } from 'node:module';
 
-import { normalizePerformanceRequest } from '../public/render/capture-performance.js';
+import {
+  classifyAnimationCadence,
+  disjointQueryDisposition,
+  normalizePerformanceRequest,
+} from '../public/render/capture-performance.js';
 import {
   VisualCaptureError,
   assertCourseIdentity,
@@ -95,6 +99,47 @@ test('renderer capability does not reject a hardware-backed exact capture', () =
   assert.deepEqual(result.reasons, []);
 });
 
+test('renderer capability rejects explicit WebGL software/unavailable status behind masked strings', () => {
+  for (const [field, status] of [
+    ['webgl', 'unavailable_software'],
+    ['webgl', 'disabled_software'],
+    ['webgl2', 'unavailable_off'],
+    ['webgl2', 'disabled_off'],
+  ]) {
+    const result = classifyRendererCapability({
+      vendor: 'WebKit',
+      renderer: 'WebKit WebGL',
+      gpuFeatureStatus: {
+        gpu_compositing: 'enabled',
+        [field]: status,
+        video_decode: 'disabled_off_ok',
+      },
+      devicePixelRatio: 1,
+      innerSize: { width: 1280, height: 720 },
+      drawingBufferSize: { width: 1280, height: 720 },
+      expectedSize: { width: 1280, height: 720 },
+      visibilityState: 'visible',
+    });
+    assert.equal(result.qualifying, false);
+    assert.ok(result.reasons.some((reason) => reason.code === 'WEBGL_GPU_DISABLED'));
+  }
+  const benignUnrelated = classifyRendererCapability({
+    vendor: 'WebKit',
+    renderer: 'WebKit WebGL',
+    gpuFeatureStatus: {
+      gpu_compositing: 'enabled',
+      webgl: 'enabled',
+      video_decode: 'disabled_off_ok',
+    },
+    devicePixelRatio: 1,
+    innerSize: { width: 1280, height: 720 },
+    drawingBufferSize: { width: 1280, height: 720 },
+    expectedSize: { width: 1280, height: 720 },
+    visibilityState: 'visible',
+  });
+  assert.equal(benignUnrelated.qualifying, true);
+});
+
 test('GPU timer evidence distinguishes unsupported, invalid, and disjoint samples', () => {
   assert.deepEqual(normalizeGpuTimerSamples({ supported: false, reason: 'extension-unavailable' }), {
     supported: false,
@@ -140,6 +185,28 @@ test('performance request defaults to diagnostic and clamps claims to 60 seconds
   assert.equal(normalizePerformanceRequest({ durationMs: 2000, claim: 'performance' }).sampleDuration, 60000);
   assert.equal(normalizePerformanceRequest({ durationMs: 90000, claim: 'performance' }).sampleDuration, 90000);
   assert.equal(normalizePerformanceRequest({ durationMs: 100, claim: 'diagnostic-only' }).sampleDuration, 250);
+});
+
+test('performance cadence fails independently of GPU timer support', () => {
+  assert.deepEqual(classifyAnimationCadence({ samples: 60, medianMs: 1000 }), {
+    qualifying: false,
+    reason: 'animation-cadence-throttled',
+    medianMs: 1000,
+    minimumFps: 4,
+  });
+  assert.equal(classifyAnimationCadence({ samples: 600, medianMs: 16.7 }).qualifying, true);
+  assert.equal(classifyAnimationCadence({ samples: 0, medianMs: Number.NaN }).qualifying, false);
+});
+
+test('a disjoint observation discards every pending GPU query immediately', () => {
+  assert.deepEqual(disjointQueryDisposition({ disjoint: true, pendingCount: 7 }), {
+    discardAll: true,
+    discardedDisjoint: 7,
+  });
+  assert.deepEqual(disjointQueryDisposition({ disjoint: false, pendingCount: 7 }), {
+    discardAll: false,
+    discardedDisjoint: 0,
+  });
 });
 
 test('runner performance request uses 60 seconds only for perf jobs', () => {
