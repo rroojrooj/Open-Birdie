@@ -1,7 +1,7 @@
 // Open-Birdie UI glue: SSE <-> HUD <-> 3D scene.
 import { GolfScene } from './render/scene.js';
 import { loadHdBundle } from './render/hd-bundle.js';
-import { waitForCaptureReady } from './render/capture-readiness.js';
+import { validateHdPolicy, waitForCaptureReady } from './render/capture-readiness.js';
 import { toPar, forwardLabel, verdict } from './scoring.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +19,7 @@ let clubPresets = {};
 let prevOver = false;   // round-over auto-open latch (open the card once, not every state event)
 let reviewHole = null;  // index of a played hole being reviewed on the scorecard
 let captureCourse = null;
-let captureHd = { advertised: 0, loaded: 0, failures: [], ack: null };
+let captureHd = { advertisedIds: [], loadedIds: [], failures: [], ack: null };
 
 const CLUBS = [
   ['DR', 'DR'], ['3W', 'W3'], ['3H', 'H3'], ['4i', 'I4'], ['5i', 'I5'], ['6i', 'I6'],
@@ -73,7 +73,12 @@ async function loadGeometry() {
   // geo.hd is an ARRAY of bundle metadata (one per built hole) or null. Load each;
   // a single failed bundle just drops that one hole's HD relief, not the rest.
   const metas = Array.isArray(geo.hd) ? geo.hd : (geo.hd ? [geo.hd] : []);
-  captureHd = { advertised: metas.length, loaded: 0, failures: [], ack: null };
+  captureHd = {
+    advertisedIds: metas.map((meta) => meta.bundleId),
+    loadedIds: [],
+    failures: [],
+    ack: null,
+  };
   let hdAssets = [];
   if (metas.length) {
     const loaded = await Promise.all(metas.map(async (meta) => {
@@ -92,7 +97,7 @@ async function loadGeometry() {
       }
     }));
     hdAssets = loaded.map((entry) => entry.asset).filter(Boolean);
-    captureHd.loaded = hdAssets.length;
+    captureHd.loadedIds = loaded.filter((entry) => entry.asset).map((entry) => entry.meta.bundleId);
     captureHd.failures = loaded.filter((entry) => entry.error).map((entry) => ({
       bundleId: entry.meta?.bundleId || null,
       hole: entry.meta?.hole || null,
@@ -152,6 +157,9 @@ if (query.get('visualCapture') === '1') {
     },
     vegetationTextureChecksums() {
       return scene.visualCaptureVegetationChecksums();
+    },
+    validateHdPolicy(policy) {
+      return validateHdPolicy(captureHd, policy);
     },
   });
 }

@@ -78,17 +78,54 @@ export function installLoadingTracker(manager, { now } = {}) {
   return tracker;
 }
 
-export function outstandingSubsystems(snapshot) {
+const sortedUnique = (values) => [...new Set((values || []).filter((value) => typeof value === 'string'))].sort();
+
+export function validateHdPolicy(hd = {}, policy = 'optional') {
+  if (!['required', 'optional', 'forbidden'].includes(policy)) {
+    return { ok: false, policy, violations: ['HD_POLICY_UNKNOWN'] };
+  }
+  const advertisedIds = sortedUnique(hd.advertisedIds);
+  const loadedIds = sortedUnique(hd.loadedIds);
+  const failures = Array.isArray(hd.failures) ? hd.failures : [];
+  const violations = [];
+  if (policy === 'required') {
+    if (!advertisedIds.length) violations.push('HD_REQUIRED_EMPTY');
+    if (failures.length) violations.push('HD_FAILURES');
+    if (advertisedIds.length !== loadedIds.length ||
+        advertisedIds.some((id, index) => id !== loadedIds[index])) {
+      violations.push('HD_ID_SET_MISMATCH');
+    }
+    if (!hd.ack?.ok) violations.push('HD_ACK_REQUIRED');
+  } else if (policy === 'forbidden') {
+    if (advertisedIds.length) violations.push('HD_FORBIDDEN_ADVERTISED');
+    if (loadedIds.length) violations.push('HD_FORBIDDEN_LOADED');
+    if (failures.length) violations.push('HD_FORBIDDEN_FAILURES');
+    if (hd.ack != null) violations.push('HD_FORBIDDEN_ACK');
+  }
+  return {
+    ok: violations.length === 0,
+    policy,
+    advertisedIds,
+    loadedIds,
+    failures: clone(failures),
+    ack: hd.ack == null ? null : clone(hd.ack),
+    violations,
+  };
+}
+
+export function outstandingSubsystems(snapshot, { hdPolicy = 'optional' } = {}) {
   const outstanding = [];
   if (!snapshot?.course?.name || !Number.isInteger(snapshot?.course?.revision)) outstanding.push('course');
   if (!snapshot?.runtimeReady) outstanding.push('runtime');
   if (!['ready', 'fallback'].includes(snapshot?.environment?.state)) outstanding.push('environment');
   if ((snapshot?.loader?.active || []).length) outstanding.push('loader');
   const hd = snapshot?.hd || {};
-  const advertised = Number(hd.advertised || 0);
-  const accounted = Number(hd.loaded || 0) + Number(hd.failures?.length || 0);
+  const advertised = (hd.advertisedIds || []).length;
+  const accounted = (hd.loadedIds || []).length + Number(hd.failures?.length || 0);
   if (accounted < advertised) outstanding.push('hd-assets');
-  if (advertised > 0 && !hd.ack?.ok) outstanding.push('hd-ack');
+  for (const violation of validateHdPolicy(hd, hdPolicy).violations) {
+    outstanding.push(`hd-policy:${violation}`);
+  }
   if (snapshot?.postfx !== 'effect-composer') outstanding.push('postfx');
   return outstanding;
 }
@@ -99,6 +136,7 @@ export async function waitForCaptureReady({
   now = () => Date.now(),
   timeoutMs = 15_000,
   requiredSettledFrames = 3,
+  hdPolicy = 'optional',
 } = {}) {
   if (typeof status !== 'function' || typeof nextFrame !== 'function') {
     throw new TypeError('status and nextFrame functions are required');
@@ -109,7 +147,7 @@ export async function waitForCaptureReady({
   let outstanding = ['not-polled'];
   for (;;) {
     lastSnapshot = await status();
-    outstanding = outstandingSubsystems(lastSnapshot);
+    outstanding = outstandingSubsystems(lastSnapshot, { hdPolicy });
     settledFrames = outstanding.length ? 0 : settledFrames + 1;
     if (settledFrames >= requiredSettledFrames) {
       return { snapshot: clone(lastSnapshot), settledFrames, elapsedMs: now() - startedAt };

@@ -5,12 +5,17 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { PNG } = require('pngjs');
+const { resolveTask0Output } = require('./output-path.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const FIXTURE_DATA = path.join(ROOT, 'test', 'fixtures', 'visual-capture-data');
 const SUITE_PATH = path.join(__dirname, 'suites', 'synthetic-smoke.json');
-const outputArg = process.argv.slice(2).find((arg) => !arg.endsWith('electron-runner.cjs'));
-const OUTPUT_DIR = path.resolve(outputArg || path.join(ROOT, '.artifacts', 'visual-capture-probe'));
+const OWNED_OUTPUT_ROOT = path.join(ROOT, '.shots', 'visual', 'task0-probes');
+const outputArg = process.argv.slice(2).find((arg) => !arg.startsWith('-') && !arg.endsWith('electron-runner.cjs'));
+const OUTPUT_DIR = resolveTask0Output(
+  OWNED_OUTPUT_ROOT,
+  outputArg || path.join(OWNED_OUTPUT_ROOT, 'probe'),
+);
 
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 process.env.BIRDIE_NO_WATCH = '1';
@@ -77,7 +82,11 @@ async function run() {
     });
     await win.loadURL(`${origin}/?visualCapture=1&primaryNonce=${encodeURIComponent(srv.primaryNonce)}`);
     await win.webContents.executeJavaScript(
-      'window.__birdie.visualCapture.waitUntilReady({ timeoutMs: 30000, requiredSettledFrames: 3 })',
+      `window.__birdie.visualCapture.waitUntilReady({
+        timeoutMs: 30000,
+        requiredSettledFrames: 3,
+        hdPolicy: ${JSON.stringify(suite.hdPolicy)}
+      })`,
       true,
     );
 
@@ -106,6 +115,11 @@ async function run() {
       'window.__birdie.visualCapture.vegetationTextureChecksums()',
       true,
     );
+    const hdPolicy = await win.webContents.executeJavaScript(
+      `window.__birdie.visualCapture.validateHdPolicy(${JSON.stringify(suite.hdPolicy)})`,
+      true,
+    );
+    if (!hdPolicy.ok) throw new Error(`HD_POLICY ${JSON.stringify(hdPolicy)}`);
     for (const kind of ['straw', 'flower']) {
       const checksum = vegetationTextureChecksums[kind];
       if (!checksum?.stable || checksum.a !== checksum.b) {
@@ -173,6 +187,7 @@ async function run() {
       diagnostics,
       pageState,
       vegetationTextureChecksums,
+      hdPolicy,
       pageConsole,
     };
     fs.writeFileSync(path.join(OUTPUT_DIR, 'result.json'), JSON.stringify(result, null, 2));

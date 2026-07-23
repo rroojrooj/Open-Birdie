@@ -1,19 +1,27 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import {
   CaptureReadinessTimeout,
   installLoadingTracker,
+  validateHdPolicy,
   waitForCaptureReady,
 } from '../public/render/capture-readiness.js';
 import { vegetationTextureCommands } from '../public/render/vegetation.js';
+
+const require = createRequire(import.meta.url);
+const { resolveTask0Output } = require('../tools/visual-capture/output-path.cjs');
 
 const ready = (over = {}) => ({
   course: { name: 'Synthetic Visual', revision: 1 },
   runtimeReady: true,
   environment: { state: 'ready' },
   loader: { active: [], started: 3, completed: 3, failures: [] },
-  hd: { advertised: 0, loaded: 0, failures: [], ack: null },
+  hd: { advertisedIds: [], loadedIds: [], failures: [], ack: null },
   postfx: 'effect-composer',
   ...over,
 });
@@ -25,7 +33,7 @@ test('readiness timeout preserves the last snapshot and names every outstanding 
     runtimeReady: false,
     environment: { state: 'loading', detail: 'studio.hdr' },
     loader: { active: ['/late.png'], started: 1, completed: 0, failures: [] },
-    hd: { advertised: 2, loaded: 0, failures: [], ack: null },
+    hd: { advertisedIds: ['one', 'two'], loadedIds: [], failures: [], ack: null },
     postfx: null,
   };
   await assert.rejects(
@@ -35,18 +43,59 @@ test('readiness timeout preserves the last snapshot and names every outstanding 
       now: () => time,
       timeoutMs: 10,
       requiredSettledFrames: 2,
+      hdPolicy: 'required',
     }),
     (error) => {
       assert.ok(error instanceof CaptureReadinessTimeout);
       assert.equal(error.code, 'VISUAL_CAPTURE_TIMEOUT');
       assert.deepEqual(error.outstanding, [
-        'course', 'runtime', 'environment', 'loader', 'hd-assets', 'hd-ack', 'postfx',
+        'course', 'runtime', 'environment', 'loader', 'hd-assets',
+        'hd-policy:HD_ID_SET_MISMATCH', 'hd-policy:HD_ACK_REQUIRED', 'postfx',
       ]);
       for (const subsystem of error.outstanding) assert.match(error.message, new RegExp(subsystem));
       assert.equal(error.lastSnapshot.environment.state, 'loading');
       assert.deepEqual(error.lastSnapshot, blocked);
       return true;
     },
+  );
+});
+
+test('required HD policy detects a middle-bundle failure and compares exact ID sets', () => {
+  const middleFailure = {
+    advertisedIds: ['bundle-a', 'bundle-b', 'bundle-c'],
+    loadedIds: ['bundle-c', 'bundle-a'],
+    failures: [{ bundleId: 'bundle-b', hole: 2, message: 'decode failed' }],
+    ack: { ok: true, mode: 'hd' },
+  };
+  const result = validateHdPolicy(middleFailure, 'required');
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.advertisedIds, ['bundle-a', 'bundle-b', 'bundle-c']);
+  assert.deepEqual(result.loadedIds, ['bundle-a', 'bundle-c']);
+  assert.deepEqual(result.failures, middleFailure.failures);
+  assert.deepEqual(result.violations, ['HD_FAILURES', 'HD_ID_SET_MISMATCH']);
+
+  assert.equal(validateHdPolicy({
+    advertisedIds: ['bundle-a', 'bundle-b'],
+    loadedIds: ['bundle-b', 'bundle-a'],
+    failures: [],
+    ack: { ok: true },
+  }, 'required').ok, true);
+});
+
+test('optional HD policy settles with visible failures; forbidden requires every HD set empty', () => {
+  const failedOptional = {
+    advertisedIds: ['bundle-a'],
+    loadedIds: [],
+    failures: [{ bundleId: 'bundle-a', message: 'missing texture' }],
+    ack: null,
+  };
+  const optional = validateHdPolicy(failedOptional, 'optional');
+  assert.equal(optional.ok, true);
+  assert.deepEqual(optional.failures, failedOptional.failures);
+  assert.equal(validateHdPolicy({ advertisedIds: [], loadedIds: [], failures: [], ack: null }, 'forbidden').ok, true);
+  assert.deepEqual(
+    validateHdPolicy(failedOptional, 'forbidden').violations,
+    ['HD_FORBIDDEN_ADVERTISED', 'HD_FORBIDDEN_FAILURES'],
   );
 });
 
@@ -113,4 +162,28 @@ test('two independent visible vegetation texture builds have identical command c
     straw: '51671f90011740256e0bc98e160c3cefe2ee247545400cd02ec3d4135f87ee3d',
     flower: '0242e67094b71635e28c3cbf2009ae62438cee3f498a2c32e82f7bcce6e3e0d0',
   });
+});
+
+test('Task-0 output containment accepts descendants and rejects root/traversal/symlink escape', (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-capture-output-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const root = path.join(temp, '.shots', 'visual', 'task0-probes');
+  fs.mkdirSync(root, { recursive: true });
+  assert.equal(
+    resolveTask0Output(root, path.join(root, 'probe-a')),
+    path.join(root, 'probe-a'),
+  );
+  assert.throws(() => resolveTask0Output(root, root), /OUTPUT_PATH_ROOT/);
+  assert.throws(() => resolveTask0Output(root, path.join(root, '..', 'escaped')), /OUTPUT_PATH_ESCAPE/);
+
+  const outside = path.join(temp, 'outside');
+  const link = path.join(root, 'linked-outside');
+  fs.mkdirSync(outside);
+  try {
+    fs.symlinkSync(outside, link, 'junction');
+    assert.throws(() => resolveTask0Output(root, path.join(link, 'probe')), /OUTPUT_PATH_ESCAPE/);
+  } catch (error) {
+    if (error.code !== 'EPERM') throw error;
+    t.diagnostic('symlink escape assertion skipped: junction creation requires Windows developer privileges');
+  }
 });

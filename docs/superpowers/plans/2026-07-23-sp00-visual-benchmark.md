@@ -1198,12 +1198,13 @@ To be completed after implementation:
   still exceeds the pinned synthetic gate, so Tasks 2-7 must not claim baseline determinism yet.
 - **Commits:** Task-0 implementation commit `test(visual): prove deterministic renderer capture`.
 - **PR:** pending/not requested.
-- **Tests:** `node --test test/visual-capture-readiness.test.mjs` passed 4/4; `npm test` passed 305/305;
+- **Tests:** `node --test test/visual-capture-readiness.test.mjs` passed 7/7; `npm test` passed 308/308;
   `git diff --check`, `node --check server.js`, and `node --check tools/visual-capture/electron-runner.cjs`
   passed.
 - **Synthetic capture:** two final independent runs passed readiness and image validation at 1280x720,
   DPR 1, `document.visibilityState=visible`, HDR environment `ready`, loader 14/14 with zero outstanding or
-  failed items, and `postfx.render` still marker. Canvas luminance range was 200. Two independently
+  failed items, forbidden-HD policy with all advertised/loaded/failure/ack sets empty, and `postfx.render`
+  still marker. Canvas luminance range was 200. Two independently
   rasterized Canvas2D builds per run, and both separate Electron runs, produced exact matching RGBA SHA-256:
   straw `74789c8188c8b46a33a99a4edb2aa3182934c5feb7660d6dcfcfe2693d7699b4`; flower
   `2a445b7cd433bfa013ae17b24bdebfc542c31012617db9b3f8c078e5df39a946`.
