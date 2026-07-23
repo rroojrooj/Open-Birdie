@@ -1203,7 +1203,10 @@ To be completed after implementation:
   passed.
 - **Synthetic capture:** two final independent runs passed readiness and image validation at 1280x720,
   DPR 1, `document.visibilityState=visible`, HDR environment `ready`, loader 14/14 with zero outstanding or
-  failed items, and `postfx.render` still marker. Canvas luminance range was 200.
+  failed items, and `postfx.render` still marker. Canvas luminance range was 200. Two independently
+  rasterized Canvas2D builds per run, and both separate Electron runs, produced exact matching RGBA SHA-256:
+  straw `74789c8188c8b46a33a99a4edb2aa3182934c5feb7660d6dcfcfe2693d7699b4`; flower
+  `2a445b7cd433bfa013ae17b24bdebfc542c31012617db9b3f8c078e5df39a946`.
 - **Real baseline capture:** pending.
 - **Comparison/stability:** final canvas repeat: mean absolute channel delta `0.08075/255`, max delta `42`,
   `10,322 / 921,600 = 1.1200%` pixels above the `2/255` threshold. Final page repeat:
@@ -1214,7 +1217,7 @@ To be completed after implementation:
 - **Renderer resource counts:** 20 geometries, 50 textures, 58 compiled programs after eight fixed-time
   warm-up stills. Final-pass `renderer.info.render` reports one fullscreen post-process draw and one triangle,
   so scene-pass timing/counting remains Task 6 work.
-- **Artifact locations:** ignored local evidence under `.shots/visual/task0-probes/probe-h` and `probe-i`.
+- **Artifact locations:** ignored local evidence under `.shots/visual/task0-probes/probe-j` and `probe-k`.
 - **Plan deviations:** the initial fixture frame was changed from idle to the planned real free-camera
   overview after the first repeat exposed larger foreground/readability drift. No generalized CLI, schema,
   comparison service, or GPU timer queries were added.

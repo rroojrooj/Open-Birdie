@@ -150,6 +150,9 @@ if (query.get('visualCapture') === '1') {
     diagnostics() {
       return { ...this.status(), scene: scene.visualCaptureDiagnostics() };
     },
+    vegetationTextureChecksums() {
+      return scene.visualCaptureVegetationChecksums();
+    },
   });
 }
 

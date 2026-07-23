@@ -102,6 +102,16 @@ async function run() {
       })`,
       true,
     );
+    const vegetationTextureChecksums = await win.webContents.executeJavaScript(
+      'window.__birdie.visualCapture.vegetationTextureChecksums()',
+      true,
+    );
+    for (const kind of ['straw', 'flower']) {
+      const checksum = vegetationTextureChecksums[kind];
+      if (!checksum?.stable || checksum.a !== checksum.b) {
+        throw new Error(`VEGETATION_TEXTURE_DRIFT ${kind}: ${JSON.stringify(checksum)}`);
+      }
+    }
     if (pageState.visibilityState !== 'visible') throw new Error(`PAGE_HIDDEN ${pageState.visibilityState}`);
     if (pageState.devicePixelRatio !== 1) throw new Error(`DPR expected 1, got ${pageState.devicePixelRatio}`);
     if (pageState.readiness.course?.name !== 'Open Birdie Synthetic Visual' ||
@@ -162,6 +172,7 @@ async function run() {
       page: pageCheck,
       diagnostics,
       pageState,
+      vegetationTextureChecksums,
       pageConsole,
     };
     fs.writeFileSync(path.join(OUTPUT_DIR, 'result.json'), JSON.stringify(result, null, 2));

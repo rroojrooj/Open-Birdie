@@ -69,7 +69,7 @@ export function vegetationTextureCommands(kind) {
 // Pine-straw mat: a faint continuous brown disc (densest at the trunk, fading to
 // nothing at the rim so it feathers into turf) with many short needle strokes on
 // top for litter detail. The transparent gaps let blades of turf show through.
-function strawTexture() {
+function strawTextureCanvas() {
   const s = 256, cv = document.createElement('canvas');
   cv.width = cv.height = s;
   const ctx = cv.getContext('2d');
@@ -90,7 +90,11 @@ function strawTexture() {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  const t = new THREE.CanvasTexture(cv);
+  return cv;
+}
+
+function strawTexture() {
+  const t = new THREE.CanvasTexture(strawTextureCanvas());
   t.anisotropy = 4;
   return t;
 }
@@ -129,7 +133,7 @@ export function buildPineStraw(treeSpots, hAt, V) {
 
 // A bushy blob of white blossoms (tinted per-instance to the azalea color) with
 // a few dark leaf gaps, on a transparent ground. Alpha-tested, so no sorting.
-function flowerTexture() {
+function flowerTextureCanvas() {
   const s = 128, cv = document.createElement('canvas');
   cv.width = cv.height = s;
   const ctx = cv.getContext('2d');
@@ -146,9 +150,36 @@ function flowerTexture() {
     }
     ctx.beginPath(); ctx.arc(command.cx, command.cy, command.radius, 0, Math.PI * 2); ctx.fill();
   }
-  const t = new THREE.CanvasTexture(cv);
+  return cv;
+}
+
+function flowerTexture() {
+  const t = new THREE.CanvasTexture(flowerTextureCanvas());
   t.anisotropy = 4;
   return t;
+}
+
+async function canvasPixelChecksum(canvas) {
+  const ctx = canvas.getContext('2d');
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const digest = await crypto.subtle.digest('SHA-256', pixels);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// Capture-only test seam. The production texture constructors above use these
+// exact Canvas2D builders; constructing each twice proves the rasterized RGBA
+// output, not merely the seeded command stream, is stable in the real browser.
+export async function vegetationTexturePixelChecksums() {
+  const [strawA, strawB, flowerA, flowerB] = await Promise.all([
+    canvasPixelChecksum(strawTextureCanvas()),
+    canvasPixelChecksum(strawTextureCanvas()),
+    canvasPixelChecksum(flowerTextureCanvas()),
+    canvasPixelChecksum(flowerTextureCanvas()),
+  ]);
+  return {
+    straw: { a: strawA, b: strawB, stable: strawA === strawB },
+    flower: { a: flowerA, b: flowerB, stable: flowerA === flowerB },
+  };
 }
 
 // Two crossed vertical quads -> a billboard that reads as a bush from any angle.

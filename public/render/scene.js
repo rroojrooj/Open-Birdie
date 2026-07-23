@@ -7,7 +7,7 @@ import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } fro
 import { makeAerialFog } from './atmosphere.js';
 import { buildCardTrees } from './tree-cards.js';
 import { buildGrounding } from './grounding.js';
-import { buildPineStraw, buildFlowers } from './vegetation.js';
+import { buildPineStraw, buildFlowers, vegetationTexturePixelChecksums } from './vegetation.js';
 import { buildRakes } from './props.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
@@ -1417,6 +1417,10 @@ export class GolfScene {
       environment: { ...this.environmentStatus },
       loader: this.loadingTracker.status(),
     };
+  }
+
+  visualCaptureVegetationChecksums() {
+    return vegetationTexturePixelChecksums();
   }
 
   _inputs() {
