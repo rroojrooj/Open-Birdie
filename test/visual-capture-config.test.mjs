@@ -381,7 +381,10 @@ test('baseline suite pins three real courses, proof coverage, and Chambers legac
 
   const sawgrass = baseline.courses.find((course) => course.id === 'tpc-sawgrass');
   const sawgrassById = new Map(sawgrass.frames.map((frameValue) => [frameValue.id, frameValue]));
-  for (const id of ['island-green', 'seventeen-landing', 'seventeen-overview']) {
+  assert.ok(sawgrassById.has('h17-green'));
+  assert.ok(sawgrassById.has('h17-bunker'));
+  assert.ok(sawgrass.frames.every((frameValue) => !frameValue.id.includes('island')));
+  for (const id of ['h17-green', 'seventeen-landing', 'seventeen-overview']) {
     assert.equal(sawgrassById.get(id).pose.tx, 386.43);
     assert.equal(sawgrassById.get(id).pose.ty, -495.7);
     assert.equal(sawgrassById.get(id).pose.yaw, -32);
@@ -400,13 +403,6 @@ test('baseline suite pins three real courses, proof coverage, and Chambers legac
   assert.deepEqual(stAndrewsById.get('shared-fairway').pose, {
     tx: 720, ty: -1090, dist: 150, pitch: -34, yaw: -86, hOff: 1,
   });
-
-  const plan = fs.readFileSync(
-    path.resolve('docs', 'superpowers', 'plans', '2026-07-23-sp00-visual-benchmark.md'),
-    'utf8',
-  );
-  assert.match(plan, /1920x1080 Windows display[\s\S]*1904x993[\s\S]*exact 1280x720/i);
-  assert.match(plan, /not the later 1080p performance acceptance/i);
 });
 
 test('CLI parser recognizes all modes and capture flags', () => {

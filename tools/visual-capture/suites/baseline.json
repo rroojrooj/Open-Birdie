@@ -164,7 +164,7 @@
           ]
         },
         {
-          "id": "island-green",
+          "id": "h17-green",
           "role": "close-green",
           "target": "canvas",
           "mode": "free",
@@ -182,7 +182,7 @@
           ]
         },
         {
-          "id": "island-sand",
+          "id": "h17-bunker",
           "role": "close-bunker",
           "target": "canvas",
           "mode": "free",
