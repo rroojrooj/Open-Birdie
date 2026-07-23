@@ -1199,50 +1199,178 @@ incorporated. There is no cross-model tension.
 
 ## 13. Done record
 
-To be completed after implementation:
+Completed on 2026-07-24 (Asia/Bangkok; artifact timestamps are UTC).
 
-- **Task-0 outcome:** **GO**. Hidden Electron produced exact-size, nonblank canvas and page PNGs
-  through the real post-processing path on hardware WebGL, and shut down cleanly. The original CHANGE was
-  traced to Three's `GTAOPass._generateNoise()`: each process constructed the denoise simplex-noise texture
-  from `Math.random()`. Open-Birdie now supplies the same 64x64 RGBA algorithm from a local seeded generator,
-  without disabling or retuning GTAO, shadows, bloom, grading, or SMAA.
-- **Commits:** Task-0 implementation commit `test(visual): prove deterministic renderer capture`; deterministic
-  GTAO correction commit `fix(visual): seed GTAO denoise noise`.
-- **PR:** pending/not requested.
-- **Tests:** `node --test test/gtao-noise.test.mjs test/visual-capture-readiness.test.mjs` passed 11/11;
-  `npm test` passed 312/312; `git diff --check`, `node --check public/render/gtao-noise.js`,
-  `node --check public/render/postfx.js`, and `node --check tools/visual-capture/electron-runner.cjs` passed.
-- **Synthetic capture:** two final independent runs passed readiness and image validation at 1280x720,
-  DPR 1, `document.visibilityState=visible`, HDR environment `ready`, loader 14/14 with zero outstanding or
-  failed items, forbidden-HD policy with all advertised/loaded/failure/ack sets empty, and `postfx.render`
-  still marker. Canvas luminance range was 200. Two independently
-  rasterized Canvas2D builds per run, and both separate Electron runs, produced exact matching RGBA SHA-256:
+### 13.1 Verdict
+
+- **SP-00 measurement verdict: GO / complete.** The real application renderer now has a deterministic,
+  hardware-qualified, fixed-suite capture/compare/performance workflow. Two clean synthetic runs and two
+  clean full baselines reproduced exactly. All 24 real baseline frames were inspected.
+- **Professional-visual verdict: NOT READY.** This is not a harness failure. The evidence exposes current
+  renderer/content debt: course-tile voids, rectangular material/aerial boundaries, mask/checker artifacts,
+  floating-looking vegetation/shadows, incomplete signature water/feature representation, and weak
+  cross-course identity. Those visual hard gates remain open for SP-01+ implementation.
+- **Task-0 outcome: GO.** Hidden Electron captures exact-size, nonblank canvas/page PNGs through
+  `postfx.render` on hardware WebGL and exits cleanly. The original repeat drift came from Three
+  `GTAOPass._generateNoise()` constructing a denoise texture from `Math.random()`. The local deterministic
+  64x64 RGBA replacement preserves GTAO, shadows, bloom, grading, and SMAA.
+- **PR:** not requested.
+
+### 13.2 Commits
+
+| Commit | Subject |
+|---|---|
+| `8c41e68` | `plan(visual): lock SP-00 benchmark implementation` |
+| `5abb1ed` | `test(visual): prove deterministic renderer capture` |
+| `8930843` | `test(visual): close capture readiness review gaps` |
+| `9f271b7` | `test(visual): verify rendered vegetation pixels` |
+| `4bb0b07` | `fix(visual): enforce HD and output capture policy` |
+| `db8f720` | `fix(visual): seed GTAO denoise noise` |
+| `f124f4a` | `feat(visual): add isolated capture orchestration` |
+| `476d8ad` | `fix(visual): harden child result and cleanup validation` |
+| `ed3e2ec` | `feat(visual): record renderer capability and timing evidence` |
+| `06d269a` | `fix(visual): enforce performance and HD evidence contracts` |
+| `439240a` | `fix(visual): harden capability and GPU timing verdicts` |
+| `016a194` | `test(visual): pin cross-course baseline views` |
+| `c3b4c1d` | `fix(visual): align baseline frames with judged features` |
+| `22985d7` | `test(visual): use truthful baseline frame identifiers` |
+| `7dad4e6` | `feat(visual): add deterministic comparison reports` |
+| `694e91d` | `fix(visual): validate and atomically publish comparisons` |
+| `09fac75` | `docs(visual): publish benchmark workflow` |
+| `37d96f5` | `docs(visual): correct qualifying performance workflow` |
+| `a069d80` | `fix(visual): pin window mode and E2E cleanup` |
+
+### 13.3 Verification commands
+
+```powershell
+node --test test/gtao-noise.test.mjs test/visual-capture-readiness.test.mjs test/visual-capture-config.test.mjs test/visual-capture-e2e-support.test.mjs
+npm test
+node --test test/visual-capture-smoke.e2e.mjs
+
+npm run visual:smoke -- --output ".shots/visual/sp00-final/synthetic-a" --require-clean
+npm run visual:smoke -- --output ".shots/visual/sp00-final/synthetic-b" --require-clean
+npm run visual:compare -- --before ".shots/visual/sp00-final/synthetic-a/synthetic-smoke-2026-07-23T183225-538Z" --after ".shots/visual/sp00-final/synthetic-b/synthetic-smoke-2026-07-23T183400-478Z" --output ".shots/visual/sp00-final/synthetic-compare"
+
+npm run visual:capture -- --suite baseline --data-dir "C:\Users\USER\Documents\GitHub\Open-Birdie\data" --output ".shots/visual/sp00-final/baseline-a" --require-clean --course-timeout-ms 900000
+npm run visual:capture -- --suite baseline --data-dir "C:\Users\USER\Documents\GitHub\Open-Birdie\data" --output ".shots/visual/sp00-final/baseline-b" --require-clean --course-timeout-ms 900000
+npm run visual:compare -- --before ".shots/visual/sp00-final/baseline-a/baseline-2026-07-23T183455-584Z" --after ".shots/visual/sp00-final/baseline-b/baseline-2026-07-23T184032-414Z" --output ".shots/visual/sp00-final/baseline-compare"
+
+npm run visual:perf -- --suite baseline --course chambers-bay --data-dir "C:\Users\USER\Documents\GitHub\Open-Birdie\data" --output ".shots/visual/sp00-final/perf-chambers" --show-window --require-clean --course-timeout-ms 900000
+```
+
+- Focused harness tests passed **67/67**.
+- Full `npm test` passed **368/368**.
+- The explicit real-renderer smoke E2E passed **1/1** with a qualifying hardware capture, not a capability skip.
+- Final `git diff --check` passed. All named evidence runs recorded Git
+  `a069d807787b342c9212511adc086bb80b9267e5`, `dirty:false`, and exact 1280x720/DPR 1 output.
+
+### 13.4 Machine and renderer identity
+
+- Windows 11 Pro x64, release `10.0.26200`; Node `24.16.0`; Electron `42.4.0`; Chromium
+  `148.0.7778.254`.
+- Primary display 1920x1080 at 60 Hz, scale factor 1; work area 1920x1032. Capture page and drawing buffer
+  were 1280x720 at DPR 1 with `visibilityState=visible`.
+- Active GPU NVIDIA GeForce RTX 3060 (`vendorId 4318`, `deviceId 9351`), NVIDIA driver
+  `32.0.15.9186`; Chromium reported GPU compositing, rasterization, OpenGL, and WebGL enabled.
+- WebGL 2.0 via ANGLE D3D11:
+  `ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)`.
+  Capability verdict was qualifying with no reasons.
+- Baseline HD acknowledgement was coherent: Chambers optional 18 advertised/18 loaded/0 failed;
+  Sawgrass optional 1/1/0; St Andrews optional 0/0/0.
+
+### 13.5 Repeatability and comparison
+
+- Synthetic runs:
+  `.shots/visual/sp00-final/synthetic-a/synthetic-smoke-2026-07-23T183225-538Z` and
+  `.shots/visual/sp00-final/synthetic-b/synthetic-smoke-2026-07-23T183400-478Z`.
+  Their compatible hidden-window comparison is `.shots/visual/sp00-final/synthetic-compare`.
+- Synthetic result: 1/1 frame pixel-pass at threshold `2/255`; raw changed pixels 0/921,600,
+  thresholded changed pixels 0/921,600 (`0.0000%`), RMS 0, maximum delta 0. Both frame SHA-256 values are
+  `2af60e639f2e042c74bc0e9167cb9f0bf97a3efc3ace2f0f20245c80c6104ec1`.
+- Full baselines:
+  `.shots/visual/sp00-final/baseline-a/baseline-2026-07-23T183455-584Z` and
+  `.shots/visual/sp00-final/baseline-b/baseline-2026-07-23T184032-414Z`.
+  Their compatible hidden-window comparison is `.shots/visual/sp00-final/baseline-compare`.
+- Full result: 24/24 exact pixel-pass frames. Each frame reports raw changed pixels 0/921,600,
+  thresholded changed pixels 0/921,600, RMS 0, and maximum delta 0. Aggregate drift is
+  0/22,118,400 pixels (`0.0000%`), comfortably inside the `<=0.05%` synthetic tolerance. Git, suite,
+  data hashes, dimensions, DPR, targets, OS, GPU/WebGL, quality profile, and hidden window mode matched.
+- The pre-fix Task-0 pair (`probe-j`/`probe-k`) had 1.1200% canvas and 0.9842% page drift. Seeded-GTAO
+  probes and all final suites are byte-stable without widening tolerance. Vegetation checks remain stable:
   straw `74789c8188c8b46a33a99a4edb2aa3182934c5feb7660d6dcfcfe2693d7699b4`; flower
   `2a445b7cd433bfa013ae17b24bdebfc542c31012617db9b3f8c078e5df39a946`.
-- **Real baseline capture:** pending.
-- **Comparison/stability:** before the fix (`probe-j` vs `probe-k`), the canvas repeat had mean absolute
-  channel delta `0.08075/255`, max delta `42`, and `10,322 / 921,600 = 1.1200%` pixels above the `2/255`
-  threshold; the page repeat had mean `0.07050/255`, max `40`, and
-  `9,070 / 921,600 = 0.9842%`. After the seeded GTAO denoise texture
-  (`probe-deterministic-gtao-final-a` vs `probe-deterministic-gtao-final-b`), both canvas and page repeats
-  have mean absolute channel delta `0/255`, max delta `0`, and
-  `0 / 921,600 = 0.0000%` changed pixels. Both PNG pairs are byte-identical, passing the required
-  `<=0.05%` gate without widening tolerance.
-- **Performance environment/results:** pending.
-- **Renderer resource counts:** 20 geometries, 50 textures, 58 compiled programs after eight fixed-time
-  warm-up stills. Final-pass `renderer.info.render` reports one fullscreen post-process draw and one triangle,
-  so scene-pass timing/counting remains Task 6 work.
-- **Artifact locations:** before-fix evidence is under `.shots/visual/task0-probes/probe-j` and `probe-k`;
-  passing after-fix evidence is under `.shots/visual/task0-probes/probe-deterministic-gtao-final-a` and
-  `probe-deterministic-gtao-final-b`. All are ignored local artifacts.
-- **Plan deviations:** the initial fixture frame was changed from idle to the planned real free-camera
-  overview after the first repeat exposed larger foreground/readability drift. No generalized CLI, schema,
-  comparison service, or GPU timer queries were added.
-- **Known remaining artifacts:** Electron emits its upstream `console-message` deprecation warning; page
-  console contains existing Three Clock/shadow-map deprecations and the development CSP warning. No page
-  error-level messages were observed.
-- **Follow-ups routed to SP-01+:** none. The SP-00 repeatability gate is resolved and no longer blocks the
-  remaining SP-00 harness tasks.
+
+### 13.6 Chambers performance route
+
+- Artifact: `.shots/visual/sp00-final/perf-chambers/baseline-2026-07-23T184617-597Z`.
+  It exercised all eight Chambers frame poses in shown-window mode.
+- Harness verdict: `evidenceClass:"performance"`, `performanceClaim:true`, and
+  `cadenceQualification.qualifying:true`.
+- Warm-up completed 302 frames in 5,015.4 ms (requirements: at least 300 frames and 5,000 ms).
+  The timed sample ran 60,000.5 ms, rendered 3,245 frames, and measured 3,244 CPU intervals.
+- CPU: average 18.49 ms, median 16.70 ms, p95 33.30 ms, worst 50.20 ms, average 54.083 FPS,
+  1%-low 29.94 FPS.
+- `EXT_disjoint_timer_query_webgl2`: supported; 3,245 valid samples, 0 invalid, 0 disjoint. GPU average
+  15.550 ms, median 15.782 ms, p95 23.606 ms, worst 26.065 ms.
+- Timed cumulative renderer evidence after the warm-up reset: 3,481,097 calls,
+  98,820,401,882 triangles, 39,000 lines; 465 geometries, 57 textures, 65 programs; 469 scene objects,
+  462 meshes, and 12 instanced meshes. Aggregation is explicitly across post-processing passes.
+- This is a qualifying proof of the 60-second harness route at **1280x720**, not the separate 1920x1080
+  release-performance acceptance. The 1080p release gate remains unclaimed.
+
+### 13.7 Human review of all 24 baseline frames
+
+The ignored montages are under `.shots/visual/sp00-final/review-montages`; full-size sources are in baseline
+B. "Hard gate" below refers to the program's visual-release gates, not SP-00 harness acceptance.
+
+| Course / frame | Human finding |
+|---|---|
+| Chambers `address-play` | Ball/aim line is readable, but the sand-dominant foreground, sparse skyline, and low-detail turf do not yet communicate a professional Chambers address view. |
+| Chambers `green-complex` | **Hard gate:** conspicuous checker tiling and rectangular material/aerial transitions; green and fringe read as soft flat masks rather than a complex. |
+| Chambers `sand-complex` | **Hard gate:** repeated checker surface, shallow cutout-like bunkers, and blue/black terrain slits; sand/rough relief is not believable. |
+| Chambers `origin-pond` | **Hard gate:** water/shoreline collapses into discontinuous dark slits; simple structure and shadow look perched/haloed. |
+| Chambers `south-overview` | **Hard gate:** visible patch boundaries, dark water/edge lines, and abrupt terrain-to-void behavior. |
+| Chambers `high-survey` | **Hard gate:** large rectangular aerial/material seam, black linear water gaps, and structure/terrain halos dominate the course survey. |
+| Chambers `coastal-horizon` | Coastal silhouette is present, but the terrain edge is abrupt and the smeared low-detail relief/vegetation does not sustain the course identity. |
+| Chambers `gameplay-ui` | UI is compact, unobstructed, and readable; the underlying terrain retains the address-frame visual debt. |
+| Sawgrass `address-play` | **Hard gate:** dense repeated reeds overwhelm the play corridor and look partly buried/floating; the scene does not read as a framed Sawgrass tee. |
+| Sawgrass `h17-green` | **Hard gate:** the procedural target is a checker/haloed blob while the recognizable island green remains only in the background aerial; signature water/green geometry is not represented. |
+| Sawgrass `h17-bunker` | **Hard gate:** checker/haloed masks and aerial smear flatten bunker depth; H17 green-water-bunker separation is absent. |
+| Sawgrass `seventeen-landing` | **Hard gate:** vegetation has dark halos/floating-looking placement, and the intended island-water carry is not legible. |
+| Sawgrass `seventeen-overview` | **Hard gate:** strong rectangular overlay/seams and blurred aerial/procedural disagreement obscure the H17 identity. |
+| Sawgrass `parkland-survey` | **Hard gate:** the entire rectangular course tile visibly floats in an unintentional blue void. |
+| Sawgrass `parkland-horizon` | **Hard gate:** severe aerial smear and material seams; isolated tree clumps/halos and overlaid water/sand weaken the parkland identity. |
+| Sawgrass `gameplay-ui` | UI is clean/readable; the foreground remains dominated by the same repeated reeds as the address view. |
+| St Andrews `address-play` | Ball/aim line is readable, but the flat generic turf and dense tree line do not identify the open Old Course. |
+| St Andrews `home-green` | **Hard gate:** flat checker-mask green with visible patch boundaries plus haloed/floating-looking trees; no recognizable home-green setting. |
+| St Andrews `road-hole-bunker` | **Hard gate:** an obvious rectangular patch surrounds a tiny flat bunker mask; no pot-bunker depth, with inappropriate dense vegetation/halos. |
+| St Andrews `shared-fairway` | **Hard gate:** unfilled blue water outline, visible course edge, trees outside/at the void, and oversized shadows; shared-links identity is weak. |
+| St Andrews `road-hole-overview` | **Hard gate:** visible tile/void edge, out-of-bounds vegetation, and generic flat routing; Road Hole landmarks are absent. |
+| St Andrews `links-survey` | **Hard gate:** the complete rectangular terrain tile floats in the void, vegetation extends beyond it, and oversized detached shadows dominate. |
+| St Andrews `links-horizon` | **Hard gate:** clipped/floating-looking horizon vegetation and oversized detached shadows; no convincing town, clubhouse, or links landmark identity. |
+| St Andrews `gameplay-ui` | UI is clean/readable; the underlying course remains generic and inherits the address debt. |
+
+### 13.8 Deviations, warnings, and follow-up
+
+- The committed still/performance contract is 1280x720 at DPR 1 because this host cannot provide an exact
+  unclamped hidden 1920x1080 content area. Performance therefore used the documented shown-window route.
+  This deviation is explicit and does not lower the later 1080p release gate.
+- Task-0's idle fixture was replaced by the planned free-camera overview, and GTAO denoise randomness was
+  removed locally. Baseline camera IDs/judging text were corrected where source data could not truthfully
+  show the originally assumed signature feature.
+- No renderer or harness code changed during Task 7. One Chromium
+  `GPU state invalid after WaitForGetOffsetInRange` stderr line appeared as the successful baseline-B
+  Chambers child exited; owned cleanup completed and all child/result/hash validation passed.
+- No page error-level console records or fatal page events occurred. Preserved warnings are Electron's
+  `console-message` deprecation, Three Clock/PCF soft-shadow deprecations, development CSP, and
+  `GL_INVALID_VALUE: glCopySubTextureCHROMIUM: Offset overflows texture dimensions` on Chambers/Sawgrass
+  aerial-backed runs. St Andrews did not emit that WebGL warning.
+- **Remaining artifacts:** all PNGs, manifests, comparisons, diffs, reports, and review montages remain
+  ignored under `.shots/visual/sp00-final`; Task-0 probes remain under `.shots/visual/task0-probes`.
+- **Follow-ups routed to SP-01+:** keep the existing SP-01 P2a recovery sequence; route rectangular
+  surface/aerial seams and mask/checker/halo work to SP-04, world-edge/void and horizon shaping to SP-03,
+  vegetation placement/shadows to SP-06, and signature course identity/water/landmarks to SP-08. SP-00 no
+  longer blocks those phases; its evidence is now their before-state.
 
 ---
 
