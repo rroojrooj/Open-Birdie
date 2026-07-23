@@ -378,6 +378,35 @@ test('baseline suite pins three real courses, proof coverage, and Chambers legac
   }
   assert.equal(chambersByLegacyName.get('play')?.role, 'address');
   assert.equal(legacy.supersededBy, '../../tools/visual-capture/suites/baseline.json');
+
+  const sawgrass = baseline.courses.find((course) => course.id === 'tpc-sawgrass');
+  const sawgrassById = new Map(sawgrass.frames.map((frameValue) => [frameValue.id, frameValue]));
+  for (const id of ['island-green', 'seventeen-landing', 'seventeen-overview']) {
+    assert.equal(sawgrassById.get(id).pose.tx, 386.43);
+    assert.equal(sawgrassById.get(id).pose.ty, -495.7);
+    assert.equal(sawgrassById.get(id).pose.yaw, -32);
+    assert.doesNotMatch(sawgrassById.get(id).judges.join(' '), /\bisland\b|surrounding water/i);
+    assert.match(sawgrassById.get(id).judges.join(' '), /mapped H17/i);
+  }
+  assert.equal(sawgrassById.get('seventeen-landing').pose.dist, 115);
+  assert.equal(sawgrassById.get('seventeen-overview').pose.dist, 180);
+
+  const stAndrews = baseline.courses.find((course) => course.id === 'st-andrews-old-course');
+  const stAndrewsById = new Map(stAndrews.frames.map((frameValue) => [frameValue.id, frameValue]));
+  assert.deepEqual(stAndrewsById.get('road-hole-bunker').pose, {
+    tx: 546.2, ty: -1138.2, dist: 55, pitch: -30, yaw: 140, hOff: 0,
+  });
+  assert.doesNotMatch(stAndrewsById.get('home-green').judges.join(' '), /town-edge/i);
+  assert.deepEqual(stAndrewsById.get('shared-fairway').pose, {
+    tx: 720, ty: -1090, dist: 150, pitch: -34, yaw: -86, hOff: 1,
+  });
+
+  const plan = fs.readFileSync(
+    path.resolve('docs', 'superpowers', 'plans', '2026-07-23-sp00-visual-benchmark.md'),
+    'utf8',
+  );
+  assert.match(plan, /1920x1080 Windows display[\s\S]*1904x993[\s\S]*exact 1280x720/i);
+  assert.match(plan, /not the later 1080p performance acceptance/i);
 });
 
 test('CLI parser recognizes all modes and capture flags', () => {

@@ -698,6 +698,14 @@ All sampling remains behind `visualCapture=1`; remove the methods without changi
   `C:\Users\USER\Documents\GitHub\Open-Birdie\data`.
 - Inspect frame coverage and adjust fixtures, not renderer behavior.
 
+**Resolution decision (2026-07-24)**
+
+On the named 1920x1080 Windows display `\\.\DISPLAY2` (primary, 1920x1032 work area), Electron clamped a
+requested hidden 1920x1080 content area to 1904x993. Because SP-00 rejects dimension drift, the deterministic
+still baseline pins exact 1280x720 at DPR 1 on this host and tests that contract. This is not the later 1080p performance acceptance:
+release performance must still be evaluated separately at its required 1080p mode
+on a machine/display that can provide an exact 1920x1080 content area.
+
 **Commit boundary**
 
 `test(visual): pin cross-course baseline views`

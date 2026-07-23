@@ -172,13 +172,13 @@
           "pose": {
             "tx": 386.43,
             "ty": -495.7,
-            "dist": 82,
-            "pitch": -25,
-            "yaw": 205,
+            "dist": 65,
+            "pitch": -32,
+            "yaw": -32,
             "hOff": 1
           },
           "judges": [
-            "seventeenth island green, fringe collar, surrounding water, and bulkhead-like shoreline"
+            "mapped H17 green and fringe collar, adjacent aerial-water separation, and source geometry gap"
           ]
         },
         {
@@ -188,15 +188,15 @@
           "mode": "free",
           "band": "feature",
           "pose": {
-            "tx": 386.43,
-            "ty": -495.7,
-            "dist": 112,
-            "pitch": -22,
-            "yaw": 25,
+            "tx": 396.7,
+            "ty": -499,
+            "dist": 55,
+            "pitch": -30,
+            "yaw": -32,
             "hOff": 0
           },
           "judges": [
-            "seventeenth bunker sand, green edge, water separation, and parkland vegetation"
+            "mapped H17 bunker sand, green edge, adjacent aerial-water separation, and parkland vegetation"
           ]
         },
         {
@@ -206,15 +206,15 @@
           "mode": "free",
           "band": "hole",
           "pose": {
-            "tx": 419.67,
-            "ty": -548.74,
-            "dist": 165,
-            "pitch": -27,
-            "yaw": 25,
-            "hOff": 2
+            "tx": 386.43,
+            "ty": -495.7,
+            "dist": 115,
+            "pitch": -28,
+            "yaw": -32,
+            "hOff": 1
           },
           "judges": [
-            "seventeenth tee-to-green carry, water hazard scale, landing perspective, and tree backdrop"
+            "mapped H17 green from the tee-side approach, carry alignment, adjacent source-water separation, and tree backdrop"
           ]
         },
         {
@@ -224,15 +224,15 @@
           "mode": "free",
           "band": "hole",
           "pose": {
-            "tx": 419.67,
-            "ty": -548.74,
-            "dist": 280,
-            "pitch": -36,
-            "yaw": 25,
+            "tx": 386.43,
+            "ty": -495.7,
+            "dist": 180,
+            "pitch": -42,
+            "yaw": -32,
             "hOff": 0
           },
           "judges": [
-            "complete seventeenth island complex, tee location, lake footprint, and surrounding parkland"
+            "mapped H17 green and tee corridor, nearby lake-aerial relationship, surrounding parkland, and source geometry gap"
           ]
         },
         {
@@ -308,13 +308,13 @@
           "pose": {
             "tx": 886.69,
             "ty": -1149.33,
-            "dist": 82,
+            "dist": 95,
             "pitch": -24,
-            "yaw": 185,
+            "yaw": 95,
             "hOff": 1
           },
           "judges": [
-            "eighteenth green transition, links turf texture, shared approach scale, and town-edge context"
+            "mapped eighteenth green transition, links checker texture, shared approach corridor, and no-aerial fallback"
           ]
         },
         {
@@ -324,11 +324,11 @@
           "mode": "free",
           "band": "feature",
           "pose": {
-            "tx": 553.21,
-            "ty": -1149.44,
-            "dist": 95,
-            "pitch": -21,
-            "yaw": 205,
+            "tx": 546.2,
+            "ty": -1138.2,
+            "dist": 55,
+            "pitch": -30,
+            "yaw": 140,
             "hOff": 0
           },
           "judges": [
@@ -343,10 +343,10 @@
           "band": "hole",
           "pose": {
             "tx": 720,
-            "ty": -1110,
-            "dist": 190,
-            "pitch": -27,
-            "yaw": 90,
+            "ty": -1090,
+            "dist": 150,
+            "pitch": -34,
+            "yaw": -86,
             "hOff": 1
           },
           "judges": [
