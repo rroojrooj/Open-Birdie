@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
+import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,6 +27,7 @@ import {
   cleanupRecordedChild,
   runCapture,
   runCourseChild,
+  validateChildResult,
 } from '../tools/visual-capture/cli.mjs';
 
 const ALL_ROLES = [
@@ -318,15 +321,119 @@ test('cleanup targets only recorded PID with exact platform commands', async () 
   await cleanupRecordedChild(4321, {
     platform: 'win32',
     execFile: async (file, args) => windows.push([file, args]),
+    force: false,
   });
-  assert.deepEqual(windows, [['taskkill', ['/PID', '4321', '/T', '/F']]]);
+  await cleanupRecordedChild(4321, {
+    platform: 'win32',
+    execFile: async (file, args) => windows.push([file, args]),
+    force: true,
+  });
+  assert.deepEqual(windows, [
+    ['taskkill', ['/PID', '4321', '/T']],
+    ['taskkill', ['/PID', '4321', '/T', '/F']],
+  ]);
 
   const signals = [];
   await cleanupRecordedChild(9876, {
     platform: 'linux',
     kill: (pid, signal) => signals.push([pid, signal]),
+    force: false,
   });
-  assert.deepEqual(signals, [[-9876, 'SIGTERM']]);
+  await cleanupRecordedChild(9876, {
+    platform: 'linux',
+    kill: (pid, signal) => signals.push([pid, signal]),
+    force: true,
+  });
+  assert.deepEqual(signals, [[-9876, 'SIGTERM'], [-9876, 'SIGKILL']]);
+});
+
+function artifactJob(temp) {
+  return {
+    courseOutputDir: temp,
+    capture: { width: 4, height: 4 },
+    course: {
+      id: 'synthetic',
+      frames: [
+        { id: 'canvas-frame', role: 'high-overview', target: 'canvas' },
+        { id: 'page-frame', role: 'ui', target: 'page' },
+      ],
+    },
+  };
+}
+
+function writeArtifact(temp, id, target, {
+  width = 4,
+  height = 4,
+  pixel = (index) => index % 2 ? [20, 30, 40, 255] : [200, 180, 90, 255],
+} = {}) {
+  const buffer = pngBuffer(width, height, pixel);
+  const file = `${id}.png`;
+  fs.writeFileSync(path.join(temp, file), buffer);
+  return {
+    id,
+    role: target === 'page' ? 'ui' : 'high-overview',
+    target,
+    file,
+    sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+  };
+}
+
+test('child result validation accepts exact canvas/page artifacts and verifies their bytes', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-result-valid-'));
+  const job = artifactJob(temp);
+  const result = {
+    ok: true,
+    course: 'synthetic',
+    frames: [
+      writeArtifact(temp, 'canvas-frame', 'canvas'),
+      writeArtifact(temp, 'page-frame', 'page'),
+    ],
+  };
+  const validated = validateChildResult(job, result);
+  assert.equal(validated.frames.length, 2);
+  assert.equal(validated.frames[0].width, 4);
+  assert.equal(validated.frames[1].height, 4);
+});
+
+test('child result validation rejects filename, role, target, and sha mismatches', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-result-contract-'));
+  const job = artifactJob(temp);
+  const canvas = writeArtifact(temp, 'canvas-frame', 'canvas');
+  const page = writeArtifact(temp, 'page-frame', 'page');
+  for (const mutate of [
+    (result) => { result.frames[0].id = 'different-id'; },
+    (result) => { result.frames[0].file = 'page-frame.png'; },
+    (result) => { result.frames[0].role = 'ui'; },
+    (result) => { result.frames[0].target = 'page'; },
+    (result) => { result.frames[1].target = 'canvas'; },
+    (result) => { result.frames[0].sha256 = '0'.repeat(64); },
+  ]) {
+    const result = structuredClone({ ok: true, course: 'synthetic', frames: [canvas, page] });
+    mutate(result);
+    assert.throws(
+      () => validateChildResult(job, result),
+      (error) => error.code === 'CHILD_RESULT_INVALID',
+    );
+  }
+});
+
+test('child result validation decodes every PNG and rejects wrong dimensions or blank bytes', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-result-image-'));
+  const job = artifactJob(temp);
+  const validPage = writeArtifact(temp, 'page-frame', 'page');
+  const wrongSize = writeArtifact(temp, 'canvas-frame', 'canvas', { width: 5 });
+  assert.throws(
+    () => validateChildResult(job, { ok: true, course: 'synthetic', frames: [wrongSize, validPage] }),
+    (error) => error.code === 'CHILD_RESULT_INVALID' && error.details.frameId === 'canvas-frame',
+  );
+
+  const blank = writeArtifact(temp, 'canvas-frame', 'canvas', {
+    pixel: () => [10, 10, 10, 255],
+  });
+  assert.throws(
+    () => validateChildResult(job, { ok: true, course: 'synthetic', frames: [blank, validPage] }),
+    (error) => error.code === 'CHILD_RESULT_INVALID' && error.details.frameId === 'canvas-frame',
+  );
 });
 
 test('child protocol strips Electron-as-Node, ignores stdout, and requires valid result file', async () => {
@@ -374,27 +481,84 @@ test('child protocol strips Electron-as-Node, ignores stdout, and requires valid
   );
 });
 
-test('child timeout cleans only its direct PID and failed result preserves evidence', async () => {
+function hangingChild(pid = 1357) {
+  const child = new EventEmitter();
+  child.pid = pid;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  return child;
+}
+
+test('child timeout observes graceful PID-scoped termination without escalation', async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-timeout-'));
   const resultFile = path.join(temp, 'result.json');
+  const child = hangingChild();
   const cleaned = [];
-  const spawnImpl = () => ({
-    pid: 1357,
-    stdout: { on() {} },
-    stderr: { on() {} },
-    once() {},
-  });
   await assert.rejects(
     runCourseChild({ resultFile }, {
       electronPath: 'electron',
       runnerPath: 'runner',
-      spawnImpl,
+      spawnImpl: () => child,
       timeoutMs: 5,
-      cleanup: async (pid) => cleaned.push(pid),
+      cleanupGraceMs: 10,
+      escalationGraceMs: 10,
+      cleanup: async (pid, options) => {
+        cleaned.push([pid, options.force]);
+        queueMicrotask(() => child.emit('close', null, 'SIGTERM'));
+      },
     }),
-    (error) => error.code === 'CHILD_TIMEOUT',
+    (error) => error.code === 'CHILD_TIMEOUT' &&
+      error.details.cleanup.terminationObserved === true &&
+      error.details.cleanup.escalated === false,
   );
-  assert.deepEqual(cleaned, [1357]);
+  assert.deepEqual(cleaned, [[1357, false]]);
+});
+
+test('child timeout escalates only the recorded PID and verifies close', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-timeout-escalate-'));
+  const child = hangingChild(2468);
+  const cleaned = [];
+  await assert.rejects(
+    runCourseChild({ resultFile: path.join(temp, 'result.json') }, {
+      electronPath: 'electron',
+      runnerPath: 'runner',
+      spawnImpl: () => child,
+      timeoutMs: 5,
+      cleanupGraceMs: 5,
+      escalationGraceMs: 10,
+      cleanup: async (pid, options) => {
+        cleaned.push([pid, options.force]);
+        if (options.force) queueMicrotask(() => child.emit('close', null, 'SIGKILL'));
+      },
+    }),
+    (error) => error.code === 'CHILD_TIMEOUT' &&
+      error.details.cleanup.terminationObserved === true &&
+      error.details.cleanup.escalated === true,
+  );
+  assert.deepEqual(cleaned, [[2468, false], [2468, true]]);
+});
+
+test('child timeout is bounded and preserves cleanup diagnostics when close is never observed', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-timeout-bounded-'));
+  const child = hangingChild(9753);
+  const started = Date.now();
+  await assert.rejects(
+    runCourseChild({ resultFile: path.join(temp, 'result.json') }, {
+      electronPath: 'electron',
+      runnerPath: 'runner',
+      spawnImpl: () => child,
+      timeoutMs: 5,
+      cleanupGraceMs: 5,
+      escalationGraceMs: 5,
+      cleanupRequestTimeoutMs: 5,
+      cleanup: () => new Promise(() => {}),
+    }),
+    (error) => error.code === 'CHILD_TIMEOUT' &&
+      error.details.cleanup.terminationObserved === false &&
+      error.details.cleanup.gracefulError.includes('graceful cleanup request did not complete') &&
+      error.details.cleanup.escalationError.includes('forced cleanup request did not complete'),
+  );
+  assert.ok(Date.now() - started < 500, 'timeout cleanup must not hang');
 });
 
 test('dirty iteration is marked, require-clean rejects it, and success publishes atomically', async () => {

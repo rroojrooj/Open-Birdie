@@ -15,6 +15,7 @@ import {
   validateJobPaths,
   validateSuite,
 } from './config.mjs';
+import { inspectNonblankPng } from './metrics.mjs';
 
 const execFileAsync = promisify(childProcess.execFile);
 
@@ -28,17 +29,23 @@ export async function cleanupRecordedChild(pid, {
   platform = process.platform,
   execFile = execFileAsync,
   kill = process.kill,
+  force = true,
+  commandTimeoutMs = 5000,
 } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) {
     throw new VisualCaptureError('CLEANUP_FAILED', `Refusing invalid child PID: ${pid}`);
   }
   try {
     if (platform === 'win32') {
-      await execFile('taskkill', ['/PID', String(pid), '/T', '/F']);
+      await execFile(
+        'taskkill',
+        ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])],
+        { timeout: commandTimeoutMs, windowsHide: true },
+      );
     } else {
       // Electron is spawned detached on POSIX, so the negative direct PID names
       // only its process group. No process-name scan is ever used.
-      kill(-pid, 'SIGTERM');
+      kill(-pid, force ? 'SIGKILL' : 'SIGTERM');
     }
   } catch (cause) {
     if (cause?.code !== 'ESRCH' && cause?.code !== 128) {
@@ -51,6 +58,112 @@ export async function cleanupRecordedChild(pid, {
   }
 }
 
+function withDeadline(promise, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} did not complete within ${timeoutMs} ms`)),
+      timeoutMs,
+    );
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function childResultInvalid(message, details = {}, cause) {
+  return new VisualCaptureError('CHILD_RESULT_INVALID', message, {
+    stage: 'child',
+    details,
+    cause,
+  });
+}
+
+export function validateChildResult(job, result) {
+  if (!result || result.ok !== true || !job?.course || !job?.capture || !job?.courseOutputDir) {
+    throw childResultInvalid('Child result is missing its requested job contract', {
+      expectedCourse: job?.course?.id,
+      actualCourse: result?.course,
+    });
+  }
+  if (result.course !== job.course.id || !Array.isArray(result.frames)) {
+    throw childResultInvalid('Child result does not match the requested course/frame contract', {
+      expectedCourse: job.course.id,
+      actualCourse: result.course,
+    });
+  }
+  const expectedFrames = job.course.frames;
+  if (result.frames.length !== expectedFrames.length) {
+    throw childResultInvalid('Child result frame count does not match the request', {
+      expectedFrames: expectedFrames.map((frame) => frame.id),
+      actualFrames: result.frames.map((frame) => frame?.id),
+    });
+  }
+  const actualById = new Map();
+  for (const frame of result.frames) {
+    if (!frame?.id || actualById.has(frame.id)) {
+      throw childResultInvalid('Child result contains a missing or duplicate frame id', {
+        actualFrames: result.frames.map((item) => item?.id),
+      });
+    }
+    actualById.set(frame.id, frame);
+  }
+  const validatedFrames = expectedFrames.map((expected) => {
+    const actual = actualById.get(expected.id);
+    const expectedTarget = expected.target || (expected.role === 'ui' ? 'page' : 'canvas');
+    const expectedFile = `${expected.id}.png`;
+    if (!actual ||
+        actual.role !== expected.role ||
+        actual.target !== expectedTarget ||
+        actual.file !== expectedFile) {
+      throw childResultInvalid('Child frame metadata does not exactly match the request', {
+        frameId: expected.id,
+        expected: { id: expected.id, role: expected.role, target: expectedTarget, file: expectedFile },
+        actual: actual && { id: actual.id, role: actual.role, target: actual.target, file: actual.file },
+      });
+    }
+    const artifactPath = path.join(job.courseOutputDir, expectedFile);
+    let buffer;
+    try {
+      buffer = fs.readFileSync(artifactPath);
+    } catch (cause) {
+      throw childResultInvalid('Child frame artifact is missing or unreadable', {
+        frameId: expected.id,
+        expectedFile,
+      }, cause);
+    }
+    let image;
+    try {
+      image = inspectNonblankPng(buffer, {
+        expectedWidth: job.capture.width,
+        expectedHeight: job.capture.height,
+      });
+    } catch (cause) {
+      throw childResultInvalid('Child frame artifact failed PNG validation', {
+        frameId: expected.id,
+        expectedFile,
+        imageError: cause.message,
+      }, cause);
+    }
+    if (typeof actual.sha256 !== 'string' || actual.sha256 !== image.sha256) {
+      throw childResultInvalid('Child frame artifact hash does not match the reported sha256', {
+        frameId: expected.id,
+        expectedFile,
+        reportedSha256: actual.sha256,
+        actualSha256: image.sha256,
+      });
+    }
+    return { ...actual, ...image };
+  });
+  return { ...result, frames: validatedFrames };
+}
+
 export function runCourseChild(job, {
   electronPath,
   runnerPath,
@@ -58,6 +171,9 @@ export function runCourseChild(job, {
   env = process.env,
   timeoutMs,
   cleanup = cleanupRecordedChild,
+  cleanupGraceMs = 1000,
+  escalationGraceMs = 1000,
+  cleanupRequestTimeoutMs = 5000,
   stderr = process.stderr,
 } = {}) {
   return new Promise((resolve, reject) => {
@@ -70,80 +186,125 @@ export function runCourseChild(job, {
       detached: process.platform !== 'win32',
       windowsHide: true,
     });
-    let settled = false;
+    let state = 'running';
     let timer;
-    const finish = (callback) => {
-      if (settled) return;
-      settled = true;
+    let closeOutcome = null;
+    const closeWaiters = new Set();
+    const observeClose = (code, signal) => {
+      closeOutcome = { code, signal };
+      for (const waiter of closeWaiters) waiter(closeOutcome);
+      closeWaiters.clear();
+    };
+    const waitForClose = (graceMs) => {
+      if (closeOutcome) return Promise.resolve(closeOutcome);
+      return new Promise((resolveClose) => {
+        const waiter = (outcome) => {
+          clearTimeout(graceTimer);
+          resolveClose(outcome);
+        };
+        const graceTimer = setTimeout(() => {
+          closeWaiters.delete(waiter);
+          resolveClose(null);
+        }, graceMs);
+        closeWaiters.add(waiter);
+      });
+    };
+    const finishRunning = (callback) => {
+      if (state !== 'running') return;
+      state = 'done';
       clearTimeout(timer);
       callback();
     };
     // stdout is deliberately treated as human noise, never as protocol.
     child.stdout?.on('data', () => {});
     child.stderr?.on('data', (chunk) => stderr.write(chunk));
-    child.once('error', (cause) => finish(() => reject(new VisualCaptureError('CHILD_START_FAILED', 'Electron child failed to start', {
-      stage: 'child', cause,
-    }))));
-    child.once('close', (code, signal) => finish(() => {
-      if (!fs.existsSync(job.resultFile)) {
-        reject(new VisualCaptureError('CHILD_RESULT_MISSING', `Child exited ${code ?? signal} without a result file`, {
-          stage: 'child', details: { pid: child.pid, code, signal, resultFile: job.resultFile },
-        }));
+    let terminationChildError = null;
+    child.once('error', (cause) => {
+      if (state === 'terminating') {
+        terminationChildError = cause;
         return;
       }
-      let result;
-      try {
-        result = JSON.parse(fs.readFileSync(job.resultFile, 'utf8'));
-      } catch (cause) {
-        reject(new VisualCaptureError('CHILD_RESULT_INVALID', 'Child result file is malformed', {
-          stage: 'child', details: { resultFile: job.resultFile }, cause,
-        }));
-        return;
-      }
-      if (result?.ok && job.course) {
-        const expectedFrames = new Set(job.course.frames.map((frame) => frame.id));
-        const actualFrames = Array.isArray(result.frames) ? result.frames : [];
-        const actualIds = new Set(actualFrames.map((frame) => frame?.id));
-        const resultValid = result.course === job.course.id &&
-          actualFrames.length === expectedFrames.size &&
-          actualFrames.every((frame) => expectedFrames.has(frame?.id) &&
-            typeof frame?.file === 'string' &&
-            path.basename(frame.file) === frame.file &&
-            fs.existsSync(path.join(job.courseOutputDir, frame.file)) &&
-            fs.statSync(path.join(job.courseOutputDir, frame.file)).size > 0) &&
-          actualIds.size === expectedFrames.size;
-        if (!resultValid) {
-          reject(new VisualCaptureError('CHILD_RESULT_INVALID', 'Child result does not match the requested course/frame contract', {
-            stage: 'child',
-            details: {
-              expectedCourse: job.course.id,
-              actualCourse: result.course,
-              expectedFrames: [...expectedFrames],
-              actualFrames: actualFrames.map((frame) => frame?.id),
-            },
+      finishRunning(() => reject(new VisualCaptureError('CHILD_START_FAILED', 'Electron child failed to start', {
+        stage: 'child', cause,
+      })));
+    });
+    child.once('close', (code, signal) => {
+      observeClose(code, signal);
+      finishRunning(() => {
+        if (!fs.existsSync(job.resultFile)) {
+          reject(new VisualCaptureError('CHILD_RESULT_MISSING', `Child exited ${code ?? signal} without a result file`, {
+            stage: 'child', details: { pid: child.pid, code, signal, resultFile: job.resultFile },
           }));
           return;
         }
-      }
-      if (code !== 0 || !result?.ok) {
-        reject(new VisualCaptureError(result?.code || 'CHILD_FAILED', result?.message || `Child exited with code ${code}`, {
-          stage: result?.stage || 'child', details: { pid: child.pid, code, signal, result },
-        }));
-        return;
-      }
-      resolve(result);
-    }));
+        let result;
+        try {
+          result = JSON.parse(fs.readFileSync(job.resultFile, 'utf8'));
+        } catch (cause) {
+          reject(new VisualCaptureError('CHILD_RESULT_INVALID', 'Child result file is malformed', {
+            stage: 'child', details: { resultFile: job.resultFile }, cause,
+          }));
+          return;
+        }
+        if (result?.ok) {
+          try {
+            result = validateChildResult(job, result);
+          } catch (error) {
+            reject(error);
+            return;
+          }
+        }
+        if (code !== 0 || !result?.ok) {
+          reject(new VisualCaptureError(result?.code || 'CHILD_FAILED', result?.message || `Child exited with code ${code}`, {
+            stage: result?.stage || 'child', details: { pid: child.pid, code, signal, result },
+          }));
+          return;
+        }
+        resolve(result);
+      });
+    });
     timer = setTimeout(async () => {
-      if (settled) return;
-      settled = true;
+      if (state !== 'running') return;
+      state = 'terminating';
+      const diagnostics = {
+        gracefulRequested: true,
+        gracefulError: null,
+        escalated: false,
+        escalationError: null,
+        terminationObserved: false,
+        close: null,
+        childError: null,
+      };
       try {
-        await cleanup(child.pid);
-      } catch (cleanupError) {
-        reject(cleanupError);
-        return;
+        await withDeadline(
+          cleanup(child.pid, { force: false, commandTimeoutMs: cleanupRequestTimeoutMs }),
+          cleanupRequestTimeoutMs,
+          'graceful cleanup request',
+        );
+      } catch (error) {
+        diagnostics.gracefulError = error?.stack || String(error);
       }
+      let observed = await waitForClose(cleanupGraceMs);
+      if (!observed) {
+        diagnostics.escalated = true;
+        try {
+          await withDeadline(
+            cleanup(child.pid, { force: true, commandTimeoutMs: cleanupRequestTimeoutMs }),
+            cleanupRequestTimeoutMs,
+            'forced cleanup request',
+          );
+        } catch (error) {
+          diagnostics.escalationError = error?.stack || String(error);
+        }
+        observed = await waitForClose(escalationGraceMs);
+      }
+      diagnostics.terminationObserved = Boolean(observed);
+      diagnostics.close = observed;
+      diagnostics.childError = terminationChildError?.stack || (terminationChildError && String(terminationChildError)) || null;
+      state = 'done';
       reject(new VisualCaptureError('CHILD_TIMEOUT', `Course child exceeded ${timeoutMs} ms`, {
-        stage: 'child', details: { pid: child.pid, timeoutMs },
+        stage: 'child',
+        details: { pid: child.pid, timeoutMs, cleanup: diagnostics },
       }));
     }, timeoutMs);
   });
