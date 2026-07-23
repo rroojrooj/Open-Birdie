@@ -203,6 +203,28 @@ export function parseCliArgs(argv) {
   if (!['capture', 'smoke', 'perf', 'compare'].includes(mode)) {
     throw new VisualCaptureError('ARGS_INVALID', `Mode must be capture, smoke, perf, or compare; got ${mode || '<missing>'}`);
   }
+  if (mode === 'compare') {
+    const comparison = { mode, threshold: 2 };
+    for (let index = 1; index < argv.length; index += 1) {
+      const flag = argv[index];
+      if (!['--before', '--after', '--output', '--threshold'].includes(flag)) {
+        throw new VisualCaptureError('ARGS_INVALID', `Unknown argument: ${flag}`);
+      }
+      const value = valueAfter(argv, index, flag);
+      index += 1;
+      if (flag === '--before') comparison.before = value;
+      else if (flag === '--after') comparison.after = value;
+      else if (flag === '--output') comparison.output = value;
+      else comparison.threshold = Number(value);
+    }
+    if (!comparison.before || !comparison.after) {
+      throw new VisualCaptureError('ARGS_INVALID', 'compare requires both --before and --after run directories');
+    }
+    if (!Number.isInteger(comparison.threshold) || comparison.threshold < 0 || comparison.threshold > 255) {
+      throw new VisualCaptureError('ARGS_INVALID', '--threshold must be an integer from 0 to 255');
+    }
+    return comparison;
+  }
   const output = {
     mode,
     suite: mode === 'smoke' ? 'synthetic-smoke' : 'baseline',

@@ -29,6 +29,7 @@ import {
 } from '../tools/visual-capture/config.mjs';
 import {
   classifyRendererCapability,
+  comparePngBuffers,
   normalizeGpuTimerSamples,
   inspectNonblankPng,
   summarizeTimings,
@@ -37,6 +38,7 @@ import {
   cleanupRecordedChild,
   runCapture,
   runCourseChild,
+  runComparison,
   validateChildResult,
 } from '../tools/visual-capture/cli.mjs';
 
@@ -52,6 +54,7 @@ const ALL_ROLES = [
 ];
 const require = createRequire(import.meta.url);
 const { buildPerformanceRequest } = require('../tools/visual-capture/performance-request.cjs');
+const SILENT_STDOUT = { write() {} };
 
 test('renderer capability rejects software identities and invalid capture state', () => {
   for (const renderer of ['Google SwiftShader', 'Mesa llvmpipe', 'Software Rasterizer']) {
@@ -406,9 +409,28 @@ test('baseline suite pins three real courses, proof coverage, and Chambers legac
 });
 
 test('CLI parser recognizes all modes and capture flags', () => {
-  for (const mode of ['capture', 'smoke', 'perf', 'compare']) {
+  for (const mode of ['capture', 'smoke', 'perf']) {
     assert.equal(parseCliArgs([mode]).mode, mode);
   }
+  assert.deepEqual(parseCliArgs([
+    'compare', '--before', '.\\before run', '--after', '.\\after run',
+    '--output', '.\\comparison', '--threshold', '4',
+  ]), {
+    mode: 'compare',
+    before: '.\\before run',
+    after: '.\\after run',
+    output: '.\\comparison',
+    threshold: 4,
+  });
+  assert.throws(() => parseCliArgs(['compare']), /--before and --after/);
+  assert.throws(
+    () => parseCliArgs(['compare', '--before', 'a', '--after', 'b', '--threshold', '256']),
+    /--threshold/,
+  );
+  assert.throws(
+    () => parseCliArgs(['compare', '--before', 'a', '--after', 'b', '--suite', 'baseline']),
+    /Unknown argument/,
+  );
   assert.equal(parseCliArgs(['perf']).courseTimeoutMs, 900000);
   assert.equal(parseCliArgs(['smoke']).courseTimeoutMs, 180000);
   assert.deepEqual(parseCliArgs([
@@ -449,6 +471,249 @@ function pngBuffer(width, height, pixel) {
   }
   return PNG.sync.write(png);
 }
+
+test('PNG comparison reports exact zero metrics for identical bytes', () => {
+  const image = pngBuffer(2, 2, (index) => [20 + index, 30, 40, 255]);
+  const result = comparePngBuffers(image, image);
+  assert.equal(result.metrics.rawChangedPixels, 0);
+  assert.equal(result.metrics.changedPixels, 0);
+  assert.equal(result.metrics.rmsError, 0);
+  assert.equal(result.metrics.maxDelta, 0);
+  assert.equal(result.metrics.classification, 'pixel-pass');
+  assert.equal(PNG.sync.read(result.diffPng).width, 2);
+});
+
+test('PNG comparison reports an exact one-pixel delta and a visible red diff', () => {
+  const before = pngBuffer(2, 2, () => [10, 20, 30, 255]);
+  const after = pngBuffer(2, 2, (index) => index === 1 ? [20, 20, 30, 255] : [10, 20, 30, 255]);
+  const result = comparePngBuffers(before, after);
+  assert.equal(result.metrics.rawChangedPixels, 1);
+  assert.equal(result.metrics.changedPixels, 1);
+  assert.equal(result.metrics.maxDelta, 10);
+  assert.equal(result.metrics.rmsError, 2.5);
+  assert.equal(result.metrics.channels.red.changedPixels, 1);
+  const diff = PNG.sync.read(result.diffPng);
+  assert.ok(diff.data[4] > diff.data[5], 'changed pixel must be visibly red');
+});
+
+test('comparison threshold changes classification without hiding raw statistics', () => {
+  const before = pngBuffer(1, 1, () => [10, 20, 30, 255]);
+  const after = pngBuffer(1, 1, () => [12, 20, 30, 255]);
+  const strict = comparePngBuffers(before, after, { threshold: 0 }).metrics;
+  const tolerant = comparePngBuffers(before, after, { threshold: 2 }).metrics;
+  assert.equal(strict.changedPixels, 1);
+  assert.equal(strict.classification, 'pixel-change');
+  assert.equal(tolerant.changedPixels, 0);
+  assert.equal(tolerant.classification, 'pixel-pass');
+  for (const field of ['rawChangedPixels', 'rmsError', 'maxDelta']) {
+    assert.equal(tolerant[field], strict[field]);
+  }
+  assert.deepEqual(tolerant.channels, strict.channels);
+});
+
+function comparisonEnvironment() {
+  return {
+    platform: 'win32',
+    arch: 'x64',
+    electron: '42.4.0',
+    chrome: '148.0.0',
+    page: { devicePixelRatio: 1 },
+    gpuInfo: {
+      gpuDevice: [{
+        active: true,
+        vendorId: 4318,
+        deviceId: 1234,
+        deviceString: 'Test GPU',
+        driverVendor: 'NVIDIA',
+        driverVersion: '1.2.3',
+      }],
+    },
+    webgl: {
+      webglVersion: 'WebGL 2.0',
+      unmaskedVendor: 'NVIDIA',
+      unmaskedRenderer: 'ANGLE Test GPU',
+    },
+  };
+}
+
+function writeComparisonRun(root, {
+  suiteId = 'suite',
+  suiteSha = 'a'.repeat(64),
+  courseId = 'course',
+  frameId = 'frame',
+  width = 2,
+  height = 2,
+  dpr = 1,
+  target = 'canvas',
+  label = 'Course',
+  pixel = () => [10, 20, 30, 255],
+  environment = comparisonEnvironment(),
+} = {}) {
+  const courseDir = path.join(root, courseId);
+  fs.mkdirSync(courseDir, { recursive: true });
+  const buffer = pngBuffer(width, height, pixel);
+  fs.writeFileSync(path.join(courseDir, `${frameId}.png`), buffer);
+  const manifest = {
+    ok: true,
+    schemaVersion: 1,
+    suite: { id: suiteId, sha256: suiteSha },
+    capture: { width, height, deviceScaleFactor: dpr, qualityProfile: 'current-default' },
+    git: { sha: 'commit-may-differ', dirty: false },
+    dataRoot: { contentHash: 'd'.repeat(64) },
+    inputs: [{ courseId, contentHash: 'e'.repeat(64) }],
+    results: [{
+      ok: true,
+      course: courseId,
+      expectedName: label,
+      environment: { ...environment, page: { ...environment.page, devicePixelRatio: dpr } },
+      frames: [{
+        id: frameId,
+        role: 'high-overview',
+        target,
+        file: `${frameId}.png`,
+        sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+        width,
+        height,
+        band: 'overview',
+        judges: ['course silhouette | horizon <script>'],
+      }],
+    }],
+  };
+  fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify(manifest));
+  return manifest;
+}
+
+test('comparison CLI writes atomic JSON, visible diffs, and escaped relative-link review sheets', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-report-'));
+  const before = path.join(temp, 'before run');
+  const after = path.join(temp, 'after run');
+  const output = path.join(temp, 'comparison output');
+  writeComparisonRun(before, { label: 'Course | <unsafe>' });
+  writeComparisonRun(after, {
+    label: 'Course | <unsafe>',
+    pixel: (index) => index === 0 ? [18, 20, 30, 255] : [10, 20, 30, 255],
+  });
+  const result = runComparison(
+    { mode: 'compare', before, after, output, threshold: 2 },
+    { stdout: SILENT_STDOUT },
+  );
+  assert.equal(result.frames, 1);
+  assert.equal(result.changedFrames, 1);
+  const comparison = JSON.parse(fs.readFileSync(path.join(output, 'comparison.json')));
+  assert.equal(comparison.frames[0].metrics.rawChangedPixels, 1);
+  assert.equal(fs.existsSync(path.join(output, 'diffs', 'course--frame.png')), true);
+  const report = fs.readFileSync(path.join(output, 'report.md'), 'utf8');
+  assert.match(report, /PIXEL PASS IS NOT A REALISM PASS/);
+  assert.doesNotMatch(report, /<unsafe>/);
+  assert.match(report, /Course \\\| &lt;unsafe&gt;/);
+  assert.match(report, /before%20run/);
+  assert.match(report, /course\/frame\.png/);
+  for (const dimension of [
+    'World composition and horizon',
+    'Terrain and macro relief',
+    'Playing-surface delineation',
+    'Material and light response',
+    'Bunkers and green complexes',
+    'Vegetation, structures, landmarks',
+    'Atmosphere and color',
+    'UI and artifact cleanliness',
+  ]) assert.match(report, new RegExp(dimension.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(report, /Hard-gate verdict \| \|/);
+});
+
+test('comparison rejects every manifest mismatch with a typed complete mismatch list', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-mismatch-'));
+  const before = path.join(temp, 'before');
+  const after = path.join(temp, 'after');
+  const output = path.join(temp, 'comparison');
+  writeComparisonRun(before);
+  const afterManifest = writeComparisonRun(after, {
+    suiteId: 'other-suite',
+    suiteSha: 'b'.repeat(64),
+    courseId: 'other-course',
+    frameId: 'other-frame',
+    width: 3,
+    dpr: 2,
+    target: 'page',
+    environment: {
+      ...comparisonEnvironment(),
+      electron: '43.0.0',
+      webgl: { ...comparisonEnvironment().webgl, unmaskedRenderer: 'Other GPU' },
+    },
+  });
+  afterManifest.dataRoot.contentHash = 'f'.repeat(64);
+  fs.writeFileSync(path.join(after, 'manifest.json'), JSON.stringify(afterManifest));
+  assert.throws(
+    () => runComparison(
+      { mode: 'compare', before, after, output, threshold: 2 },
+      { stdout: SILENT_STDOUT },
+    ),
+    (error) => error.code === 'COMPARE_INCOMPATIBLE' &&
+      Array.isArray(error.details.mismatches) &&
+      ['suite.id', 'suite.sha256', 'capture.width', 'capture.deviceScaleFactor',
+        'dataRoot.contentHash', 'courses', 'environment.electron', 'environment.webgl']
+        .every((field) => error.details.mismatches.some((entry) => entry.field === field)),
+  );
+  assert.equal(fs.existsSync(output), false);
+});
+
+test('comparison rejects matching frame IDs with incompatible dimensions or capture targets', () => {
+  for (const mutation of [
+    { width: 3 },
+    { target: 'page' },
+  ]) {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-frame-contract-'));
+    const before = path.join(temp, 'before');
+    const after = path.join(temp, 'after');
+    writeComparisonRun(before);
+    const manifest = writeComparisonRun(after, mutation);
+    // Keep suite-level resolution equal so the frame-level contract is exercised.
+    manifest.capture.width = 2;
+    fs.writeFileSync(path.join(after, 'manifest.json'), JSON.stringify(manifest));
+    assert.throws(
+      () => runComparison({
+        mode: 'compare', before, after, output: path.join(temp, 'out'), threshold: 2,
+      }, { stdout: SILENT_STDOUT }),
+      (error) => error.code === 'COMPARE_INCOMPATIBLE' &&
+        error.details.mismatches.some((entry) =>
+          entry.field === (mutation.width ? 'frame.dimensions' : 'frame.target')),
+    );
+  }
+});
+
+test('comparison allows Git revision and dirty state to differ', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-git-'));
+  const before = path.join(temp, 'before');
+  const after = path.join(temp, 'after');
+  const output = path.join(temp, 'out');
+  writeComparisonRun(before);
+  const afterManifest = writeComparisonRun(after);
+  afterManifest.git = { sha: 'different-commit', dirty: true };
+  fs.writeFileSync(path.join(after, 'manifest.json'), JSON.stringify(afterManifest));
+  const result = runComparison(
+    { mode: 'compare', before, after, output, threshold: 2 },
+    { stdout: SILENT_STDOUT },
+  );
+  assert.equal(result.changedFrames, 0);
+});
+
+test('comparison verifies each artifact against its success manifest hash', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-compare-hash-'));
+  const before = path.join(temp, 'before');
+  const after = path.join(temp, 'after');
+  writeComparisonRun(before);
+  writeComparisonRun(after);
+  fs.writeFileSync(path.join(after, 'course', 'frame.png'), pngBuffer(2, 2, () => [99, 20, 30, 255]));
+  assert.throws(
+    () => runComparison({
+      mode: 'compare', before, after, output: path.join(temp, 'out'), threshold: 2,
+    }, { stdout: SILENT_STDOUT }),
+    (error) => error.code === 'COMPARE_ARTIFACT_INVALID' &&
+      error.details.frameId === 'frame' &&
+      error.details.reportedSha256 !== error.details.actualSha256,
+  );
+  assert.equal(fs.existsSync(path.join(temp, 'out')), false);
+});
 
 test('nonblank detector rejects transparent, black, and one-color placeholders', () => {
   assert.throws(() => inspectNonblankPng(pngBuffer(4, 4, () => [0, 0, 0, 0])), /IMAGE_INVALID/);
@@ -910,6 +1175,9 @@ test('dirty iteration is marked, require-clean rejects it, and success publishes
   const manifest = JSON.parse(fs.readFileSync(path.join(outputRoot, 'successful-run', 'manifest.json')));
   assert.equal(manifest.evidence, 'iteration-dirty');
   assert.match(manifest.suite.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(manifest.capture.deviceScaleFactor, 1);
+  assert.equal(manifest.results[0].frames[0].band, 'overview');
+  assert.deepEqual(manifest.results[0].frames[0].judges, ['deterministic synthetic overview']);
   assert.equal(JSON.stringify(manifest).includes(path.resolve('test/fixtures/visual-capture-data')), false);
   assert.equal(fs.readdirSync(path.join(outputRoot, 'successful-run')).some((name) => name.endsWith('.job.json')), false);
   assert.deepEqual(fs.readdirSync(outputRoot), ['successful-run']);
@@ -947,10 +1215,6 @@ test('perf mode reaches the child with perf mode and the 15-minute default timeo
   });
   assert.equal(seen.job.mode, 'perf');
   assert.equal(seen.childOptions.timeoutMs, 900000);
-  await assert.rejects(
-    runCapture({ ...options, mode: 'compare' }),
-    (error) => error.code === 'MODE_NOT_IMPLEMENTED',
-  );
 });
 
 test('failed course preserves staging evidence and never publishes success manifest', async () => {

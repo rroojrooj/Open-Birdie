@@ -2,6 +2,7 @@
 import childProcess from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,11 @@ import {
   validateJobPaths,
   validateSuite,
 } from './config.mjs';
-import { inspectNonblankPng } from './metrics.mjs';
+import {
+  comparePngBuffers,
+  createComparisonReport,
+  inspectNonblankPng,
+} from './metrics.mjs';
 
 const execFileAsync = promisify(childProcess.execFile);
 
@@ -23,6 +28,366 @@ function atomicJson(file, value) {
   const temporary = `${file}.tmp-${process.pid}`;
   fs.writeFileSync(temporary, JSON.stringify(value, null, 2));
   fs.renameSync(temporary, file);
+}
+
+function atomicText(file, value) {
+  const temporary = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(temporary, value);
+  fs.renameSync(temporary, file);
+}
+
+const stableJson = (value) => {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+function sameValue(left, right) {
+  return stableJson(left) === stableJson(right);
+}
+
+function compareMismatch(mismatches, field, before, after) {
+  if (!sameValue(before, after)) mismatches.push({ field, before, after });
+}
+
+function readSuccessManifest(runDir, side) {
+  const manifestFile = path.join(runDir, 'manifest.json');
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  } catch (cause) {
+    throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest is missing or malformed`, {
+      stage: 'compare',
+      details: { side, manifest: manifestFile },
+      cause,
+    });
+  }
+  if (manifest?.ok !== true || !Array.isArray(manifest.results)) {
+    throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest is not a successful capture manifest`, {
+      stage: 'compare',
+      details: { side, manifest: manifestFile },
+    });
+  }
+  return manifest;
+}
+
+function comparisonEnvironment(environment = {}) {
+  const activeGpu = environment.gpuInfo?.gpuDevice?.find((device) => device.active) ||
+    environment.gpuInfo?.gpuDevice?.[0] || null;
+  return {
+    platform: environment.platform ?? null,
+    arch: environment.arch ?? null,
+    os: environment.os ?? environment.osRelease ?? null,
+    electron: environment.electron ?? null,
+    chrome: environment.chrome ?? null,
+    gpu: activeGpu && {
+      vendorId: activeGpu.vendorId ?? null,
+      deviceId: activeGpu.deviceId ?? null,
+      deviceString: activeGpu.deviceString ?? null,
+      driverVendor: activeGpu.driverVendor ?? null,
+      driverVersion: activeGpu.driverVersion ?? null,
+    },
+    webgl: {
+      webglVersion: environment.webgl?.webglVersion ?? null,
+      vendor: environment.webgl?.vendor ?? null,
+      renderer: environment.webgl?.renderer ?? null,
+      unmaskedVendor: environment.webgl?.unmaskedVendor ?? null,
+      unmaskedRenderer: environment.webgl?.unmaskedRenderer ?? null,
+    },
+  };
+}
+
+function manifestIndex(manifest, side) {
+  const courses = new Map();
+  const frames = new Map();
+  for (const course of manifest.results) {
+    if (!course?.course || courses.has(course.course) || !Array.isArray(course.frames)) {
+      throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest has invalid or duplicate courses`, {
+        stage: 'compare',
+        details: { side, course: course?.course },
+      });
+    }
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(course.course)) {
+      throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest has an unsafe course id`, {
+        stage: 'compare', details: { side, course: course.course },
+      });
+    }
+    courses.set(course.course, course);
+    for (const frame of course.frames) {
+      const key = `${course.course}\0${frame?.id}`;
+      if (!frame?.id || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(frame.id) || frames.has(key)) {
+        throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest has invalid or duplicate frames`, {
+          stage: 'compare', details: { side, course: course.course, frame: frame?.id },
+        });
+      }
+      if (!frame.file || path.basename(frame.file) !== frame.file) {
+        throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest has an unsafe frame artifact path`, {
+          stage: 'compare', details: { side, course: course.course, frame: frame.id, file: frame.file },
+        });
+      }
+      if (!Number.isInteger(frame.width) || frame.width <= 0 ||
+          !Number.isInteger(frame.height) || frame.height <= 0 ||
+          !['canvas', 'page'].includes(frame.target) ||
+          typeof frame.role !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(frame.sha256 || '')) {
+        throw new VisualCaptureError('COMPARE_MANIFEST_INVALID', `${side} manifest has incomplete frame evidence`, {
+          stage: 'compare', details: { side, course: course.course, frame: frame.id },
+        });
+      }
+      frames.set(key, { course, frame });
+    }
+  }
+  return { courses, frames };
+}
+
+function sortedKeys(map) {
+  return [...map.keys()].sort();
+}
+
+function inputHashes(manifest) {
+  return (manifest.inputs || [])
+    .map((input) => ({ courseId: input.courseId, contentHash: input.contentHash }))
+    .sort((left, right) => String(left.courseId).localeCompare(String(right.courseId)));
+}
+
+function collectCompatibility(before, after, beforeIndex, afterIndex) {
+  const mismatches = [];
+  for (const field of ['id', 'sha256']) {
+    compareMismatch(mismatches, `suite.${field}`, before.suite?.[field], after.suite?.[field]);
+  }
+  for (const field of ['width', 'height', 'deviceScaleFactor', 'qualityProfile']) {
+    compareMismatch(mismatches, `capture.${field}`, before.capture?.[field], after.capture?.[field]);
+  }
+  compareMismatch(
+    mismatches, 'dataRoot.contentHash', before.dataRoot?.contentHash, after.dataRoot?.contentHash,
+  );
+  compareMismatch(mismatches, 'inputs', inputHashes(before), inputHashes(after));
+  compareMismatch(mismatches, 'courses', sortedKeys(beforeIndex.courses), sortedKeys(afterIndex.courses));
+
+  const beforeEnvironment = comparisonEnvironment(before.results[0]?.environment);
+  const afterEnvironment = comparisonEnvironment(after.results[0]?.environment);
+  for (const field of ['platform', 'arch', 'os', 'electron', 'chrome', 'gpu', 'webgl']) {
+    compareMismatch(
+      mismatches,
+      `environment.${field}`,
+      beforeEnvironment[field],
+      afterEnvironment[field],
+    );
+  }
+
+  compareMismatch(mismatches, 'frames', sortedKeys(beforeIndex.frames), sortedKeys(afterIndex.frames));
+  for (const courseId of sortedKeys(beforeIndex.courses)) {
+    const beforeCourse = beforeIndex.courses.get(courseId);
+    const afterCourse = afterIndex.courses.get(courseId);
+    if (!afterCourse) continue;
+    compareMismatch(
+      mismatches,
+      'course.environment',
+      { courseId, identity: comparisonEnvironment(beforeCourse.environment) },
+      { courseId, identity: comparisonEnvironment(afterCourse.environment) },
+    );
+  }
+  for (const key of sortedKeys(beforeIndex.frames)) {
+    const beforeRecord = beforeIndex.frames.get(key);
+    const afterRecord = afterIndex.frames.get(key);
+    if (!afterRecord) continue;
+    const beforeFrame = beforeRecord.frame;
+    const afterFrame = afterRecord.frame;
+    compareMismatch(
+      mismatches,
+      'frame.dimensions',
+      { key, width: beforeFrame.width, height: beforeFrame.height },
+      { key, width: afterFrame.width, height: afterFrame.height },
+    );
+    compareMismatch(
+      mismatches,
+      'frame.dpr',
+      { key, value: beforeRecord.course.environment?.page?.devicePixelRatio },
+      { key, value: afterRecord.course.environment?.page?.devicePixelRatio },
+    );
+    compareMismatch(
+      mismatches,
+      'frame.target',
+      { key, value: beforeFrame.target },
+      { key, value: afterFrame.target },
+    );
+    for (const field of ['role', 'band', 'judges', 'fixedTime', 'renderPath']) {
+      compareMismatch(
+        mismatches,
+        `frame.${field}`,
+        { key, value: beforeFrame[field] ?? null },
+        { key, value: afterFrame[field] ?? null },
+      );
+    }
+  }
+  return { mismatches, environment: beforeEnvironment };
+}
+
+function safeArtifact(runDir, courseId, filename) {
+  const courseDir = path.join(runDir, courseId);
+  const candidate = path.join(courseDir, filename);
+  let realCourse;
+  let realFile;
+  try {
+    realCourse = fs.realpathSync(courseDir);
+    realFile = fs.realpathSync(candidate);
+  } catch (cause) {
+    throw new VisualCaptureError('COMPARE_ARTIFACT_INVALID', 'Comparison frame artifact is missing', {
+      stage: 'compare',
+      details: { courseId, filename },
+      cause,
+    });
+  }
+  const relative = path.relative(realCourse, realFile);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || fs.lstatSync(candidate).isSymbolicLink()) {
+    throw new VisualCaptureError('COMPARE_ARTIFACT_INVALID', 'Comparison frame artifact escapes its course directory', {
+      stage: 'compare',
+      details: { courseId, filename },
+    });
+  }
+  return realFile;
+}
+
+function readVerifiedArtifact(runDir, courseId, frame) {
+  const artifactPath = safeArtifact(runDir, courseId, frame.file);
+  const buffer = fs.readFileSync(artifactPath);
+  const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+  if (!/^[a-f0-9]{64}$/.test(frame.sha256 || '') || frame.sha256 !== sha256) {
+    throw new VisualCaptureError('COMPARE_ARTIFACT_INVALID', 'Comparison frame artifact hash does not match its manifest', {
+      stage: 'compare',
+      details: {
+        courseId,
+        frameId: frame.id,
+        reportedSha256: frame.sha256 ?? null,
+        actualSha256: sha256,
+      },
+    });
+  }
+  return { artifactPath, buffer, sha256 };
+}
+
+function defaultComparisonOutput(beforeDir, afterDir, root = ROOT) {
+  const slug = `${path.basename(beforeDir)}--${path.basename(afterDir)}`
+    .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 96) || 'comparison';
+  const timestamp = new Date().toISOString().replaceAll(':', '').replaceAll('.', '-');
+  return path.join(root, '.shots', 'visual', 'comparisons', `${slug}-${timestamp}`);
+}
+
+export function runComparison(options, {
+  root = ROOT,
+  stdout = process.stdout,
+} = {}) {
+  const beforeDir = path.resolve(root, options.before);
+  const afterDir = path.resolve(root, options.after);
+  const outputDir = path.resolve(root, options.output || defaultComparisonOutput(beforeDir, afterDir, root));
+  const threshold = options.threshold ?? 2;
+  if (!Number.isInteger(threshold) || threshold < 0 || threshold > 255) {
+    throw new VisualCaptureError('ARGS_INVALID', '--threshold must be an integer from 0 to 255');
+  }
+  if (fs.existsSync(outputDir)) {
+    throw new VisualCaptureError('COMPARE_OUTPUT_EXISTS', 'Comparison output directory already exists', {
+      stage: 'compare',
+      recovery: 'Choose a new --output directory.',
+      details: { output: outputDir },
+    });
+  }
+  const before = readSuccessManifest(beforeDir, 'Before');
+  const after = readSuccessManifest(afterDir, 'After');
+  const beforeIndex = manifestIndex(before, 'Before');
+  const afterIndex = manifestIndex(after, 'After');
+  const compatibility = collectCompatibility(before, after, beforeIndex, afterIndex);
+  if (compatibility.mismatches.length) {
+    throw new VisualCaptureError('COMPARE_INCOMPATIBLE', 'Capture manifests are not compatible', {
+      stage: 'compare',
+      recovery: 'Capture both runs from the same suite, inputs, dimensions, target, and renderer environment.',
+      details: { mismatches: compatibility.mismatches },
+    });
+  }
+
+  fs.mkdirSync(path.join(outputDir, 'diffs'), { recursive: true });
+  const frames = [];
+  const artifacts = [];
+  try {
+    for (const key of sortedKeys(beforeIndex.frames)) {
+      const beforeRecord = beforeIndex.frames.get(key);
+      const afterRecord = afterIndex.frames.get(key);
+      const courseId = beforeRecord.course.course;
+      const beforeFrame = beforeRecord.frame;
+      const afterFrame = afterRecord.frame;
+      const beforeArtifact = readVerifiedArtifact(beforeDir, courseId, beforeFrame);
+      const afterArtifact = readVerifiedArtifact(afterDir, courseId, afterFrame);
+      const beforePath = beforeArtifact.artifactPath;
+      const afterPath = afterArtifact.artifactPath;
+      const diffName = `${courseId}--${beforeFrame.id}.png`;
+      const diffPath = path.join(outputDir, 'diffs', diffName);
+      const compared = comparePngBuffers(beforeArtifact.buffer, afterArtifact.buffer, { threshold });
+      atomicText(diffPath, compared.diffPng);
+      frames.push({
+        courseId,
+        courseLabel: beforeRecord.course.expectedName || courseId,
+        frameId: beforeFrame.id,
+        role: beforeFrame.role,
+        target: beforeFrame.target,
+        band: beforeFrame.band ?? null,
+        judges: Array.isArray(beforeFrame.judges) ? beforeFrame.judges : [],
+        dimensions: { width: beforeFrame.width, height: beforeFrame.height },
+        devicePixelRatio: beforeRecord.course.environment?.page?.devicePixelRatio ?? before.capture?.deviceScaleFactor,
+        beforeFile: `${courseId}/${beforeFrame.file}`,
+        afterFile: `${courseId}/${afterFrame.file}`,
+        beforeSha256: beforeArtifact.sha256,
+        afterSha256: afterArtifact.sha256,
+        diffFile: `diffs/${diffName}`,
+        metrics: compared.metrics,
+      });
+      artifacts.push({ beforePath, afterPath, diffPath });
+    }
+    const changedFrames = frames.filter((frame) => frame.metrics.classification === 'pixel-change').length;
+    const comparison = {
+      ok: true,
+      schemaVersion: 1,
+      suite: { id: before.suite.id, sha256: before.suite.sha256 },
+      threshold,
+      sources: {
+        before: path.basename(beforeDir),
+        after: path.basename(afterDir),
+        beforeGit: before.git ?? null,
+        afterGit: after.git ?? null,
+      },
+      environment: compatibility.environment,
+      summary: {
+        totalFrames: frames.length,
+        changedFrames,
+        pixelPass: changedFrames === 0,
+        realismPass: null,
+        note: 'Pixel pass is not a realism pass.',
+      },
+      frames,
+    };
+    atomicJson(path.join(outputDir, 'comparison.json'), comparison);
+    atomicText(path.join(outputDir, 'report.md'), createComparisonReport({
+      comparison,
+      artifacts,
+      outputDir,
+      beforeLabel: path.basename(beforeDir),
+      afterLabel: path.basename(afterDir),
+    }));
+    const summary = {
+      ok: true,
+      output: outputDir,
+      frames: frames.length,
+      changedFrames,
+      pixelPass: changedFrames === 0,
+    };
+    stdout.write(`${JSON.stringify(summary)}\n`);
+    return summary;
+  } catch (error) {
+    // This directory was just created by this process and is the only tree we
+    // ever remove. Existing user paths are rejected before this point.
+    fs.rmSync(outputDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function cleanupRecordedChild(pid, {
@@ -361,7 +726,7 @@ export async function runCapture(options, {
   stderr = process.stderr,
 } = {}) {
   if (options.mode === 'compare') {
-    throw new VisualCaptureError('MODE_NOT_IMPLEMENTED', `${options.mode} is parsed but is completed by a later SP-00 task`);
+    return runComparison(options, { root, stdout });
   }
   const resolvedSuite = resolveSuite(options.suite, { root });
   const suite = validateSuite(JSON.parse(fs.readFileSync(resolvedSuite.path, 'utf8')));
@@ -412,6 +777,31 @@ export async function runCapture(options, {
       // shareable evidence, so remove them before publishing a successful run.
       fs.unlinkSync(jobFile);
     }
+    const courseSpecs = new Map(suite.courses.map((course) => [course.id, course]));
+    const publishedResults = results.map((result) => {
+      const courseSpec = courseSpecs.get(result.course);
+      const frameSpecs = new Map((courseSpec?.frames || []).map((frame) => [frame.id, frame]));
+      return {
+        ...result,
+        environment: {
+          ...result.environment,
+          os: {
+            platform: os.platform(),
+            release: os.release(),
+            version: os.version(),
+            arch: os.arch(),
+          },
+        },
+        frames: result.frames.map((frame) => {
+          const spec = frameSpecs.get(frame.id);
+          return {
+            ...frame,
+            band: spec?.band ?? null,
+            judges: spec?.judges ? [...spec.judges] : [],
+          };
+        }),
+      };
+    });
     const manifest = {
       ok: true,
       schemaVersion: 1,
@@ -421,11 +811,12 @@ export async function runCapture(options, {
         basename: path.basename(resolvedSuite.path),
         sha256: crypto.createHash('sha256').update(fs.readFileSync(resolvedSuite.path)).digest('hex'),
       },
+      capture: suite.capture,
       git,
       evidence: git.dirty ? 'iteration-dirty' : 'clean',
       dataRoot: buildSharedRootManifest(dataDir, { sourceKind: options.dataDir ? 'explicit' : 'default' }),
       inputs,
-      results,
+      results: publishedResults,
     };
     atomicJson(path.join(stagingRoot, 'manifest.json'), manifest);
     fs.renameSync(stagingRoot, finalDir);
