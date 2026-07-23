@@ -43,12 +43,14 @@ npm run visual:capture -- --suite baseline --course chambers-bay --data-dir "C:\
 Run the 60-second Chambers performance route:
 
 ```powershell
-npm run visual:perf -- --suite baseline --course chambers-bay --data-dir "C:\Users\USER\Documents\GitHub\Open-Birdie\data"
+npm run visual:perf -- --suite baseline --course chambers-bay --data-dir "C:\Users\USER\Documents\GitHub\Open-Birdie\data" --show-window
 ```
 
-Add `--show-window` to a capture or performance command when diagnosing a local rendering problem. Do not
-use a shown-window run as interchangeable comparison evidence unless both runs use the same environment and
-window state.
+On this host, only the shown-window performance route is qualifying. A hidden performance run is diagnostic:
+if its cadence cannot satisfy the claim, the runner exits with `PERFORMANCE_CADENCE_NON_QUALIFYING`. Preserve
+that failure evidence, then recover by rerunning the canonical command above with `--show-window`. You may
+also add `--show-window` to a capture command when diagnosing a visual problem. Do not compare shown- and
+hidden-window evidence as interchangeable runs.
 
 Compare two completed run directories:
 
@@ -91,7 +93,7 @@ evidence. A failed run stays in its owned
 `.staging-<pid>` directory with `failure.json`; it is not published as a successful manifest. Use
 `--require-clean` for named release evidence.
 
-Comparison output contains `comparison.json`, per-frame visible PNG diffs, and `review.md` with relative links
+Comparison output contains `comparison.json`, per-frame visible PNG diffs, and `report.md` with relative links
 and human-review prompts. Pixel diff can prove byte stability and localize change. It cannot judge realism,
 material quality, composition, golf readability, or whether a changed frame is better; those require human
 review against the frame's committed `judges` criteria.
@@ -109,8 +111,9 @@ and other time-dependent pixels are comparable across processes. Normal gameplay
 SP-00 stills are exactly 1280x720 at DPR 1 because the named host cannot provide an unclamped hidden
 1920x1080 content area. That decision does not lower the separate 1080p performance acceptance gate:
 release performance must be measured on a named Windows GPU/display that can provide an exact 1920x1080
-content area. The baseline command above therefore proves the 60-second sampling path and 1280x720 cadence,
-but it is not the 1080p release-performance acceptance result.
+content area. The canonical shown-window `visual:perf` command above proves the 60-second sampling path and
+1280x720 cadence. The ordinary `visual:capture` baseline proves deterministic still coverage; it does not
+make a performance claim. Neither 1280x720 result is the 1080p release-performance acceptance result.
 
 ## CI and release evidence
 
