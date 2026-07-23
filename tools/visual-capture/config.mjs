@@ -207,7 +207,7 @@ export function parseCliArgs(argv) {
     mode,
     suite: mode === 'smoke' ? 'synthetic-smoke' : 'baseline',
     port: 0,
-    courseTimeoutMs: 180000,
+    courseTimeoutMs: mode === 'perf' ? 900000 : 180000,
     requireClean: false,
     showWindow: false,
   };

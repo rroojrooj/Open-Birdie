@@ -3,6 +3,7 @@ import { PNG } from 'pngjs';
 import { VisualCaptureError } from './config.mjs';
 
 const rounded = (value) => Number(value.toFixed(3));
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|software(?:\s+only)?(?:\s+rasterizer)?|microsoft basic render/i;
 
 function percentile(sorted, fraction) {
   if (!sorted.length) return NaN;
@@ -30,6 +31,85 @@ export function summarizeTimings(intervals, { warmupSamples = 0 } = {}) {
     averageFps: rounded(1000 / averageMs),
     onePercentLowFps: rounded(1000 / p99Ms),
   };
+}
+
+export function classifyRendererCapability(input) {
+  const reasons = [];
+  const rendererIdentity = [
+    input.vendor,
+    input.renderer,
+    input.unmaskedVendor,
+    input.unmaskedRenderer,
+  ].filter(Boolean).join(' | ');
+  if (SOFTWARE_RENDERER.test(rendererIdentity)) {
+    reasons.push({ code: 'SOFTWARE_RENDERER', detail: rendererIdentity });
+  }
+  const compositing = input.gpuFeatureStatus?.gpu_compositing;
+  if (compositing !== 'enabled') {
+    reasons.push({ code: 'GPU_COMPOSITING_DISABLED', detail: compositing ?? 'missing' });
+  }
+  if (input.devicePixelRatio !== 1) {
+    reasons.push({ code: 'DPR_MISMATCH', detail: input.devicePixelRatio });
+  }
+  const expected = input.expectedSize || {};
+  const inner = input.innerSize || {};
+  if (inner.width !== expected.width || inner.height !== expected.height) {
+    reasons.push({ code: 'CONTENT_SIZE_MISMATCH', detail: { expected, actual: inner } });
+  }
+  const drawing = input.drawingBufferSize || {};
+  if (drawing.width !== expected.width || drawing.height !== expected.height) {
+    reasons.push({ code: 'DRAWING_BUFFER_SIZE_MISMATCH', detail: { expected, actual: drawing } });
+  }
+  if (input.visibilityState !== 'visible') {
+    reasons.push({ code: 'PAGE_NOT_VISIBLE', detail: input.visibilityState ?? 'missing' });
+  }
+  return { qualifying: reasons.length === 0, reasons };
+}
+
+export function normalizeGpuTimerSamples(input = {}) {
+  if (!input.supported) {
+    return {
+      supported: false,
+      reason: input.reason || 'extension-unavailable',
+      validSamples: [],
+      validSampleCount: 0,
+      discardedInvalid: 0,
+      discardedDisjoint: 0,
+    };
+  }
+  const validSamples = [];
+  let discardedInvalid = 0;
+  let discardedDisjoint = 0;
+  for (const sample of input.samples || []) {
+    if (sample?.disjoint) {
+      discardedDisjoint += 1;
+      continue;
+    }
+    if (!sample?.available || !Number.isFinite(sample.nanoseconds) || sample.nanoseconds <= 0) {
+      discardedInvalid += 1;
+      continue;
+    }
+    validSamples.push(rounded(sample.nanoseconds / 1e6));
+  }
+  const output = {
+    supported: true,
+    validSamples,
+    validSampleCount: validSamples.length,
+    discardedInvalid,
+    discardedDisjoint,
+  };
+  if (!validSamples.length) {
+    output.reason = discardedDisjoint ? 'all-samples-disjoint-or-invalid' : 'no-valid-samples';
+    return output;
+  }
+  const sorted = [...validSamples].sort((a, b) => a - b);
+  output.averageMs = rounded(validSamples.reduce((sum, value) => sum + value, 0) / validSamples.length);
+  output.medianMs = sorted.length % 2
+    ? sorted[Math.floor(sorted.length / 2)]
+    : rounded((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2);
+  output.p95Ms = percentile(sorted, 0.95);
+  output.worstMs = sorted.at(-1);
+  return output;
 }
 
 export function inspectNonblankPng(buffer, { expectedWidth, expectedHeight } = {}) {

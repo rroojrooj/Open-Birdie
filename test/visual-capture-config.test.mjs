@@ -20,6 +20,8 @@ import {
   validateSuite,
 } from '../tools/visual-capture/config.mjs';
 import {
+  classifyRendererCapability,
+  normalizeGpuTimerSamples,
   inspectNonblankPng,
   summarizeTimings,
 } from '../tools/visual-capture/metrics.mjs';
@@ -40,6 +42,90 @@ const ALL_ROLES = [
   ['horizon', 'horizon'],
   ['ui', 'ui'],
 ];
+
+test('renderer capability rejects software identities and invalid capture state', () => {
+  for (const renderer of ['Google SwiftShader', 'Mesa llvmpipe', 'Software Rasterizer']) {
+    const result = classifyRendererCapability({
+      renderer,
+      unmaskedRenderer: renderer,
+      gpuFeatureStatus: { gpu_compositing: 'enabled' },
+      devicePixelRatio: 1,
+      innerSize: { width: 1280, height: 720 },
+      drawingBufferSize: { width: 1280, height: 720 },
+      expectedSize: { width: 1280, height: 720 },
+      visibilityState: 'visible',
+    });
+    assert.equal(result.qualifying, false);
+    assert.ok(result.reasons.some((reason) => reason.code === 'SOFTWARE_RENDERER'));
+  }
+  const invalid = classifyRendererCapability({
+    renderer: 'ANGLE (NVIDIA GeForce RTX 4070 Direct3D11)',
+    gpuFeatureStatus: { gpu_compositing: 'disabled_software' },
+    devicePixelRatio: 2,
+    innerSize: { width: 1200, height: 700 },
+    drawingBufferSize: { width: 2400, height: 1400 },
+    expectedSize: { width: 1280, height: 720 },
+    visibilityState: 'hidden',
+  });
+  assert.equal(invalid.qualifying, false);
+  assert.deepEqual(
+    new Set(invalid.reasons.map((reason) => reason.code)),
+    new Set(['GPU_COMPOSITING_DISABLED', 'DPR_MISMATCH', 'CONTENT_SIZE_MISMATCH', 'DRAWING_BUFFER_SIZE_MISMATCH', 'PAGE_NOT_VISIBLE']),
+  );
+});
+
+test('renderer capability does not reject a hardware-backed exact capture', () => {
+  const result = classifyRendererCapability({
+    vendor: 'Google Inc. (NVIDIA)',
+    renderer: 'ANGLE (NVIDIA GeForce RTX 4070 Direct3D11)',
+    unmaskedVendor: 'NVIDIA Corporation',
+    unmaskedRenderer: 'NVIDIA GeForce RTX 4070/PCIe/SSE2',
+    gpuFeatureStatus: { gpu_compositing: 'enabled', webgl: 'enabled' },
+    devicePixelRatio: 1,
+    innerSize: { width: 1280, height: 720 },
+    drawingBufferSize: { width: 1280, height: 720 },
+    expectedSize: { width: 1280, height: 720 },
+    visibilityState: 'visible',
+  });
+  assert.equal(result.qualifying, true);
+  assert.deepEqual(result.reasons, []);
+});
+
+test('GPU timer evidence distinguishes unsupported, invalid, and disjoint samples', () => {
+  assert.deepEqual(normalizeGpuTimerSamples({ supported: false, reason: 'extension-unavailable' }), {
+    supported: false,
+    reason: 'extension-unavailable',
+    validSamples: [],
+    validSampleCount: 0,
+    discardedInvalid: 0,
+    discardedDisjoint: 0,
+  });
+  const normalized = normalizeGpuTimerSamples({
+    supported: true,
+    samples: [
+      { nanoseconds: 1200000, disjoint: false, available: true },
+      { nanoseconds: 0, disjoint: false, available: true },
+      { nanoseconds: 3300000, disjoint: true, available: true },
+      { nanoseconds: 4400000, disjoint: false, available: false },
+    ],
+  });
+  assert.equal(normalized.supported, true);
+  assert.deepEqual(normalized.validSamples, [1.2]);
+  assert.equal(normalized.validSampleCount, 1);
+  assert.equal(normalized.discardedInvalid, 2);
+  assert.equal(normalized.discardedDisjoint, 1);
+  assert.equal(normalized.averageMs, 1.2);
+});
+
+test('capture API remains query-gated while the scene starts with a live animation loop', () => {
+  const appSource = fs.readFileSync(path.resolve('public/app.js'), 'utf8');
+  const sceneSource = fs.readFileSync(path.resolve('public/render/scene.js'), 'utf8');
+  const gate = appSource.indexOf("if (query.get('visualCapture') === '1')");
+  const api = appSource.indexOf('window.__birdie.visualCapture =');
+  assert.ok(gate >= 0 && api > gate, 'capture API must only be installed inside the query gate');
+  assert.match(sceneSource, /this[.]_animationLoopLive = true;\s*this[.]_captureFixedTime = null;\s*this[.]renderer[.]setAnimationLoop\(this[.]_liveFrame\)/);
+  assert.match(sceneSource, /finally\s*{\s*info[.]autoReset = previousAutoReset;[\s\S]*this[.]renderer[.]setAnimationLoop\(this[.]_liveFrame\)/);
+});
 
 function frame(role, band, index) {
   const out = {
@@ -152,6 +238,8 @@ test('CLI parser recognizes all modes and capture flags', () => {
   for (const mode of ['capture', 'smoke', 'perf', 'compare']) {
     assert.equal(parseCliArgs([mode]).mode, mode);
   }
+  assert.equal(parseCliArgs(['perf']).courseTimeoutMs, 900000);
+  assert.equal(parseCliArgs(['smoke']).courseTimeoutMs, 180000);
   assert.deepEqual(parseCliArgs([
     'capture', '--suite', 'baseline', '--data-dir', '.\\data', '--output', '.\\out',
     '--port', '8123', '--course-timeout-ms', '9000', '--require-clean', '--show-window',
@@ -374,7 +462,30 @@ function writeArtifact(temp, id, target, {
     role: target === 'page' ? 'ui' : 'high-overview',
     target,
     file,
+    fixedTime: 12.5,
+    renderPath: 'postfx.render',
     sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+  };
+}
+
+function diagnosticEvidence() {
+  return {
+    environment: {
+      capability: { qualifying: true, reasons: [] },
+      page: { devicePixelRatio: 1 },
+      gpuFeatureStatus: { gpu_compositing: 'enabled' },
+      webgl: { webglVersion: 'WebGL 2.0' },
+    },
+    performance: {
+      cpu: { samples: 1 },
+      gpu: { supported: false, reason: 'extension-unavailable' },
+      renderer: {
+        resetPoint: { name: 'after-warmup-before-timed-sample' },
+        aggregation: 'cumulative-across-postfx-passes-during-timed-sample',
+      },
+    },
+    pageConsole: [],
+    fatalEvents: [],
   };
 }
 
@@ -388,6 +499,7 @@ test('child result validation accepts exact canvas/page artifacts and verifies t
       writeArtifact(temp, 'canvas-frame', 'canvas'),
       writeArtifact(temp, 'page-frame', 'page'),
     ],
+    ...diagnosticEvidence(),
   };
   const validated = validateChildResult(job, result);
   assert.equal(validated.frames.length, 2);
@@ -407,8 +519,40 @@ test('child result validation rejects filename, role, target, and sha mismatches
     (result) => { result.frames[0].target = 'page'; },
     (result) => { result.frames[1].target = 'canvas'; },
     (result) => { result.frames[0].sha256 = '0'.repeat(64); },
+    (result) => { result.frames[0].fixedTime = Number.NaN; },
+    (result) => { result.frames[0].renderPath = 'renderer.render'; },
   ]) {
-    const result = structuredClone({ ok: true, course: 'synthetic', frames: [canvas, page] });
+    const result = structuredClone({ ok: true, course: 'synthetic', frames: [canvas, page], ...diagnosticEvidence() });
+    mutate(result);
+    assert.throws(
+      () => validateChildResult(job, result),
+      (error) => error.code === 'CHILD_RESULT_INVALID',
+    );
+  }
+});
+
+test('child result validation requires capability, timing, reset, and event evidence', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'birdie-result-evidence-'));
+  const job = artifactJob(temp);
+  const base = {
+    ok: true,
+    course: 'synthetic',
+    frames: [
+      writeArtifact(temp, 'canvas-frame', 'canvas'),
+      writeArtifact(temp, 'page-frame', 'page'),
+    ],
+    ...diagnosticEvidence(),
+  };
+  for (const mutate of [
+    (result) => { delete result.environment.capability; },
+    (result) => { delete result.environment.webgl.webglVersion; },
+    (result) => { delete result.performance.renderer.resetPoint; },
+    (result) => { delete result.performance.cpu; },
+    (result) => { delete result.performance.gpu.supported; },
+    (result) => { delete result.pageConsole; },
+    (result) => { delete result.fatalEvents; },
+  ]) {
+    const result = structuredClone(base);
     mutate(result);
     assert.throws(
       () => validateChildResult(job, result),
@@ -423,7 +567,9 @@ test('child result validation decodes every PNG and rejects wrong dimensions or 
   const validPage = writeArtifact(temp, 'page-frame', 'page');
   const wrongSize = writeArtifact(temp, 'canvas-frame', 'canvas', { width: 5 });
   assert.throws(
-    () => validateChildResult(job, { ok: true, course: 'synthetic', frames: [wrongSize, validPage] }),
+    () => validateChildResult(job, {
+      ok: true, course: 'synthetic', frames: [wrongSize, validPage], ...diagnosticEvidence(),
+    }),
     (error) => error.code === 'CHILD_RESULT_INVALID' && error.details.frameId === 'canvas-frame',
   );
 
@@ -431,7 +577,9 @@ test('child result validation decodes every PNG and rejects wrong dimensions or 
     pixel: () => [10, 10, 10, 255],
   });
   assert.throws(
-    () => validateChildResult(job, { ok: true, course: 'synthetic', frames: [blank, validPage] }),
+    () => validateChildResult(job, {
+      ok: true, course: 'synthetic', frames: [blank, validPage], ...diagnosticEvidence(),
+    }),
     (error) => error.code === 'CHILD_RESULT_INVALID' && error.details.frameId === 'canvas-frame',
   );
 });

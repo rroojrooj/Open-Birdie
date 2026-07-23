@@ -121,11 +121,19 @@ export function validateChildResult(job, result) {
     if (!actual ||
         actual.role !== expected.role ||
         actual.target !== expectedTarget ||
-        actual.file !== expectedFile) {
+        actual.file !== expectedFile ||
+        !Number.isFinite(actual.fixedTime) ||
+        actual.renderPath !== 'postfx.render') {
       throw childResultInvalid('Child frame metadata does not exactly match the request', {
         frameId: expected.id,
-        expected: { id: expected.id, role: expected.role, target: expectedTarget, file: expectedFile },
-        actual: actual && { id: actual.id, role: actual.role, target: actual.target, file: actual.file },
+        expected: {
+          id: expected.id, role: expected.role, target: expectedTarget, file: expectedFile,
+          fixedTime: 'finite', renderPath: 'postfx.render',
+        },
+        actual: actual && {
+          id: actual.id, role: actual.role, target: actual.target, file: actual.file,
+          fixedTime: actual.fixedTime, renderPath: actual.renderPath,
+        },
       });
     }
     const artifactPath = path.join(job.courseOutputDir, expectedFile);
@@ -161,6 +169,22 @@ export function validateChildResult(job, result) {
     }
     return { ...actual, ...image };
   });
+  const evidenceValid =
+    result.environment?.capability?.qualifying === true &&
+    result.environment?.page?.devicePixelRatio === 1 &&
+    typeof result.environment?.gpuFeatureStatus === 'object' &&
+    typeof result.environment?.webgl?.webglVersion === 'string' &&
+    result.performance?.renderer?.resetPoint?.name === 'after-warmup-before-timed-sample' &&
+    result.performance?.renderer?.aggregation === 'cumulative-across-postfx-passes-during-timed-sample' &&
+    typeof result.performance?.cpu === 'object' &&
+    typeof result.performance?.gpu?.supported === 'boolean' &&
+    Array.isArray(result.pageConsole) &&
+    Array.isArray(result.fatalEvents);
+  if (!evidenceValid) {
+    throw childResultInvalid('Child result is missing required capability, renderer, timing, or event evidence', {
+      expectedCourse: job.course.id,
+    });
+  }
   return { ...result, frames: validatedFrames };
 }
 
@@ -369,6 +393,7 @@ export async function runCapture(options, {
       fs.mkdirSync(courseOutputDir);
       const job = validateJobPaths({
         version: 1,
+        mode: options.mode,
         suiteId: suite.id,
         stagingRoot,
         courseOutputDir,

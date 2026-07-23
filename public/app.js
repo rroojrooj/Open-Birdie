@@ -152,8 +152,11 @@ if (query.get('visualCapture') === '1') {
     canvasPng() {
       return scene.renderer.domElement.toDataURL('image/png');
     },
-    diagnostics() {
-      return { ...this.status(), scene: scene.visualCaptureDiagnostics() };
+    diagnostics(options = {}) {
+      return { ...this.status(), scene: scene.visualCaptureDiagnostics(options) };
+    },
+    samplePerformance(options = {}) {
+      return scene.sampleVisualCapturePerformance(options);
     },
     vegetationTextureChecksums() {
       return scene.visualCaptureVegetationChecksums();

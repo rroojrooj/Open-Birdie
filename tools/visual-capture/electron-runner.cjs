@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, screen } = require('electron');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -51,6 +51,7 @@ function inspectPng(buffer, expectedWidth, expectedHeight) {
 }
 
 async function run() {
+  const { classifyRendererCapability } = await import('./metrics.mjs');
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   const legacy = !JOB;
   const legacySuite = legacy ? JSON.parse(fs.readFileSync(SUITE_PATH, 'utf8')) : null;
@@ -81,6 +82,7 @@ async function run() {
   const srv = require(path.join(ROOT, 'server.js'));
   let win = null;
   const pageConsole = [];
+  const fatalEvents = [];
   try {
     const { httpPort } = await srv.ready;
     const origin = `http://127.0.0.1:${httpPort}`;
@@ -106,8 +108,30 @@ async function run() {
         paintWhenInitiallyHidden: true,
       },
     });
-    win.webContents.on('console-message', (_event, level, message) => {
-      pageConsole.push({ level, message });
+    win.webContents.on('console-message', (_event, levelOrDetails, message, lineNumber, sourceId) => {
+      const details = levelOrDetails && typeof levelOrDetails === 'object'
+        ? levelOrDetails
+        : { level: levelOrDetails, message, lineNumber, sourceId };
+      const numericLevels = ['verbose', 'info', 'warning', 'error'];
+      const level = typeof details.level === 'number'
+        ? (numericLevels[details.level] || `level-${details.level}`)
+        : String(details.level || 'info').toLowerCase();
+      pageConsole.push({
+        level,
+        sourceUrl: details.sourceId || details.sourceURL || null,
+        line: Number(details.lineNumber ?? details.line ?? 0),
+        message: String(details.message || ''),
+      });
+    });
+    win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (isMainFrame === false) return;
+      fatalEvents.push({ type: 'did-fail-load', errorCode, errorDescription, url: validatedURL });
+    });
+    win.webContents.on('render-process-gone', (_event, details) => {
+      fatalEvents.push({ type: 'render-process-gone', details });
+    });
+    win.on('unresponsive', () => {
+      fatalEvents.push({ type: 'unresponsive' });
     });
     await win.loadURL(`${origin}/?visualCapture=1&primaryNonce=${encodeURIComponent(srv.primaryNonce)}`);
     await win.webContents.executeJavaScript(
@@ -204,7 +228,16 @@ async function run() {
       const check = inspectPng(imageBuffer, capture.width, capture.height);
       const filename = legacy ? 'canvas.png' : `${frameSpec.id}.png`;
       fs.writeFileSync(path.join(OUTPUT_DIR, filename), imageBuffer);
-      frameResults.push({ id: frameSpec.id, role: frameSpec.role, target: frameSpec.target || 'canvas', file: filename, ...check });
+      frameResults.push({
+        id: frameSpec.id,
+        role: frameSpec.role,
+        target: frameSpec.target || 'canvas',
+        file: filename,
+        fixedTime: diagnostics.lastVisualCapture?.fixedTime ?? frame.time,
+        renderPath: diagnostics.lastVisualCapture?.renderPath || null,
+        renderer: diagnostics.renderer,
+        ...check,
+      });
       if (legacy) {
         legacyCanvasCheck = check;
         const pageImage = await win.webContents.capturePage();
@@ -213,15 +246,66 @@ async function run() {
         fs.writeFileSync(path.join(OUTPUT_DIR, 'page.png'), pagePng);
       }
     }
+    const performanceSample = await win.webContents.executeJavaScript(
+      `window.__birdie.visualCapture.samplePerformance({
+        durationMs: ${JOB?.mode === 'perf' ? 60000 : 2000},
+        claim: ${JSON.stringify(JOB?.mode === 'perf' ? 'performance' : 'diagnostic-only')},
+        route: ${JSON.stringify(course.frames)}
+      })`,
+      true,
+    );
+    const finalPageState = await win.webContents.executeJavaScript(
+      `({
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        visibilityState: document.visibilityState,
+        devicePixelRatio: window.devicePixelRatio,
+        diagnostics: window.__birdie.visualCapture.diagnostics()
+      })`,
+      true,
+    );
     const gpuFeatureStatus = app.getGPUFeatureStatus();
     const gpuInfo = await app.getGPUInfo('complete');
-    const gpuIdentity = JSON.stringify({
-      devices: gpuInfo.gpuDevice,
-      auxAttributes: gpuInfo.auxAttributes,
-      webgl: diagnostics.renderer,
+    const display = screen.getDisplayMatching(win.getBounds());
+    const capability = classifyRendererCapability({
+      ...diagnostics.renderer,
+      gpuFeatureStatus,
+      devicePixelRatio: finalPageState.devicePixelRatio,
+      innerSize: { width: finalPageState.innerWidth, height: finalPageState.innerHeight },
+      drawingBufferSize: {
+        width: finalPageState.diagnostics.scene.canvas.width,
+        height: finalPageState.diagnostics.scene.canvas.height,
+      },
+      expectedSize: { width: capture.width, height: capture.height },
+      visibilityState: finalPageState.visibilityState,
     });
-    const softwareRenderer = /swiftshader|llvmpipe|software rasterizer/i.test(gpuIdentity);
-    if (softwareRenderer) throw new Error(`SOFTWARE_RENDERER ${gpuIdentity}`);
+    const environment = {
+      platform: process.platform,
+      arch: process.arch,
+      node: process.versions.node,
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      display: {
+        id: display.id,
+        scaleFactor: display.scaleFactor,
+        refreshRateHz: display.displayFrequency,
+        size: display.size,
+        workArea: display.workArea,
+      },
+      page: {
+        devicePixelRatio: finalPageState.devicePixelRatio,
+        visibilityState: finalPageState.visibilityState,
+        innerSize: { width: finalPageState.innerWidth, height: finalPageState.innerHeight },
+        drawingBufferSize: {
+          width: finalPageState.diagnostics.scene.canvas.width,
+          height: finalPageState.diagnostics.scene.canvas.height,
+        },
+      },
+      gpuFeatureStatus,
+      gpuInfo,
+      webgl: diagnostics.renderer,
+      capability,
+    };
     const result = {
       ok: true,
       suite: legacySuite?.id || JOB.suiteId,
@@ -229,24 +313,38 @@ async function run() {
       cacheFile: course.cacheFile,
       expectedName: course.expectedName,
       frames: frameResults,
-      environment: {
-        platform: process.platform,
-        arch: process.arch,
-        node: process.versions.node,
-        electron: process.versions.electron,
-        chrome: process.versions.chrome,
-        deviceScaleFactor: pageState.devicePixelRatio,
-        gpuFeatureStatus,
-        gpuInfo,
-        softwareRenderer,
-      },
+      environment,
       ...(legacy ? { canvas: legacyCanvasCheck, page: legacyPageCheck, frame: course.frames[0].id } : {}),
       diagnostics,
+      performance: performanceSample,
       pageState,
+      finalPageState,
       vegetationTextureChecksums,
       hdPolicy,
       pageConsole,
+      fatalEvents,
     };
+    const consoleErrors = pageConsole.filter((entry) => entry.level === 'error');
+    const performanceNonQualifying = performanceSample.requestedPerformanceClaim &&
+      !performanceSample.performanceClaim;
+    if (!capability.qualifying || performanceNonQualifying || fatalEvents.length || consoleErrors.length) {
+      const error = new Error(!capability.qualifying
+        ? `CAPABILITY_NON_QUALIFYING ${JSON.stringify(capability.reasons)}`
+        : performanceNonQualifying
+          ? `PERFORMANCE_CADENCE_NON_QUALIFYING ${JSON.stringify(performanceSample.cadenceQualification)}`
+        : fatalEvents.length
+          ? `PAGE_RUNTIME_FAILURE ${JSON.stringify(fatalEvents)}`
+          : `PAGE_CONSOLE_ERROR ${JSON.stringify(consoleErrors)}`);
+      error.code = !capability.qualifying
+        ? 'CAPABILITY_NON_QUALIFYING'
+        : performanceNonQualifying
+          ? 'PERFORMANCE_CADENCE_NON_QUALIFYING'
+          : fatalEvents.length
+            ? 'PAGE_RUNTIME_FAILURE'
+            : 'PAGE_CONSOLE_ERROR';
+      error.evidence = result;
+      throw error;
+    }
     const resultTemp = `${RESULT_FILE}.tmp-${process.pid}`;
     fs.writeFileSync(resultTemp, JSON.stringify(result, null, 2));
     fs.renameSync(resultTemp, RESULT_FILE);
@@ -255,6 +353,9 @@ async function run() {
       output: OUTPUT_DIR,
       ...(legacy ? { canvas: legacyCanvasCheck.sha256, page: legacyPageCheck.sha256 } : { frames: frameResults.length }),
     })}\n`);
+  } catch (error) {
+    error.evidence ||= { pageConsole, fatalEvents };
+    throw error;
   } finally {
     if (win && !win.isDestroyed()) win.destroy();
     srv.close();
@@ -272,6 +373,7 @@ app.whenReady()
       stage: 'runner',
       message: error?.message || String(error),
       error: error?.stack || String(error),
+      ...(error?.evidence ? { evidence: error.evidence } : {}),
     };
     fs.writeFileSync(path.join(OUTPUT_DIR, 'failure.json'), JSON.stringify(failure, null, 2));
     if (JOB) {
