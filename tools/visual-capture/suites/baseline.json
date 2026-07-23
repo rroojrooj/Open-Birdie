@@ -1,0 +1,423 @@
+{
+  "schemaVersion": 1,
+  "id": "baseline",
+  "capture": {
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1,
+    "qualityProfile": "current-default",
+    "readinessTimeoutMs": 120000,
+    "settleFrames": 3,
+    "fixedTimeSeconds": 12.5
+  },
+  "courses": [
+    {
+      "id": "chambers-bay",
+      "cacheFile": "chambers-bay.json",
+      "expectedName": "Chambers Bay",
+      "hdPolicy": "optional",
+      "frames": [
+        {
+          "id": "address-play",
+          "role": "address",
+          "target": "canvas",
+          "mode": "idle",
+          "band": "address",
+          "judges": [
+            "active-hole aim line, ball scale, tee terrain, and address readability"
+          ]
+        },
+        {
+          "id": "green-complex",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 138,
+            "ty": -289,
+            "dist": 70,
+            "pitch": -24,
+            "yaw": 20,
+            "hOff": 0
+          },
+          "judges": [
+            "green fringe transition, checker pattern, coastal turf texture, and terrain relief"
+          ]
+        },
+        {
+          "id": "sand-complex",
+          "role": "close-bunker",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 138,
+            "ty": -289,
+            "dist": 90,
+            "pitch": -20,
+            "yaw": 200,
+            "hOff": 0
+          },
+          "judges": [
+            "bunker edge definition, sand material, fescue contrast, and local terrain relief"
+          ]
+        },
+        {
+          "id": "origin-pond",
+          "role": "landing",
+          "target": "canvas",
+          "mode": "free",
+          "band": "hole",
+          "pose": {
+            "tx": 0,
+            "ty": -16,
+            "dist": 150,
+            "pitch": -26,
+            "yaw": 0,
+            "hOff": 0
+          },
+          "judges": [
+            "origin pond water response, fairway landing corridor, shoreline edge, and reflector continuity"
+          ]
+        },
+        {
+          "id": "south-overview",
+          "role": "hole-overview",
+          "target": "canvas",
+          "mode": "free",
+          "band": "hole",
+          "pose": {
+            "tx": 0,
+            "ty": -40,
+            "dist": 220,
+            "pitch": -30,
+            "yaw": 0,
+            "hOff": 0
+          },
+          "judges": [
+            "origin holes, pond placement, fairway hierarchy, and coastal elevation shaping"
+          ]
+        },
+        {
+          "id": "high-survey",
+          "role": "high-overview",
+          "target": "canvas",
+          "mode": "free",
+          "band": "overview",
+          "pose": {
+            "tx": 0,
+            "ty": -16,
+            "dist": 320,
+            "pitch": -42,
+            "yaw": 0,
+            "hOff": 0
+          },
+          "judges": [
+            "course-wide seam continuity, coastal routing density, terrain hierarchy, and vegetation distribution"
+          ]
+        },
+        {
+          "id": "coastal-horizon",
+          "role": "horizon",
+          "target": "canvas",
+          "mode": "free",
+          "band": "horizon",
+          "pose": {
+            "tx": 0,
+            "ty": -40,
+            "dist": 520,
+            "pitch": -9,
+            "yaw": 0,
+            "hOff": 10
+          },
+          "judges": [
+            "Puget Sound horizon silhouette, coastal haze, sky-ground separation, and distant terrain"
+          ]
+        },
+        {
+          "id": "gameplay-ui",
+          "role": "ui",
+          "target": "page",
+          "mode": "idle",
+          "band": "ui",
+          "judges": [
+            "score HUD, club and distance labels, minimap, aim line, and unobscured course canvas"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tpc-sawgrass",
+      "cacheFile": "tpc-sawgrass.json",
+      "expectedName": "TPC Sawgrass",
+      "hdPolicy": "optional",
+      "frames": [
+        {
+          "id": "address-play",
+          "role": "address",
+          "target": "canvas",
+          "mode": "idle",
+          "band": "address",
+          "judges": [
+            "active-hole tee corridor, parkland tree framing, aim line, and address readability"
+          ]
+        },
+        {
+          "id": "island-green",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 386.43,
+            "ty": -495.7,
+            "dist": 82,
+            "pitch": -25,
+            "yaw": 205,
+            "hOff": 1
+          },
+          "judges": [
+            "seventeenth island green, fringe collar, surrounding water, and bulkhead-like shoreline"
+          ]
+        },
+        {
+          "id": "island-sand",
+          "role": "close-bunker",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 386.43,
+            "ty": -495.7,
+            "dist": 112,
+            "pitch": -22,
+            "yaw": 25,
+            "hOff": 0
+          },
+          "judges": [
+            "seventeenth bunker sand, green edge, water separation, and parkland vegetation"
+          ]
+        },
+        {
+          "id": "seventeen-landing",
+          "role": "landing",
+          "target": "canvas",
+          "mode": "free",
+          "band": "hole",
+          "pose": {
+            "tx": 419.67,
+            "ty": -548.74,
+            "dist": 165,
+            "pitch": -27,
+            "yaw": 25,
+            "hOff": 2
+          },
+          "judges": [
+            "seventeenth tee-to-green carry, water hazard scale, landing perspective, and tree backdrop"
+          ]
+        },
+        {
+          "id": "seventeen-overview",
+          "role": "hole-overview",
+          "target": "canvas",
+          "mode": "free",
+          "band": "hole",
+          "pose": {
+            "tx": 419.67,
+            "ty": -548.74,
+            "dist": 280,
+            "pitch": -36,
+            "yaw": 25,
+            "hOff": 0
+          },
+          "judges": [
+            "complete seventeenth island complex, tee location, lake footprint, and surrounding parkland"
+          ]
+        },
+        {
+          "id": "parkland-survey",
+          "role": "high-overview",
+          "target": "canvas",
+          "mode": "free",
+          "band": "overview",
+          "pose": {
+            "tx": 0,
+            "ty": 430,
+            "dist": 3300,
+            "pitch": -58,
+            "yaw": 0,
+            "hOff": 0
+          },
+          "judges": [
+            "parkland routing, distributed lakes, tree corridors, fairway rhythm, and full-course extent"
+          ]
+        },
+        {
+          "id": "parkland-horizon",
+          "role": "horizon",
+          "target": "canvas",
+          "mode": "free",
+          "band": "horizon",
+          "pose": {
+            "tx": 420,
+            "ty": -550,
+            "dist": 440,
+            "pitch": -10,
+            "yaw": 205,
+            "hOff": 8
+          },
+          "judges": [
+            "low parkland horizon, mature tree silhouette, lake reflections, and atmospheric depth"
+          ]
+        },
+        {
+          "id": "gameplay-ui",
+          "role": "ui",
+          "target": "page",
+          "mode": "idle",
+          "band": "ui",
+          "judges": [
+            "score HUD, club and distance labels, minimap, aim line, and unobscured parkland view"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "st-andrews-old-course",
+      "cacheFile": "st-andrews-old-course.json",
+      "expectedName": "St Andrews Old Course",
+      "hdPolicy": "optional",
+      "frames": [
+        {
+          "id": "address-play",
+          "role": "address",
+          "target": "canvas",
+          "mode": "idle",
+          "band": "address",
+          "judges": [
+            "first-hole tee corridor, broad shared turf, aim line, and no-aerial surface fallback"
+          ]
+        },
+        {
+          "id": "home-green",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 886.69,
+            "ty": -1149.33,
+            "dist": 82,
+            "pitch": -24,
+            "yaw": 185,
+            "hOff": 1
+          },
+          "judges": [
+            "eighteenth green transition, links turf texture, shared approach scale, and town-edge context"
+          ]
+        },
+        {
+          "id": "road-hole-bunker",
+          "role": "close-bunker",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 553.21,
+            "ty": -1149.44,
+            "dist": 95,
+            "pitch": -21,
+            "yaw": 205,
+            "hOff": 0
+          },
+          "judges": [
+            "Road Hole bunker region, sand edge, links rough, and seventeenth green relationship"
+          ]
+        },
+        {
+          "id": "shared-fairway",
+          "role": "landing",
+          "target": "canvas",
+          "mode": "free",
+          "band": "hole",
+          "pose": {
+            "tx": 720,
+            "ty": -1110,
+            "dist": 190,
+            "pitch": -27,
+            "yaw": 90,
+            "hOff": 1
+          },
+          "judges": [
+            "first-and-eighteenth shared fairway, broad links landing area, sparse rough, and surface fallback"
+          ]
+        },
+        {
+          "id": "road-hole-overview",
+          "role": "hole-overview",
+          "target": "canvas",
+          "mode": "free",
+          "band": "hole",
+          "pose": {
+            "tx": 423.25,
+            "ty": -996.41,
+            "dist": 440,
+            "pitch": -34,
+            "yaw": 185,
+            "hOff": 0
+          },
+          "judges": [
+            "seventeenth routing from tee to green, Road Hole bunker region, shared turf, and coastal links openness"
+          ]
+        },
+        {
+          "id": "links-survey",
+          "role": "high-overview",
+          "target": "canvas",
+          "mode": "free",
+          "band": "overview",
+          "pose": {
+            "tx": 90,
+            "ty": -80,
+            "dist": 2100,
+            "pitch": -56,
+            "yaw": 0,
+            "hOff": 0
+          },
+          "judges": [
+            "out-and-back links routing, shared fairways, sparse vegetation, course extent, and no-aerial fallback"
+          ]
+        },
+        {
+          "id": "links-horizon",
+          "role": "horizon",
+          "target": "canvas",
+          "mode": "free",
+          "band": "horizon",
+          "pose": {
+            "tx": 180,
+            "ty": -320,
+            "dist": 900,
+            "pitch": -9,
+            "yaw": 180,
+            "hOff": 8
+          },
+          "judges": [
+            "sparse links horizon, low dunes, sky dominance, distant course silhouette, and restrained vegetation"
+          ]
+        },
+        {
+          "id": "gameplay-ui",
+          "role": "ui",
+          "target": "page",
+          "mode": "idle",
+          "band": "ui",
+          "judges": [
+            "score HUD, club and distance labels, minimap, aim line, and unobscured no-aerial course view"
+          ]
+        }
+      ]
+    }
+  ]
+}

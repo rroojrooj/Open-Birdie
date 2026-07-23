@@ -15,6 +15,8 @@ import {
   normalizePerformanceRequest,
 } from '../public/render/capture-performance.js';
 import {
+  BANDS,
+  ROLES,
   VisualCaptureError,
   assertCourseIdentity,
   buildCourseInputManifest,
@@ -327,6 +329,55 @@ test('suite validation rejects duplicate IDs, incomplete poses, target mismatch,
   expectIssue((v) => { delete v.courses[0].frames[1].pose.yaw; }, '/courses/0/frames/1/pose/yaw');
   expectIssue((v) => { v.courses[0].frames.at(-1).target = 'canvas'; }, '/courses/0/frames/7/target');
   expectIssue((v) => { v.courses[0].frames.pop(); }, '/courses/0/frames');
+});
+
+test('baseline suite pins three real courses, proof coverage, and Chambers legacy cameras', () => {
+  const baselinePath = path.resolve('tools', 'visual-capture', 'suites', 'baseline.json');
+  const legacyPath = path.resolve('docs', 'fixtures', 'chambers-sweep.json');
+  const baseline = validateSuite(JSON.parse(fs.readFileSync(baselinePath, 'utf8')));
+  const legacy = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
+  const expectedCourses = new Map([
+    ['chambers-bay', ['chambers-bay.json', 'Chambers Bay']],
+    ['tpc-sawgrass', ['tpc-sawgrass.json', 'TPC Sawgrass']],
+    ['st-andrews-old-course', ['st-andrews-old-course.json', 'St Andrews Old Course']],
+  ]);
+
+  assert.equal(baseline.id, 'baseline');
+  assert.equal(baseline.capture.width, 1280);
+  assert.equal(baseline.capture.height, 720);
+  assert.equal(baseline.capture.deviceScaleFactor, 1);
+  assert.equal(baseline.courses.length, expectedCourses.size);
+  assert.deepEqual(new Set(baseline.courses.map((course) => course.id)), new Set(expectedCourses.keys()));
+
+  for (const course of baseline.courses) {
+    const [cacheFile, expectedName] = expectedCourses.get(course.id);
+    assert.equal(course.cacheFile, cacheFile);
+    assert.equal(course.expectedName, expectedName);
+    assert.equal(course.hdPolicy, 'optional');
+    assert.equal(course.frames.length, ROLES.length);
+    assert.deepEqual(new Set(course.frames.map((frameValue) => frameValue.role)), new Set(ROLES));
+    assert.deepEqual(new Set(course.frames.map((frameValue) => frameValue.band)), new Set(BANDS));
+    for (const frameValue of course.frames) {
+      assert.ok(frameValue.judges.every((judge) => judge.trim().split(/\s+/).length >= 2));
+      assert.ok(frameValue.judges.every((judge) => !/^composition$/i.test(judge)));
+      assert.equal(frameValue.target, frameValue.role === 'ui' ? 'page' : 'canvas');
+    }
+  }
+
+  const chambers = baseline.courses.find((course) => course.id === 'chambers-bay');
+  const chambersByLegacyName = new Map([
+    ['play', chambers.frames.find((frameValue) => frameValue.role === 'address')],
+    ['green', chambers.frames.find((frameValue) => frameValue.role === 'close-green')],
+    ['sand', chambers.frames.find((frameValue) => frameValue.role === 'close-bunker')],
+    ['pond', chambers.frames.find((frameValue) => frameValue.role === 'landing')],
+    ['ov_south', chambers.frames.find((frameValue) => frameValue.role === 'hole-overview')],
+    ['ov_high', chambers.frames.find((frameValue) => frameValue.role === 'high-overview')],
+  ]);
+  for (const legacyFrame of legacy.frames.filter((frameValue) => frameValue.mode === 'free')) {
+    assert.deepEqual(chambersByLegacyName.get(legacyFrame.name)?.pose, legacyFrame.pose);
+  }
+  assert.equal(chambersByLegacyName.get('play')?.role, 'address');
+  assert.equal(legacy.supersededBy, '../../tools/visual-capture/suites/baseline.json');
 });
 
 test('CLI parser recognizes all modes and capture flags', () => {

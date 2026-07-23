@@ -1,5 +1,6 @@
 {
-  "_doc": "Pinned capture fixture for the Phase-0a/realism verification sweep (eng-review #1). Makes before/after frames pixel-comparable and re-runnable. Overview/beauty frames are shot in REAL free-cam (enterFreeCam) and the play frame in REAL idle mode, so the sweep exercises the actual camMode gate (framing.js) rather than a hand-posed approximation.",
+  "_doc": "LEGACY PROVENANCE ONLY. This Phase-0a fixture is superseded by the SP-00 baseline suite. Its original camera values and procedure are retained verbatim so migration equality remains testable; use the baseline suite for new captures.",
+  "supersededBy": "../../tools/visual-capture/suites/baseline.json",
   "course": "chambers-bay.json",
   "captureSize": [1280, 800],
   "jpegQuality": 0.85,
