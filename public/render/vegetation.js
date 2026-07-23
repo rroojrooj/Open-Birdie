@@ -16,11 +16,60 @@ export function deterministicRandom(seed) {
   };
 }
 
+export function vegetationTextureCommands(kind) {
+  if (kind === 'straw') {
+    const rnd = deterministicRandom(0x51a7);
+    const s = 256;
+    const cols = ['#7a4a26', '#8c5a30', '#6b3f22', '#9c6a3c', '#5e3a20'];
+    const commands = [];
+    for (let i = 0; i < 1500; i++) {
+      const ang = rnd() * Math.PI * 2;
+      const rad = Math.pow(rnd(), 0.6) * (s * 0.5);
+      const a = 1 - rad / (s * 0.5);
+      if (a <= 0) continue;
+      const cx = s / 2 + Math.cos(ang) * rad, cy = s / 2 + Math.sin(ang) * rad;
+      const len = 6 + rnd() * 12, dir = rnd() * Math.PI * 2;
+      commands.push({
+        cx, cy,
+        x2: cx + Math.cos(dir) * len,
+        y2: cy + Math.sin(dir) * len,
+        color: cols[(rnd() * cols.length) | 0],
+        alpha: 0.5 * a * (0.6 + rnd() * 0.4),
+        lineWidth: 1 + rnd() * 1.4,
+      });
+    }
+    return commands;
+  }
+  if (kind === 'flower') {
+    const rnd = deterministicRandom(0xf10a);
+    const s = 128;
+    const commands = [];
+    for (let i = 0; i < 46; i++) {
+      const ang = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.5) * s * 0.42;
+      commands.push({
+        kind: 'blossom',
+        cx: s / 2 + Math.cos(ang) * rad,
+        cy: s * 0.55 + Math.sin(ang) * rad * 0.8,
+        radius: 4 + rnd() * 7,
+      });
+    }
+    for (let i = 0; i < 10; i++) {
+      commands.push({
+        kind: 'leaf-gap',
+        cx: rnd() * s,
+        cy: s * 0.5 + rnd() * s * 0.45,
+        radius: 3 + rnd() * 5,
+      });
+    }
+    return commands;
+  }
+  throw new RangeError(`Unknown vegetation texture kind: ${kind}`);
+}
+
 // Pine-straw mat: a faint continuous brown disc (densest at the trunk, fading to
 // nothing at the rim so it feathers into turf) with many short needle strokes on
 // top for litter detail. The transparent gaps let blades of turf show through.
 function strawTexture() {
-  const rnd = deterministicRandom(0x51a7);
   const s = 256, cv = document.createElement('canvas');
   cv.width = cv.height = s;
   const ctx = cv.getContext('2d');
@@ -31,20 +80,13 @@ function strawTexture() {
   base.addColorStop(1.0, 'rgba(110,66,34,0.0)');
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, s, s);
-  const cols = ['#7a4a26', '#8c5a30', '#6b3f22', '#9c6a3c', '#5e3a20'];
-  for (let i = 0; i < 1500; i++) {
-    const ang = rnd() * Math.PI * 2;
-    const rad = Math.pow(rnd(), 0.6) * (s * 0.5);
-    const a = 1 - rad / (s * 0.5); // fade strokes at the rim too
-    if (a <= 0) continue;
-    const cx = s / 2 + Math.cos(ang) * rad, cy = s / 2 + Math.sin(ang) * rad;
-    const len = 6 + rnd() * 12, dir = rnd() * Math.PI * 2;
-    ctx.strokeStyle = cols[(rnd() * cols.length) | 0];
-    ctx.globalAlpha = 0.5 * a * (0.6 + rnd() * 0.4);
-    ctx.lineWidth = 1 + rnd() * 1.4;
+  for (const command of vegetationTextureCommands('straw')) {
+    ctx.strokeStyle = command.color;
+    ctx.globalAlpha = command.alpha;
+    ctx.lineWidth = command.lineWidth;
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(dir) * len, cy + Math.sin(dir) * len);
+    ctx.moveTo(command.cx, command.cy);
+    ctx.lineTo(command.x2, command.y2);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
@@ -88,26 +130,21 @@ export function buildPineStraw(treeSpots, hAt, V) {
 // A bushy blob of white blossoms (tinted per-instance to the azalea color) with
 // a few dark leaf gaps, on a transparent ground. Alpha-tested, so no sorting.
 function flowerTexture() {
-  const rnd = deterministicRandom(0xf10a);
   const s = 128, cv = document.createElement('canvas');
   cv.width = cv.height = s;
   const ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, s, s);
-  for (let i = 0; i < 46; i++) {
-    const ang = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.5) * s * 0.42;
-    const cx = s / 2 + Math.cos(ang) * rad, cy = s * 0.55 + Math.sin(ang) * rad * 0.8;
-    const r = 4 + rnd() * 7;
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0.0, 'rgba(255,255,255,1)');
-    g.addColorStop(0.6, 'rgba(255,250,252,0.95)');
-    g.addColorStop(1.0, 'rgba(255,240,245,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  }
-  for (let i = 0; i < 10; i++) { // dark leaf gaps so it isn't a solid pompom
-    const cx = rnd() * s, cy = s * 0.5 + rnd() * s * 0.45, r = 3 + rnd() * 5;
-    ctx.fillStyle = 'rgba(40,70,38,0.55)';
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  for (const command of vegetationTextureCommands('flower')) {
+    if (command.kind === 'blossom') {
+      const g = ctx.createRadialGradient(command.cx, command.cy, 0, command.cx, command.cy, command.radius);
+      g.addColorStop(0.0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.6, 'rgba(255,250,252,0.95)');
+      g.addColorStop(1.0, 'rgba(255,240,245,0)');
+      ctx.fillStyle = g;
+    } else {
+      ctx.fillStyle = 'rgba(40,70,38,0.55)';
+    }
+    ctx.beginPath(); ctx.arc(command.cx, command.cy, command.radius, 0, Math.PI * 2); ctx.fill();
   }
   const t = new THREE.CanvasTexture(cv);
   t.anisotropy = 4;

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import test from 'node:test';
 import {
   CaptureReadinessTimeout,
   installLoadingTracker,
   waitForCaptureReady,
 } from '../public/render/capture-readiness.js';
-import { deterministicRandom } from '../public/render/vegetation.js';
+import { vegetationTextureCommands } from '../public/render/vegetation.js';
 
 const ready = (over = {}) => ({
   course: { name: 'Synthetic Visual', revision: 1 },
@@ -17,15 +18,19 @@ const ready = (over = {}) => ({
   ...over,
 });
 
-test('readiness timeout preserves the last snapshot and outstanding subsystem', async () => {
+test('readiness timeout preserves the last snapshot and names every outstanding subsystem', async () => {
   let time = 0;
-  const snapshots = [
-    ready({ environment: { state: 'loading' } }),
-    ready({ environment: { state: 'loading', detail: 'studio.hdr' } }),
-  ];
+  const blocked = {
+    course: null,
+    runtimeReady: false,
+    environment: { state: 'loading', detail: 'studio.hdr' },
+    loader: { active: ['/late.png'], started: 1, completed: 0, failures: [] },
+    hd: { advertised: 2, loaded: 0, failures: [], ack: null },
+    postfx: null,
+  };
   await assert.rejects(
     waitForCaptureReady({
-      status: () => snapshots.shift() || snapshots.at(-1) || ready({ environment: { state: 'loading' } }),
+      status: () => blocked,
       nextFrame: () => { time += 6; },
       now: () => time,
       timeoutMs: 10,
@@ -34,8 +39,12 @@ test('readiness timeout preserves the last snapshot and outstanding subsystem', 
     (error) => {
       assert.ok(error instanceof CaptureReadinessTimeout);
       assert.equal(error.code, 'VISUAL_CAPTURE_TIMEOUT');
-      assert.deepEqual(error.outstanding, ['environment']);
+      assert.deepEqual(error.outstanding, [
+        'course', 'runtime', 'environment', 'loader', 'hd-assets', 'hd-ack', 'postfx',
+      ]);
+      for (const subsystem of error.outstanding) assert.match(error.message, new RegExp(subsystem));
       assert.equal(error.lastSnapshot.environment.state, 'loading');
+      assert.deepEqual(error.lastSnapshot, blocked);
       return true;
     },
   );
@@ -93,11 +102,15 @@ test('loading tracker chains existing callbacks and balances successful and fail
   assert.equal(installLoadingTracker(manager), tracker);
 });
 
-test('visible procedural texture random sequence is deterministic and locally seeded', () => {
-  const a = deterministicRandom(0x51a7);
-  const b = deterministicRandom(0x51a7);
-  const c = deterministicRandom(0xf10a);
-  const first = Array.from({ length: 6 }, () => a());
-  assert.deepEqual(first, Array.from({ length: 6 }, () => b()));
-  assert.notDeepEqual(first, Array.from({ length: 6 }, () => c()));
+test('two independent visible vegetation texture builds have identical command checksums', () => {
+  const checksum = (kind) => crypto.createHash('sha256')
+    .update(JSON.stringify(vegetationTextureCommands(kind)))
+    .digest('hex');
+  const first = { straw: checksum('straw'), flower: checksum('flower') };
+  const second = { straw: checksum('straw'), flower: checksum('flower') };
+  assert.deepEqual(first, second);
+  assert.deepEqual(first, {
+    straw: '51671f90011740256e0bc98e160c3cefe2ee247545400cd02ec3d4135f87ee3d',
+    flower: '0242e67094b71635e28c3cbf2009ae62438cee3f498a2c32e82f7bcce6e3e0d0',
+  });
 });
