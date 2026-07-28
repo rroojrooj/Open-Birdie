@@ -237,6 +237,29 @@ test('candidate owns base/gameplay clones, applies legacy overlay only to gamepl
   assert.ok(Object.isFrozen(candidate.terrainPatches));
 });
 
+test('default legacy loader reads machine-local sidecars from DATA_DIR/courses', async () => {
+  const dataDir = tempRoot();
+  const coursesDir = path.join(dataDir, 'courses');
+  fs.mkdirSync(coursesDir);
+  fs.writeFileSync(
+    path.join(coursesDir, 'osm-way-26787026.surfaces.json'),
+    JSON.stringify({ pins: { 1: [31, 32] } }),
+  );
+
+  const candidate = await prepareCourseCandidate({
+    baseCourse: baseCourse(),
+    requestedIdentity: SOURCE,
+    dataDir,
+    artDir: tempRoot(),
+    resolveHd: () => ({ status: 'absent' }),
+    loadRuntimePack: () => ({ status: 'absent', runtimePack: null, diagnostics: [] }),
+    prepareGame: (gameplayCourse) => ({ gameplayCourse }),
+  });
+
+  assert.equal(candidate.presentation.tier, 'curated');
+  assert.deepEqual(candidate.gameplayCourse.holes[0].pin, [31, 32]);
+});
+
 test('candidate validates asset bytes and separates path-free public records from private paths', async () => {
   const artDir = tempRoot();
   const { assetPath, bytes, pack, sha256 } = pngPackAt(artDir);
