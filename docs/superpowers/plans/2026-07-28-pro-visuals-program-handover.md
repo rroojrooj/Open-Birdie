@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-28
 **Program status:** ACTIVE
-**Immediate package:** SP-02a — independent corrected-candidate review and integration
+**Immediate package:** SP-02a — independent pass-3 review and integration
 
 ## Done
 
@@ -88,14 +88,26 @@
   `5d13c1c5ba8de2628dd294f24bcf5a589065407e`: focused matrix 124/124,
   full suite 487/487, deterministic course-art check, Windows unpacked package,
   staged and unpacked smoke all pass.
+- Independently reviewed exact corrected code candidate `5d13c1c` / documentation
+  descendant `d8040a5` at 98% and rejected it with 0 Critical, 1 High, 3 Medium,
+  and 1 Low finding.
+- Corrected all five pass-2 findings in `82e715d`: request-local bounded exact-handle
+  validation for GET/HEAD/304 with no active asset `Buffer`; real cached-load and
+  X→Y→X coordinator cancellation; asynchronous cancellable legacy publication-lock
+  acquisition; and `finally` cleanup for late winners, aborts, partial staging
+  failures, and publication errors.
+- Verified pass-3 code candidate
+  `82e715d79bdce46a5f8e09c22b37fe7d417eba0e`: focused matrix 129/129,
+  full suite 492/492, deterministic course-art check, Windows unpacked package,
+  staged and unpacked smoke all pass.
 
 ## Left
 
-1. Independently re-review exact corrected code candidate `5d13c1c`, including the preserved
+1. Independently review exact pass-3 code candidate `82e715d`, including the preserved
    synthetic process-close evidence.
 2. If accepted, open the PR, require Windows CI, merge, and prove ancestry or
    integrated-tree equivalence.
-3. Rerun the full suite on the integrated base and close the Done Record.
+3. Rerun the 492-test full suite on the integrated base and close the Done Record.
 4. Keep SP-02b renderer work blocked until those gates complete.
 
 ## Current facts

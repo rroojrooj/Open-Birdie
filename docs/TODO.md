@@ -2,10 +2,10 @@
 
 ## ACTIVE ROADMAP: Pro Visuals Program (2026-07-23)
 
-### SP-02a CoursePresentation contract — corrected candidate complete, re-review pending (2026-07-28)
+### SP-02a CoursePresentation contract — pass-3 candidate complete, review pending (2026-07-28)
 
 Branch `codex/sp02a-course-presentation-contract` now has a renderer-free SP-02a
-corrected candidate at code evidence commit `5d13c1c5ba8de2628dd294f24bcf5a589065407e`
+pass-3 candidate at code evidence commit `82e715d79bdce46a5f8e09c22b37fe7d417eba0e`
 from implementation base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`.
 It delivers stable OSM course identity and collision-safe cache migration, versioned HD
 fingerprints, closed source/runtime course-art schemas and deterministic packaged
@@ -20,7 +20,15 @@ from display names.
   acquisition identity, native cancellation, identity-bound legacy sidecars,
   cross-process cache publication, typed HD identity rejection, one-read asset
   ownership, and client-compatible activation errors.
-- Required focused matrix: **124/124**. Full `npm test`: **487/487**.
+- The corrected pass-2 candidate `5d13c1c5ba8de2628dd294f24bcf5a589065407e`
+  with documentation descendant `d8040a559db35da10d6f2e880b1a5d6fbcd2cccd`
+  was independently rejected at 98% with 0 Critical, 1 High, 3 Medium, and 1 Low
+  finding. `82e715d` restores exact per-request handle-byte verification without
+  retaining asset buffers, routes cached loads and X→Y→X through live coordinator
+  cancellation, replaces the blocking legacy publication lock wait with an
+  asynchronous cancellable wait, and guarantees staged-temp cleanup on late-winner,
+  abort, partial-write, and publication-error paths.
+- Required focused matrix: **129/129**. Full `npm test`: **492/492**.
   `npm run check:course-art`, `npm run pack`, and unpacked packaged smoke all pass;
   the packaged root contains one valid pack and the application asar has zero
   Ajv/esbuild, source-schema, or authoring-root matches.
@@ -45,7 +53,7 @@ from display names.
   `0 files / 0 bytes`. Five alternating post-warmup activations retained none of the
   four obsolete public packages, kept timers at zero and server handles flat, and
   showed `+16,712` bytes of GC heap noise.
-- Next gate: independent re-review of exact corrected code candidate `5d13c1c`,
+- Next gate: independent pass-3 review of exact corrected code candidate `82e715d`,
   including the recorded shutdown evidence,
   then PR/Windows CI/merge and a clean post-merge full suite. SP-02b remains blocked
   until SP-02a is accepted and integrated.
