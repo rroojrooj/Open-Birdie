@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveManifest } from '../tools/hd-course/discover.mjs';
-import { canonicalCourseFingerprint } from '../tools/hd-course/course-source.mjs';
+import { courseFingerprintV2 } from '../tools/hd-course/course-source.mjs';
 import { parseManifest, isBuildable } from '../tools/hd-course/config.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -59,7 +59,9 @@ test('resolveManifest fills fingerprint, bounds and per-asset drift → buildabl
   const next = await withNoNetwork(() => resolveManifest({ manifest: pendingManifest(), course, providers: providers() }));
 
   // fingerprint pins the exact cached course
-  assert.equal(next.course.fingerprint, canonicalCourseFingerprint(course));
+  assert.equal(next.course.fingerprintVersion, 2);
+  assert.equal(next.course.courseId, course.source.courseId);
+  assert.equal(next.course.fingerprint, courseFingerprintV2(course, course.source.courseId));
   assert.match(next.course.fingerprint, /^[a-f0-9]{64}$/);
 
   // discovered flips to resolved with exactly the schema's four bound keys
@@ -85,6 +87,21 @@ test('resolveManifest fills fingerprint, bounds and per-asset drift → buildabl
 
   // the input is not mutated (pure resolve)
   assert.equal(pendingManifest().discovered.state, 'pending');
+});
+
+test('resolveManifest rejects source-less and requested/cached identity mismatch before network', async () => {
+  const sourceLess = { ...course }; delete sourceLess.source;
+  await assert.rejects(
+    () => withNoNetwork(() => resolveManifest({ manifest: pendingManifest(), course: sourceLess, providers: providers() })),
+    (error) => error.code === 'HD_SOURCE_ID_REQUIRED',
+  );
+  const requested = pendingManifest();
+  requested.course.courseId = 'osm:way:91002';
+  requested.course.fingerprintVersion = 2;
+  await assert.rejects(
+    () => withNoNetwork(() => resolveManifest({ manifest: requested, course, providers: providers() })),
+    (error) => error.code === 'HD_SOURCE_ID_MISMATCH',
+  );
 });
 
 test('a missing pinned NAIP item is rejected (fail closed)', async () => {

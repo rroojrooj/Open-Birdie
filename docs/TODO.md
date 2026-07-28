@@ -2,6 +2,66 @@
 
 ## ACTIVE ROADMAP: Pro Visuals Program (2026-07-23)
 
+### SP-02a CoursePresentation contract — review accepted, ready for integration (2026-07-28)
+
+Branch `codex/sp02a-course-presentation-contract` now has a renderer-free SP-02a
+pass-3 candidate at code evidence commit `521552466ece23cee6134285fce1ef4d344b3932`
+from implementation base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`.
+It delivers stable OSM course identity and collision-safe cache migration, versioned HD
+fingerprints, closed source/runtime course-art schemas and deterministic packaged
+staging, automatic/curated presentation resolution, immutable prepared packages,
+latest-only atomic activation, and a revision-scoped exact-handle asset gateway.
+Stable-source legacy v3 caches remain activatable; source-less caches are not guessed
+from display names.
+
+- The first candidate `61d9ab78edd1f56e361b7884d203d832483a6c65`
+  was independently rejected at 97% with 0 Critical, 3 High, 6 Medium, and 0 Low
+  findings. Six focused correction commits close owned-byte asset serving, canonical
+  acquisition identity, native cancellation, identity-bound legacy sidecars,
+  cross-process cache publication, typed HD identity rejection, one-read asset
+  ownership, and client-compatible activation errors.
+- The corrected pass-2 candidate `5d13c1c5ba8de2628dd294f24bcf5a589065407e`
+  with documentation descendant `d8040a559db35da10d6f2e880b1a5d6fbcd2cccd`
+  was independently rejected at 98% with 0 Critical, 1 High, 3 Medium, and 1 Low
+  finding. `82e715d` plus final contract pin `5215524` restore exact per-request handle-byte verification without
+  retaining asset buffers, routes cached loads and X→Y→X through live coordinator
+  cancellation, replaces the blocking legacy publication lock wait with an
+  asynchronous cancellable wait, and guarantees staged-temp cleanup on late-winner,
+  abort, partial-write, and publication-error paths.
+- Independent pass-3 review accepted exact code `521552466ece23cee6134285fce1ef4d344b3932`
+  with reviewed documentation candidate `9ed6cbf7de50e992c16e3009a556f318b899abe5`
+  at 98% confidence: **ACCEPT / merge YES**, 0 Critical, 0 High, 0 Medium, and
+  0 Low findings. SP-02a is `REVIEW_ACCEPTED / READY_FOR_INTEGRATION`, not Done.
+- Required focused matrix: **129/129**. Full `npm test`: **492/492**.
+  `npm run check:course-art`, `npm run pack`, and unpacked packaged smoke all pass;
+  the packaged root contains one valid pack and all 913 application-asar entries have
+  zero Ajv/esbuild, source-schema, or authoring-root matches.
+- Same-input RTX 3060 evidence:
+  - clean base:
+    `.shots/visual/sp02a/before-identity-retry/baseline-2026-07-28T130251-740Z`
+  - candidate:
+    `.shots/visual/sp02a/after-identity-retry/baseline-2026-07-28T131525-737Z`
+  - comparison: `.shots/visual/sp02a/compare-identity`
+  - result: **24/24 frames byte-identical**, zero changed pixels. Renderer textures,
+    geometries, programs, calls, and triangles are exact per-course matches. This is
+    regression proof, not a visual-improvement claim.
+- The final-SHA synthetic retries each wrote a complete valid `result.json` with no
+  page-console error or fatal event, but the top-level harness reported
+  `CHILD_TIMEOUT` because Electron did not emit `close`; no owned orphan remained.
+  The earlier clean top-level synthetic smoke at `b30d3a3` is green, and the later
+  final-SHA three-course hardware capture is green. Independent pass-3 review
+  classified the timeout as a non-finding. Preserve the artifacts under
+  `.shots/visual/sp02a/smoke-final*`; do not expand SP-02a into unrelated SP-00
+  harness lifecycle work.
+- Fixture preparation (100 measured iterations): automatic/no-asset median/p95
+  `0.109/0.186 ms`; curated median/p95 `1.709/2.140 ms`; staged runtime assets
+  `0 files / 0 bytes`. Five alternating post-warmup activations retained none of the
+  four obsolete public packages, kept timers at zero and server handles flat, and
+  showed `+16,712` bytes of GC heap noise.
+- Next gate: open the PR, require Windows CI, merge, prove candidate ancestry or
+  integrated-tree equivalence, and run the clean 492-test post-merge suite. SP-02b
+  remains blocked until SP-02a is integrated.
+
 ### SP-01 P2a surface recovery — implementation/evidence complete (2026-07-28)
 
 The recovery candidate on `codex/sp01-p2a-recovery` restores authored green, fairway,

@@ -113,3 +113,81 @@ test('18-hole round: over triggers on hole 18, not before', () => {
   g.strokes = 4; g.nextHole(); // finish 18
   assert.equal(g.over, true);
 });
+
+test('prepareCourse completes without mutation and commitPreparedCourse assigns the complete state', () => {
+  const g = new Game();
+  g.setCourse(course(2));
+  g.strokes = 3;
+  const activeBefore = {
+    course: g.course,
+    surfaceAt: g.surfaceAt,
+    terrain: g.terrain,
+    ball: g.ball,
+    strokes: g.strokes,
+  };
+
+  const next = course(3);
+  const prepared = g.prepareCourse(next, { ready: false });
+  assert.deepEqual({
+    course: g.course,
+    surfaceAt: g.surfaceAt,
+    terrain: g.terrain,
+    ball: g.ball,
+    strokes: g.strokes,
+  }, activeBefore);
+  assert.equal(prepared.course, next);
+  assert.equal(prepared.runtimeReady, false);
+
+  assert.doesNotThrow(() => g.commitPreparedCourse(prepared));
+  assert.equal(g.course, next);
+  assert.equal(g.state().holeCount, 3);
+  assert.equal(g.strokes, 0);
+  assert.equal(g.runtimeReady, false);
+});
+
+test('prepareCourse factory failures preserve every active Game field', () => {
+  const terrainCourse = (count) => ({
+    ...course(count),
+    elevation: { patches: [] },
+  });
+  const cases = [
+    {
+      factories: {
+        surfaceLookupFactory: (() => {
+          let calls = 0;
+          return () => {
+            if (calls++ > 0) throw new Error('surface preparation failed');
+            return () => 'rough';
+          };
+        })(),
+      },
+      active: course(2),
+      next: course(3),
+    },
+    {
+      factories: {
+        terrainFactory: (() => {
+          let calls = 0;
+          return () => {
+            if (calls++ > 0) throw new Error('terrain preparation failed');
+            return { h: () => 0, grad: () => ({ dx: 0, dy: 0 }) };
+          };
+        })(),
+      },
+      active: terrainCourse(2),
+      next: terrainCourse(3),
+    },
+  ];
+
+  for (const { factories, active, next } of cases) {
+    const g = new Game(factories);
+    g.setCourse(active);
+    g.strokes = 2;
+    g.ball = { x: 7, y: 8 };
+    const before = Object.fromEntries(
+      Object.entries(g).filter(([key]) => key !== '_courseFactories'),
+    );
+    assert.throws(() => g.prepareCourse(next), /preparation failed/);
+    for (const [key, value] of Object.entries(before)) assert.equal(g[key], value, key);
+  }
+});

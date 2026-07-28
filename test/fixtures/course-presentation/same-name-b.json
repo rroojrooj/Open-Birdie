@@ -1,0 +1,15 @@
+{
+  "displayName": "Twin Links",
+  "source": {
+    "osmType": "relation",
+    "osmId": 92002
+  },
+  "origin": {
+    "lat": 47.2,
+    "lon": -122.5
+  },
+  "expected": {
+    "courseId": "osm:relation:92002",
+    "cacheStem": "osm-relation-92002"
+  }
+}

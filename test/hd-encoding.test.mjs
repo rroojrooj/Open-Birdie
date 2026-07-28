@@ -38,6 +38,8 @@ test('an encoded bundle passes the Plan 1 runtime validator', async () => {
     rgb, imgW: 8, imgH: 8,
     surfacesRgba, coverageRgba, maskW: 11, maskH: 11,
     fingerprint: 'a'.repeat(64),
+    fingerprintVersion: 2,
+    courseId: 'osm:way:91001',
     compilerVersion: '0.1.0',
     provenance: { source: 'synthetic-test', tools: { node: process.version } },
   });
@@ -45,4 +47,6 @@ test('an encoded bundle passes the Plan 1 runtime validator', async () => {
   const res = validateBundleDirectory(dir);
   assert.equal(res.status, 'valid', res.status === 'rejected' ? `${res.code}: ${res.message}` : '');
   assert.equal(res.descriptor.terrain.nx, 11);
+  assert.equal(res.descriptor.course.fingerprintVersion, 2);
+  assert.equal(res.descriptor.course.courseId, 'osm:way:91001');
 });

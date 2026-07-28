@@ -1,61 +1,22 @@
-// Cached-course resolution and the canonical course fingerprint.
+// Cached-course resolution and the canonical course fingerprints.
 //
-// The fingerprint pins the exact cached OSM course a bundle was built against so
-// a stale bundle (built from an older parse) is rejected at load time. It is
-// order-independent for unordered collections (surfaces, holes, trees, woods) but
-// sensitive to any geometry/height change, and it EXCLUDES elevation.patches —
-// those generated HD greens are replaced by the bundle and would otherwise make
-// the fingerprint unstable.
+// Runtime and compiler share one CommonJS implementation so v1 compatibility
+// and v2 identity/geometry hashing cannot drift between module systems.
 
 import fs from 'node:fs';
-import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import { HdCompileError } from './errors.mjs';
 
-// Deterministic stringify: object keys sorted; array order preserved because
-// coordinate and height order is semantically meaningful.
-function stableStringify(value) {
-  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
-  if (value && typeof value === 'object') {
-    return '{' + Object.keys(value).sort()
-      .map((k) => JSON.stringify(k) + ':' + stableStringify(value[k]))
-      .join(',') + '}';
-  }
-  return JSON.stringify(value === undefined ? null : value);
-}
+const require = createRequire(import.meta.url);
+const fingerprints = require('../../lib/course-fingerprint.js');
 
-// Sort an unordered collection by each element's canonical form, keeping each
-// element's internal (coordinate) order intact.
-function sortedByCanonical(arr) {
-  return [...(arr || [])]
-    .map((el) => [stableStringify(el), el])
-    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .map((pair) => pair[1]);
-}
+export const courseFingerprintV1 = fingerprints.courseFingerprintV1;
+export const courseFingerprintV2 = fingerprints.courseFingerprintV2;
+export const courseFingerprintFor = fingerprints.courseFingerprintFor;
 
-function canonicalCourse(course) {
-  const e = course.elevation;
-  return {
-    version: course.version ?? null,
-    name: course.name ?? null,
-    origin: course.origin ? { lat: course.origin.lat, lon: course.origin.lon } : null,
-    boundary: course.boundary ?? null,
-    surfaces: sortedByCanonical((course.surfaces || []).map((s) => ({ kind: s.kind, poly: s.poly }))),
-    holes: sortedByCanonical((course.holes || []).map((h) => ({
-      ref: h.ref ?? null, par: h.par ?? null, name: h.name ?? null,
-      tee: h.tee ?? null, pin: h.pin ?? null, line: h.line ?? null, lengthYd: h.lengthYd ?? null,
-    }))),
-    trees: sortedByCanonical(course.trees || []),
-    woods: sortedByCanonical(course.woods || []),
-    // Coarse grid only — elevation.patches is deliberately omitted.
-    elevation: e
-      ? { minX: e.minX, minY: e.minY, cellM: e.cellM, nx: e.nx, ny: e.ny, baseM: e.baseM, heights: e.heights }
-      : null,
-  };
-}
-
-export function canonicalCourseFingerprint(course) {
-  return crypto.createHash('sha256').update(stableStringify(canonicalCourse(course))).digest('hex');
-}
+// Compatibility name retained for extensions that explicitly use legacy v1.
+// New discover/build paths call courseFingerprintV2.
+export const canonicalCourseFingerprint = courseFingerprintV1;
 
 export function loadCourseFile(filePath) {
   let raw;

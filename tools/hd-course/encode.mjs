@@ -37,7 +37,7 @@ export async function writeBundle({
   stagingDir, course, hole, snapped, baseM,
   terrainHeights, rgb, imgW, imgH,
   surfacesRgba, coverageRgba, maskW, maskH,
-  fingerprint, compilerVersion, provenance,
+  fingerprint, fingerprintVersion, courseId, compilerVersion, provenance,
 }) {
   const holeName = String(hole).padStart(2, '0');
   const holeDir = path.join(stagingDir, 'holes', holeName);
@@ -58,7 +58,12 @@ export async function writeBundle({
   const manifest = {
     schemaVersion: 1,
     compilerVersion,
-    course: { name: course, fingerprint },
+    course: {
+      name: course,
+      fingerprintVersion,
+      ...(fingerprintVersion === 2 ? { courseId } : {}),
+      fingerprint,
+    },
     hole,
     bounds: { minX: snapped.minX, minY: snapped.minY, maxX: snapped.maxX, maxY: snapped.maxY },
     terrain: {

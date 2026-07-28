@@ -9,6 +9,7 @@ const sharp = require('sharp');
 
 const {
   HD_SCHEMA_VERSION, SURFACE_CHANNELS, courseFingerprint,
+  courseFingerprintFor, courseFingerprintV1, courseFingerprintV2,
   validateManifest, decodeTerrainF32, validateBundleDirectory, resolveAssetPath,
 } = require('../lib/hd-bundle');
 
@@ -64,10 +65,31 @@ test('SURFACE_CHANNELS encodes the schema-v1 mask packing', () => {
 });
 
 test('courseFingerprint matches the ESM compiler implementation', async () => {
-  const { canonicalCourseFingerprint } = await import('../tools/hd-course/course-source.mjs');
+  const compiler = await import('../tools/hd-course/course-source.mjs');
   const course = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'course.json'), 'utf8'));
   assert.match(courseFingerprint(course), /^[a-f0-9]{64}$/);
-  assert.equal(courseFingerprint(course), canonicalCourseFingerprint(course));
+  assert.equal(courseFingerprint(course), compiler.courseFingerprintV1(course));
+  assert.equal(courseFingerprintV1(course), compiler.courseFingerprintV1(course));
+  assert.equal(courseFingerprintV2(course, course.source.courseId), compiler.courseFingerprintV2(course, course.source.courseId));
+  assert.equal(
+    courseFingerprintFor(course, { version: 2, courseId: course.source.courseId }),
+    compiler.courseFingerprintFor(course, { version: 2, courseId: course.source.courseId }),
+  );
+});
+
+test('manifest fingerprint version validation is fail closed', async () => {
+  const { dir, manifest } = await makeBundle();
+  manifest.course.fingerprintVersion = 99;
+  writeManifest(dir, manifest);
+  assert.equal(validateBundleDirectory(dir).code, 'HD_FINGERPRINT_VERSION_UNSUPPORTED');
+
+  manifest.course.fingerprintVersion = 2;
+  writeManifest(dir, manifest);
+  assert.equal(validateBundleDirectory(dir).code, 'HD_SOURCE_ID_REQUIRED');
+
+  manifest.course.courseId = 'osm:way:91001';
+  writeManifest(dir, manifest);
+  assert.equal(validateBundleDirectory(dir).status, 'valid');
 });
 
 test('decodeTerrainF32 decodes little-endian and rejects bad input', () => {

@@ -1,5 +1,34 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-28 — SP-02a REVIEW ACCEPTED; READY FOR INTEGRATION, NOT DONE.**
+> Branch `codex/sp02a-course-presentation-contract`, code evidence
+> `521552466ece23cee6134285fce1ef4d344b3932`, implementation base
+> `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. The candidate adds stable OSM
+> identity/collision-safe caches, v1/v2 HD dispatch, strict deterministic course-art
+> staging, automatic/curated presentation, immutable package preparation, latest-only
+> atomic server activation, and revision-scoped exact-handle asset delivery without
+> changing renderer files. The first code candidate `61d9ab7` was independently
+> rejected at 97% (0C/3H/6M/0L). Corrected candidate `5d13c1c` / docs `d8040a5`
+> was then rejected at 98% (0C/1H/3M/1L). `82e715d` plus final pin `5215524` close the second-pass findings
+> with request-local exact-handle asset verification and zero active asset buffers,
+> cached/X→Y→X coordinator cancellation, asynchronous cancellable publication-lock
+> waits, and complete staged-temp cleanup.
+> Independent pass-3 review accepted exact code `5215524` with reviewed docs
+> `9ed6cbf` at 98% confidence: merge YES, 0C/0H/0M/0L.
+> Focused tests pass **129/129**; full `npm test` passes **492/492**; validator,
+> package, staged/unpacked smoke, and the 913-entry/zero-forbidden asar gate pass.
+> Exact-input RTX 3060 comparison is **24/24 byte-identical frames**:
+> `.shots/visual/sp02a/before-identity-retry/baseline-2026-07-28T130251-740Z`
+> versus `.shots/visual/sp02a/after-identity-retry/baseline-2026-07-28T131525-737Z`,
+> report `.shots/visual/sp02a/compare-identity`. The final-SHA synthetic retries wrote
+> complete valid results with no page/fatal errors but top-level `CHILD_TIMEOUT`
+> because Electron emitted no `close`; no orphan remained. Earlier top-level smoke at
+> `b30d3a3` is green and the later final-SHA three-course capture is green. Keep this
+> timeout was classified as a non-finding; do not broaden SP-02a into SP-00
+> harness lifecycle work. Next: PR/Windows CI, merge, ancestry or integrated-tree
+> equivalence, and post-merge 492-test rerun. SP-02b stays blocked until
+> integration.
+
 > **UPDATE 2026-07-28 — SP-01 P2a SURFACE RECOVERY CANDIDATE COMPLETE.**
 > Branch `codex/sp01-p2a-recovery`, code evidence commit
 > `d2305fa524e3ce2d9dc8b87d46611418adb5ca45`. The recovery restores crisp authored

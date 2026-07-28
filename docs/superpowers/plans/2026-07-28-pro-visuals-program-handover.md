@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-28
 **Program status:** ACTIVE
-**Immediate package:** SP-02a — CoursePresentation contract
+**Immediate package:** SP-02a — reviewed candidate integration
 
 ## Done
 
@@ -73,14 +73,56 @@
   `npm ci`, and verified the lane baseline with `npm test`: 382 passed, 0 failed.
 - Dispatched `/root/sp01_implementation` to execute accepted Tasks 1–9. SP-02b
   renderer wiring remains blocked.
+- Implemented Tasks 1–9 on `codex/sp02a-course-presentation-contract` from exact base
+  `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. Code evidence candidate:
+  `61d9ab78edd1f56e361b7884d203d832483a6c65`.
+- Passed the required focused matrix 116/116, full suite 478/478, deterministic
+  course-art check, Windows unpacked package, packaged-root smoke, and asar scan.
+- Captured exact-input RTX 3060 base/candidate evidence and compared 24/24 frames
+  byte-identically with flat renderer counters. No renderer source changed.
+- Preserved two final-candidate synthetic retry failures exactly: each child wrote a
+  complete valid result with no page/fatal errors, then failed to emit process
+  `close` before `CHILD_TIMEOUT`; no orphan remained. Earlier top-level smoke at
+  `b30d3a3` and the later final-candidate three-course capture are green. Independent
+  review classified this as a non-finding; SP-02a does not absorb unrelated harness
+  lifecycle work.
+- Independently reviewed exact first code candidate `61d9ab7` / documentation
+  descendant `c7520a3` at 97% and rejected it with 0 Critical, 3 High, 6 Medium,
+  and 0 Low findings.
+- Corrected every finding in six focused commits: `e95ad4a` (owned verified asset
+  bytes and one-read ownership), `be8546a` (canonical identity and native abort),
+  `91b9de0` (stable-bound legacy gameplay and `DATA_DIR/courses`),
+  `02eb751` (cross-process cache publication), `e2e9a78` (typed HD rejection),
+  and `5d13c1c` (client-compatible activation errors).
+- Verified corrected code candidate
+  `5d13c1c5ba8de2628dd294f24bcf5a589065407e`: focused matrix 124/124,
+  full suite 487/487, deterministic course-art check, Windows unpacked package,
+  staged and unpacked smoke all pass.
+- Independently reviewed exact corrected code candidate `5d13c1c` / documentation
+  descendant `d8040a5` at 98% and rejected it with 0 Critical, 1 High, 3 Medium,
+  and 1 Low finding.
+- Corrected all five pass-2 findings in `82e715d` plus final contract pin `5215524`: request-local bounded exact-handle
+  validation for GET/HEAD/304 with no active asset `Buffer`; real cached-load and
+  X→Y→X coordinator cancellation; asynchronous cancellable legacy publication-lock
+  acquisition; and `finally` cleanup for late winners, aborts, partial staging
+  failures, and publication errors.
+- Verified pass-3 code candidate
+  `521552466ece23cee6134285fce1ef4d344b3932`: focused matrix 129/129,
+  full suite 492/492, deterministic course-art check, Windows unpacked package,
+  staged and unpacked smoke all pass.
+- Independent pass-3 review accepted exact code `521552466ece23cee6134285fce1ef4d344b3932`
+  and reviewed documentation `9ed6cbf7de50e992c16e3009a556f318b899abe5`
+  at 98% confidence with merge YES and 0 Critical, 0 High, 0 Medium, and 0 Low
+  findings. The 24/24 visual exact comparison remains valid, the 913-entry asar scan
+  has zero forbidden matches, and the synthetic process-close timeout is a
+  non-finding. Status is `REVIEW_ACCEPTED / READY_FOR_INTEGRATION`, not Done.
 
 ## Left
 
-1. Execute Tasks 1–9 in the accepted dependency order.
-2. Build a clean candidate and run focused/full, packaging, synthetic, and
-   hardware-baseline evidence gates.
-3. Run independent candidate review before push, PR, or merge; keep SP-02b renderer
-   work blocked.
+1. Open the PR, require Windows CI, merge, and prove ancestry or
+   integrated-tree equivalence.
+2. Rerun the 492-test full suite on the integrated base and close the Done Record.
+3. Keep SP-02b renderer work blocked until those gates complete.
 
 ## Current facts
 
@@ -99,7 +141,7 @@
 ## Resume commands
 
 ```powershell
-Set-Location 'C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\pro-visuals-program-pic'
+Set-Location 'C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp02a-course-presentation-contract'
 git status --short --branch
 git rev-parse HEAD
 npm test
@@ -113,16 +155,18 @@ Do not run `git reset`, `git clean`, `git pull`, or broad file-copy operations i
 The accepted transition is:
 
 ```text
-SP-01 DONE
-    -> SP-02a plan authoring and independent review
+SP-01 DONE + SP-02a PLAN ACCEPTED
+    -> SP-02a CANDIDATE ACCEPTED
+    -> PR / Windows CI / merge / post-merge verification
+    -> SP-02b may be planned and dispatched
 ```
 
 SP-01 and the accepted SP-02a implementation plan are present on `origin/main`.
-SP-02a implementation starts from exact base
-`2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`.
+SP-02a started from exact base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`
+and now has an independently accepted candidate awaiting PR integration.
 
 ## Your turn
 
-No user decision is required to draft and review SP-02a. The next user-reserved
-decision is a material scope change, a deliberate never-regress exception, or final
-visual acceptance.
+No user decision is required for the independent SP-02a candidate gate or normal
+integration. The next user-reserved decision is a material scope change, a deliberate
+never-regress exception, or final visual acceptance.

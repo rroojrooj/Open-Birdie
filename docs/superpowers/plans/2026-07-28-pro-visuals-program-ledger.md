@@ -11,7 +11,11 @@
 - SP-01 is accepted and integrated through PR #43.
 - The first SP-01 candidate was rejected for missing movement-stability evidence; the
   corrected candidate closed that gate and passed independent review at 99%.
-- SP-02a CoursePresentation contract planning is now the critical path.
+- The first SP-02a code candidate `61d9ab7` was rejected at 97% with 3 High and
+  6 Medium findings. Corrected candidate `5d13c1c` was rejected at 98% with 1 High,
+  3 Medium, and 1 Low finding. Pass-3 code candidate `5215524` closed all five and
+  was accepted at 98% with 0C/0H/0M/0L and merge YES. Integration is now the
+  critical path.
 - The original repository worktree is protected because it is 24 commits behind and
   contains user changes.
 
@@ -21,7 +25,7 @@
 |---|---|---|---|---|---|
 | SP-00 Visual benchmark | DONE | Historical `codex/sp00-visual-benchmark` | — | Candidate `7d89b6ac24eb965039d5bdae6a30c943718ea81e`; PR #40; merge `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`; CI green; `npm test` 375/375 | Harness is mandatory evidence path for every later visual unit |
 | SP-01 P2a recovery | DONE | `/root/sp01_implementation`; `codex/sp01-p2a-recovery` | SP-00 | Candidate `7e18723e294153ff086d222d8ecf94bcc3ca41e1`; ACCEPT 99%; PR #43; merge `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`; CI and post-merge 382/382; RTX 3060 three-course, motion, and perf evidence; GPU median +0.038 ms | Feed the visible high-survey HD/far-photo seam into SP-04 |
-| SP-02a CoursePresentation contract | IN_PROGRESS | `/root/sp01_implementation`; `codex/sp02a-course-presentation-contract` | SP-00 | Pass 3 accepted candidate `f8693c3c2995a674d8f5827682d38a820deb227d` at 98% with zero findings; PR #44; merge/implementation base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`; CI, post-merge, and implementation-lane baseline 382/382. | Build Tasks 1–9, then independent candidate review |
+| SP-02a CoursePresentation contract | READY_FOR_INTEGRATION | `/root/sp01_implementation`; `codex/sp02a-course-presentation-contract` | SP-00 | Implementation base `2dd82c7`; rejected `61d9ab7` (97%, 0C/3H/6M/0L) and `5d13c1c` / docs `d8040a5` (98%, 0C/1H/3M/1L); exact code `5215524` / reviewed docs `9ed6cbf` ACCEPT 98%, merge YES, 0C/0H/0M/0L; focused 129/129; full 492/492; check/pack/staged+unpacked smoke green; asar 913/0 forbidden; RTX 3060 compare 24/24 byte-identical; synthetic timeout non-finding. | PR/Windows CI/merge/ancestry/post-merge verification |
 | SP-02b Activation transaction | BLOCKED | — | SP-01, SP-02a | — | Both predecessor units integrated |
 | SP-03 World context | BLOCKED | — | SP-02b | — | Reviewed sub-plan after SP-02b |
 | SP-04 Surface system / HD seam | BLOCKED | — | SP-02b | Receives deferred SP-01 HD macro-seam finding | Reviewed sub-plan after SP-02b |
@@ -108,10 +112,18 @@ Until those are resolved, the historical branch remains **REPORTED**, not accept
 | 2026-07-28 | Reject the second SP-02a plan revision | Same-identity supersession could abort its own shared fetch; source-less v1 compatibility and private active-state ownership also required exact wording |
 | 2026-07-28 | Accept the third SP-02a plan revision | Exact candidate `f8693c3` passed independent review at 98% with zero findings and dispatch YES |
 | 2026-07-28 | Integrate the accepted SP-02a plan | PR #44 merged as `2dd82c7`; candidate ancestry, Windows CI, and clean post-merge 382/382 suite verified |
+| 2026-07-28 | Complete the SP-02a implementation candidate | Code candidate `61d9ab7` passes 116 focused and 478 full tests, deterministic/package gates, and a 24-frame exact-input renderer-neutral comparison; independent review owns severity of the recorded synthetic process-close timeout |
+| 2026-07-28 | Reject the first SP-02a code candidate | Exact code `61d9ab7` / documentation `c7520a3` was rejected at 97% with 0 Critical, 3 High, 6 Medium, and 0 Low findings |
+| 2026-07-28 | Complete the corrected SP-02a code candidate | Exact code `5d13c1c` closes all nine findings through six focused correction commits; 124 focused and 487 full tests, deterministic staging, package, and unpacked smoke gates pass |
+| 2026-07-28 | Reject the corrected SP-02a code candidate | Exact code `5d13c1c` / documentation `d8040a5` was rejected at 98% with 0 Critical, 1 High, 3 Medium, and 1 Low finding |
+| 2026-07-28 | Complete the SP-02a pass-3 code candidate | Exact code `5215524` closes all five pass-2 findings through `82e715d` plus the final exact-read/identity pin: exact request-local asset verification without retained buffers, cached and X→Y→X cancellation, cancellable asynchronous lock wait, and total owned-temp cleanup; 129 focused and 492 full tests plus deterministic/package/smoke gates pass |
+| 2026-07-28 | Accept the SP-02a pass-3 code candidate | Exact code `5215524` / reviewed docs `9ed6cbf` passed independent review at 98% with 0C/0H/0M/0L and merge YES; synthetic timeout is a non-finding; status is REVIEW_ACCEPTED / READY_FOR_INTEGRATION, not Done |
 
 ## 7. Current bottleneck
 
-SP-02a implementation is the current bottleneck. Its detailed plan passed independent
-review at 98% with zero findings and is integrated at exact implementation base
-`2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. The isolated owner is executing
-Tasks 1–9. SP-02b remains blocked.
+SP-02a integration is the current bottleneck. Exact code
+`521552466ece23cee6134285fce1ef4d344b3932` with reviewed documentation
+`9ed6cbf7de50e992c16e3009a556f318b899abe5` is accepted for merge. Open the PR,
+require Windows CI, merge, prove candidate ancestry or integrated-tree equivalence,
+and rerun the full suite on the integrated base. SP-02b remains blocked until that
+completes.

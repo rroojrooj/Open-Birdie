@@ -8,9 +8,13 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { OpenConnectServer } = require('./lib/openconnect');
-const { searchCourses, loadCourse, listCached, loadCached, applySurfaceOverride, loadSurfaceOverride } = require('./lib/course');
+const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/course');
+const { createCourseActivationManager } = require('./lib/course-activation');
+const { serveCourseArtRequest } = require('./lib/course-art-http');
+const { createCourseDiagnostic, sanitizePublicText } = require('./lib/course-diagnostics');
+const { normalizeCourseSource } = require('./lib/course-identity');
+const { prepareCourseCandidate } = require('./lib/resolved-course-package');
 const { Game, CLUB_FULL } = require('./lib/game');
-const { resolveHdBundles } = require('./lib/hd-bundle');
 const { serveHdAsset, publicHdMetadata, pickDescriptor } = require('./lib/hd-http');
 const { makeNonce, verifyReadinessAck } = require('./lib/hd-readiness');
 
@@ -26,6 +30,7 @@ const HTTP_HOST = process.env.BIRDIE_HOST || '127.0.0.1';
 const SPEED_SCALE = +(process.env.BIRDIE_SPEED_SCALE || 1);
 const PUB = path.join(__dirname, 'public');
 const DATA_DIR = process.env.BIRDIE_DATA_DIR || path.join(__dirname, 'data');
+const ART_DIR = process.env.BIRDIE_ART_DIR || path.join(__dirname, 'build', 'course-art');
 
 const game = new Game();
 const sseClients = new Set();
@@ -41,34 +46,6 @@ const READY_TIMEOUT_MS = +(process.env.BIRDIE_HD_READY_TIMEOUT_MS || 15000);
 let readyTimer = null;
 const isLoopbackAddr = (a) => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 
-function activateCourse(course) {
-  const r = resolveHdBundles(course, { dataDir: DATA_DIR });
-  activeHd = r.status === 'valid' ? r.descriptors : [];
-  if (activeHd.length) console.log(`[hd] ${activeHd.length} bundle(s) active: hole(s) ${activeHd.map((d) => d.hole).join(', ')}`);
-  courseRevision += 1;
-  // Per-course surface override (corrected greens/fairways/bunkers + relocated
-  // pins): applied here, AFTER the HD fingerprint match above (bundle stays
-  // valid) and BEFORE setCourse, so physics (surfaceAt) and the served geometry
-  // both use the corrected map. Absent sidecar = unchanged OSM behaviour.
-  const override = loadSurfaceOverride(course);
-  if (override) { applySurfaceOverride(course, override); console.log(`[override] applied surface override for ${course.name}`); }
-  // An HD candidate holds physics (ready:false) until the primary client acks a
-  // coherent scene; a plain course is immediately playable.
-  game.setCourse(course, { ready: !activeHd.length });
-  if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
-  if (activeHd.length) {
-    const rev = courseRevision;
-    readyTimer = setTimeout(() => {
-      if (!game.runtimeReady && courseRevision === rev) {
-        console.warn('[hd] readiness timeout — activating procedural fallback');
-        game.activateRuntimeTerrain([]);
-        broadcast('state', game.state());
-      }
-    }, READY_TIMEOUT_MS);
-    if (readyTimer.unref) readyTimer.unref();
-  }
-  return r;
-}
 let lmStatus = { connected: false, ready: false };
 
 function broadcast(event, data) {
@@ -114,6 +91,89 @@ function updatePlayerInfo() {
   oc.setPlayer({ DistanceToTarget: Math.round(game.distToPinYd) });
 }
 
+function deriveActivationSource(request) {
+  if (request?.source || (request?.osmType && request?.osmId != null)) {
+    return normalizeCourseSource(request.source || request);
+  }
+  if (request?.cached) {
+    const cachedCourse = loadCached(request.cached);
+    if (cachedCourse?.source) return normalizeCourseSource(cachedCourse.source);
+  }
+  return normalizeCourseSource(null);
+}
+
+async function acquireActivationCourse(request, { abortDifferent, source }) {
+  const preloadedCourse = request.cached ? loadCached(request.cached) : null;
+  return loadCourse(request, {
+    abortDifferent,
+    source,
+    ...(preloadedCourse ? { preloadedCourse } : {}),
+  });
+}
+
+function commitPreparedActivation({ candidate, resolvedPackage }) {
+  let nextTimer = null;
+  if (candidate.hdDescriptors.length) {
+    const revision = resolvedPackage.courseRevision;
+    nextTimer = setTimeout(() => {
+      if (!game.runtimeReady && courseRevision === revision) {
+        console.warn('[hd] readiness timeout — activating procedural fallback');
+        game.activateRuntimeTerrain([]);
+        broadcast('state', game.state());
+      }
+    }, READY_TIMEOUT_MS);
+    if (nextTimer.unref) nextTimer.unref();
+  }
+
+  game.commitPreparedCourse(candidate.preparedGameState);
+  activeHd = candidate.hdDescriptors;
+  courseRevision = resolvedPackage.courseRevision;
+  const previousTimer = readyTimer;
+  readyTimer = nextTimer;
+  if (previousTimer) clearTimeout(previousTimer);
+}
+
+const activationManager = createCourseActivationManager({
+  deriveSource: deriveActivationSource,
+  acquireCourse: acquireActivationCourse,
+  prepareCandidate: ({ course, source }) => prepareCourseCandidate({
+    baseCourse: course,
+    requestedIdentity: source,
+    packsEnabled: process.env.BIRDIE_DISABLE_CURATED !== '1',
+    dataDir: DATA_DIR,
+    artDir: ART_DIR,
+    prepareGame: (gameplayCourse, options) => game.prepareCourse(gameplayCourse, options),
+  }),
+  commitPreparedActivation,
+  onPrepareFailed(error, { courseId }) {
+    const cause = createCourseDiagnostic({
+      code: error?.code || error?.name || 'ACTIVATION_PREPARE_FAILED',
+      severity: 'error',
+      stage: 'activation-private',
+      courseId,
+      message: sanitizePublicText(
+        error?.message,
+        'Course activation preparation failed.',
+      ),
+      recovery: 'Inspect the private activation log and retry the course.',
+    });
+    console.error(`[course] activation prepare failed: ${JSON.stringify(cause)}`);
+  },
+  onCommitted({ resolvedPackage, candidate }) {
+    if (activeHd.length) {
+      console.log(`[hd] ${activeHd.length} bundle(s) active: hole(s) ${activeHd.map((d) => d.hole).join(', ')}`);
+    }
+    updatePlayerInfo();
+    broadcast('course', {
+      name: candidate.gameplayCourse.name,
+      courseId: resolvedPackage.courseId,
+      courseRevision: resolvedPackage.courseRevision,
+      contentRevision: resolvedPackage.contentRevision,
+    });
+    broadcast('state', game.state());
+  },
+});
+
 // ---------- HTTP ----------
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 
@@ -121,6 +181,18 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   try {
+    if (p.startsWith('/api/course-art/')) {
+      return await serveCourseArtRequest(req, res, {
+        artRoot: ART_DIR,
+        getActivePackage: () => activationManager.current(),
+        lookupPrivateAsset: (contentRevision, assetKey) => (
+          activationManager.lookupPrivateAsset(contentRevision, assetKey)
+        ),
+        onInternalError: (error) => {
+          console.error(`[course-art] request rejected internally: ${error?.message || 'unknown error'}`);
+        },
+      });
+    }
     if (p === '/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write(`event: state\ndata: ${JSON.stringify(game.state())}\n\n`);
@@ -139,13 +211,30 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       const body = await readBody(req);
       if (p === '/api/load-course') {
-        const course = body.cached ? loadCached(body.cached) : await loadCourse(body);
-        activateCourse(course);
-        updatePlayerInfo();
+        const result = await activationManager.activate(body);
+        if (result.status === 'superseded') {
+          return json(res, {
+            ok: false,
+            error: result.diagnostic.message,
+            diagnostic: result.diagnostic,
+          }, 409);
+        }
+        if (result.status === 'failed') {
+          return json(res, {
+            ok: false,
+            error: result.diagnostic.message,
+            diagnostic: result.diagnostic,
+          }, 500);
+        }
         // geometry is heavy (elevation grid) — clients refetch it themselves
-        broadcast('course', { name: course.name });
-        broadcast('state', game.state());
-        return json(res, { ok: true, holes: course.holes.length });
+        return json(res, {
+          ok: true,
+          holes: game.course.holes.length,
+          courseId: result.package.courseId,
+          courseRevision: result.package.courseRevision,
+          contentRevision: result.package.contentRevision,
+          ...(result.observerDiagnostic ? { diagnostics: [result.observerDiagnostic] } : {}),
+        });
       }
       if (p === '/api/test-shot') {
         // practice panel / testing without a launch monitor
@@ -171,8 +260,9 @@ const server = http.createServer(async (req, res) => {
         return json(res, { ok: true });
       }
       if (p === '/api/course-runtime-ready') {
+        const currentPackage = activationManager.current();
         const v = verifyReadinessAck(body, {
-          currentRevision: courseRevision,
+          currentRevision: currentPackage?.courseRevision || 0,
           currentBundleIds: activeHd.map((d) => d.bundleId),
           serverNonce: PRIMARY_NONCE,
           isLoopback: isLoopbackAddr(req.socket.remoteAddress),
@@ -243,7 +333,14 @@ const server = http.createServer(async (req, res) => {
     fs.createReadStream(full).pipe(res);
   } catch (err) {
     console.error(`[HTTP] ${p}:`, err.message);
-    json(res, { error: err.message }, 500);
+    const diagnostic = createCourseDiagnostic({
+        code: 'HTTP_REQUEST_FAILED',
+        severity: 'error',
+        stage: 'http',
+        message: 'The request could not be completed.',
+        recovery: 'Retry the request.',
+      });
+    json(res, { ok: false, error: diagnostic.message, diagnostic }, 500);
   }
 });
 
@@ -257,7 +354,8 @@ function sameBounds(x, y) {
 }
 
 function courseGeometry() {
-  if (!game.course) return null;
+  const activePackage = activationManager.current();
+  if (!game.course || !activePackage) return null;
   const { name, surfaces, boundary, holes, trees, woods, buildings, elevation } = game.course;
   // Course-wide aerial: bounds only (the image is fetched from /api/course-aerial);
   // never leak the server file path. Drapes the whole course as the ground photo.
@@ -273,7 +371,25 @@ function courseGeometry() {
   // hd is an ARRAY of sanitized metadata (one per built hole; no absolute paths,
   // no Float32 heights), or null when the course has no HD bundles.
   const hd = activeHd.length ? activeHd.map(publicHdMetadata) : null;
-  return { name, surfaces, boundary, holes, trees, woods, buildings, aerial, elevation, hd, courseRevision };
+  return {
+    name,
+    surfaces,
+    boundary,
+    holes,
+    trees,
+    woods,
+    buildings,
+    aerial,
+    elevation,
+    hd,
+    courseId: activePackage.courseId,
+    courseRevision: activePackage.courseRevision,
+    contentRevision: activePackage.contentRevision,
+    presentation: activePackage.presentation,
+    terrainPatches: activePackage.terrainPatches,
+    assetManifest: activePackage.assetManifest,
+    diagnostics: activePackage.diagnostics,
+  };
 }
 
 function json(res, obj, code = 200) {
@@ -290,28 +406,41 @@ function readBody(req) {
   });
 }
 
-// auto-load the most recently cached course on startup
-const cached = process.env.BIRDIE_NO_AUTOLOAD ? [] : listCached();
-if (cached.length) {
-  try {
-    activateCourse(loadCached(cached[0].file));
-    console.log(`[course] loaded cached: ${cached[0].name} (${game.course.holes.length} holes)`);
-  } catch (e) { console.error('[course] cache load failed:', e.message); }
+if (SPEED_SCALE !== 1) console.log(`[OC] BIRDIE_SPEED_SCALE=${SPEED_SCALE} — scaling incoming ball speed`);
+async function bootstrap() {
+  if (!process.env.BIRDIE_NO_AUTOLOAD) {
+    const cached = listCached();
+    if (cached.length) {
+      const result = await activationManager.activate({ cached: cached[0].file });
+      if (result.status === 'committed') {
+        console.log(`[course] loaded cached: ${game.course.name} (${game.course.holes.length} holes)`);
+      } else {
+        console.error(`[course] cache load failed: ${JSON.stringify(result.diagnostic)}`);
+      }
+    }
+  }
+  return new Promise((resolve, reject) => {
+    const onError = (error) => reject(error);
+    server.once('error', onError);
+    server.listen(HTTP_PORT, HTTP_HOST, () => {
+      server.off('error', onError);
+      const actualPort = server.address().port;
+      const exposed = HTTP_HOST !== '127.0.0.1' && HTTP_HOST !== 'localhost';
+      console.log(`[HTTP] Open-Birdie UI: http://localhost:${actualPort}` +
+        (exposed ? `  (exposed on ${HTTP_HOST} — trusted networks only)` : '  (localhost only — set BIRDIE_HOST=0.0.0.0 to mirror on your LAN)'));
+      resolve({ httpPort: actualPort });
+    });
+  });
 }
 
-if (SPEED_SCALE !== 1) console.log(`[OC] BIRDIE_SPEED_SCALE=${SPEED_SCALE} — scaling incoming ball speed`);
-const ready = new Promise((resolve) => {
-  server.listen(HTTP_PORT, HTTP_HOST, () => {
-    const actualPort = server.address().port;
-    const exposed = HTTP_HOST !== '127.0.0.1' && HTTP_HOST !== 'localhost';
-    console.log(`[HTTP] Open-Birdie UI: http://localhost:${actualPort}` +
-      (exposed ? `  (exposed on ${HTTP_HOST} — trusted networks only)` : '  (localhost only — set BIRDIE_HOST=0.0.0.0 to mirror on your LAN)'));
-    resolve({ httpPort: actualPort });
-  });
-});
+const ready = bootstrap();
 oc.start();
 
 function close() {
+  if (readyTimer) {
+    clearTimeout(readyTimer);
+    readyTimer = null;
+  }
   for (const res of sseClients) { try { res.end(); } catch (_) { /* gone */ } }
   sseClients.clear();
   try { server.close(); } catch (_) { /* already closed */ }
@@ -321,4 +450,9 @@ function close() {
   } catch (_) { /* already closed */ }
 }
 
-module.exports = { ready, close, primaryNonce: PRIMARY_NONCE };
+module.exports = {
+  ready,
+  close,
+  primaryNonce: PRIMARY_NONCE,
+  activationManager,
+};

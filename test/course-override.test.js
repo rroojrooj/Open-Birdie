@@ -1,5 +1,6 @@
 'use strict';
-// Per-course surface override (data/courses/<slug>.surfaces.json): vector
+// Per-course surface override (data/courses/<stable-id>.surfaces.json, with a
+// verified stable binding for legacy slug files): vector
 // polygons + relocated pins applied ONCE at load time, before makeSurfaceLookup
 // and before the geometry is served to the browser. Absent sidecar = no change.
 const test = require('node:test');
@@ -11,6 +12,7 @@ const { applySurfaceOverride, loadSurfaceOverride, makeSurfaceLookup, slug } = r
 
 const baseCourse = () => ({
   name: 'Test Links',
+  source: { courseId: 'osm:way:51', osmType: 'way', osmId: 51 },
   holes: [{ ref: 1, tee: [0, 0], pin: [200, 200] }],
   surfaces: [],
   boundary: null,
@@ -55,8 +57,23 @@ test('malformed override entries are ignored, not thrown', () => {
 
 test('loadSurfaceOverride: null when no sidecar, parsed object when present', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ob-ovr-'));
-  const course = { name: 'Test Links' };
+  const course = baseCourse();
   assert.equal(loadSurfaceOverride(course, dir), null);
-  fs.writeFileSync(path.join(dir, slug('Test Links') + '.surfaces.json'), JSON.stringify({ pins: { 1: [5, 6] } }));
+  fs.writeFileSync(
+    path.join(dir, slug('Test Links') + '.surfaces.json'),
+    JSON.stringify({ courseId: course.source.courseId, pins: { 1: [5, 6] } }),
+  );
   assert.deepEqual(loadSurfaceOverride(course, dir).pins['1'], [5, 6]);
+});
+
+test('applySurfaceOverride mutates only the explicitly supplied clone', () => {
+  const original = baseCourse();
+  const cloned = structuredClone(original);
+  applySurfaceOverride(cloned, {
+    pins: { 1: [7, 8] },
+    surfaces: [{ kind: 'green', poly: [[0, 0], [10, 0], [10, 10]] }],
+  });
+  assert.deepEqual(original.holes[0].pin, [200, 200]);
+  assert.equal(original.surfaces.length, 0);
+  assert.deepEqual(cloned.holes[0].pin, [7, 8]);
 });

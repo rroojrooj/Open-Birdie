@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "packId": "chambers-bay",
+      "courseId": "osm:way:26787026",
+      "legacyMatch": {
+        "names": [
+          "Chambers Bay"
+        ],
+        "origin": {
+          "lat": 47.2057007,
+          "lon": -122.5750529,
+          "toleranceM": 250
+        }
+      },
+      "source": "chambers-bay"
+    }
+  ]
+}

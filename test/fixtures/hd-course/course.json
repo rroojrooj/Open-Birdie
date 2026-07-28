@@ -1,6 +1,7 @@
 {
   "version": 3,
   "name": "Synthetic Test Course",
+  "source": { "courseId": "osm:way:91001", "osmType": "way", "osmId": 91001 },
   "origin": { "lat": 43.188372, "lon": -124.391261 },
   "surfaces": [
     { "kind": "fairway", "poly": [[0, 0], [100, 0], [100, 30], [0, 30]] },

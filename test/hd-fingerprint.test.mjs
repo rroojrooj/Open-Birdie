@@ -4,13 +4,70 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalCourseFingerprint, loadCourseFile } from '../tools/hd-course/course-source.mjs';
+import {
+  canonicalCourseFingerprint,
+  courseFingerprintFor,
+  courseFingerprintV1,
+  courseFingerprintV2,
+  loadCourseFile,
+} from '../tools/hd-course/course-source.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const course = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'hd-course', 'course.json'), 'utf8'));
 
 test('fingerprint is a 64-char sha256 hex', () => {
   assert.match(canonicalCourseFingerprint(course), /^[a-f0-9]{64}$/);
+});
+
+test('v1 golden hash remains byte-compatible', () => {
+  assert.equal(courseFingerprintV1(course), '8c74b221f5ad5ddd737d293f932b537cf0285cc31e084f5fd6852f8007d7cec2');
+  assert.equal(canonicalCourseFingerprint(course), courseFingerprintV1(course));
+  assert.equal(courseFingerprintFor(course, { version: 1 }), courseFingerprintV1(course));
+});
+
+test('v2 ignores display and presentation-only fields', () => {
+  const expected = courseFingerprintV2(course, course.source.courseId);
+  const changed = {
+    ...course,
+    name: 'Renamed Course',
+    presentation: { palette: 'links' },
+    aerial: { file: 'renamed.aerial.jpg' },
+    classMap: { file: 'renamed.classmap.png' },
+    buildings: [{ poly: [[0, 0], [1, 0], [1, 1]] }],
+    holes: course.holes.map((hole) => ({ ...hole, name: 'Renamed Hole' })),
+    elevation: {
+      ...course.elevation,
+      patches: [{ minX: 1, minY: 2, cellM: 1, nx: 2, ny: 2, heights: [4, 3, 2, 1] }],
+    },
+  };
+  assert.equal(courseFingerprintV2(changed, course.source.courseId), expected);
+  assert.equal(courseFingerprintFor(changed, { version: 2, courseId: course.source.courseId }), expected);
+});
+
+test('v2 changes for source, geometry, routing, and coarse elevation', () => {
+  const expected = courseFingerprintV2(course, course.source.courseId);
+  const variants = [
+    [{ ...course, source: { courseId: 'osm:way:91002', osmType: 'way', osmId: 91002 } }, 'osm:way:91002'],
+    [{ ...course, boundary: course.boundary.map(([x, y], i) => i === 0 ? [x + 1, y] : [x, y]) }, course.source.courseId],
+    [{ ...course, holes: [{ ...course.holes[0], line: [[0, 15], [60, 20], [100, 17]] }] }, course.source.courseId],
+    [{ ...course, elevation: { ...course.elevation, heights: course.elevation.heights.map((h, i) => i === 0 ? h + 1 : h) } }, course.source.courseId],
+  ];
+  for (const [variant, courseId] of variants) {
+    assert.notEqual(courseFingerprintV2(variant, courseId), expected);
+  }
+});
+
+test('v2 rejects missing, mismatched, and unsupported identities/versions', () => {
+  const sourceLess = { ...course }; delete sourceLess.source;
+  assert.throws(() => courseFingerprintV2(sourceLess), (error) => error.code === 'HD_SOURCE_ID_REQUIRED');
+  assert.throws(
+    () => courseFingerprintV2(course, 'osm:way:91002'),
+    (error) => error.code === 'HD_SOURCE_ID_MISMATCH',
+  );
+  assert.throws(
+    () => courseFingerprintFor(course, { version: 99, courseId: course.source.courseId }),
+    (error) => error.code === 'HD_FINGERPRINT_VERSION_UNSUPPORTED',
+  );
 });
 
 test('fingerprint is stable under surface reordering', () => {

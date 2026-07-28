@@ -52,6 +52,23 @@ test('success: writes the classmap and sets classFile/classBounds/classStats', a
   assert.equal(wroteBuf, png, 'wrote the classify PNG buffer');
 });
 
+test('source-identified course writes a stable source-keyed classmap filename', async () => {
+  const course = withAerial();
+  course.source = { courseId: 'osm:way:92001', osmType: 'way', osmId: 92001 };
+  let wrotePath = null;
+  await maybeClassify(course, 'Renamed Links', {
+    fetchBands: async () => ({ bands: new Uint8ClampedArray(4), width: 1, height: 1 }),
+    classify: () => ({
+      pngBuffer: Buffer.from('x'),
+      stats: { mownPct: 0.2, sandPct: 0.1 },
+      aborted: false,
+    }),
+    writeFile: (file) => { wrotePath = file; },
+  });
+  assert.equal(course.aerial.classFile, 'osm-way-92001.classmap.png');
+  assert.ok(wrotePath.endsWith('osm-way-92001.classmap.png'));
+});
+
 test('classify passes aerial.bounds + boundary + surfaces through unchanged', async () => {
   const course = withAerial();
   let seen = null;

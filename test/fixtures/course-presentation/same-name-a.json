@@ -1,0 +1,15 @@
+{
+  "displayName": "Twin Links",
+  "source": {
+    "osmType": "way",
+    "osmId": 92001
+  },
+  "origin": {
+    "lat": 47.1,
+    "lon": -122.4
+  },
+  "expected": {
+    "courseId": "osm:way:92001",
+    "cacheStem": "osm-way-92001"
+  }
+}

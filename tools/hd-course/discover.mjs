@@ -8,7 +8,7 @@
 // search and the 1-byte COG drift read touch the network — both are injected, so
 // the resolver is unit-tested offline and cli.mjs wires the live providers.
 
-import { canonicalCourseFingerprint } from './course-source.mjs';
+import { courseFingerprintV2 } from './course-source.mjs';
 import { computeHoleBounds, snapHdBounds } from './bounds.mjs';
 import { localToWgs84 } from './coordinates.mjs';
 import { selectPinnedAcquisition, assetHref } from './naip.mjs';
@@ -32,7 +32,13 @@ export function holeExtent(course, manifest) {
 }
 
 export async function resolveManifest({ manifest, course, providers }) {
-  const fingerprint = canonicalCourseFingerprint(course);
+  let fingerprint;
+  try {
+    fingerprint = courseFingerprintV2(course, manifest.course.courseId);
+  } catch (cause) {
+    throw new HdCompileError('resolve-course', cause.code || 'HD_SOURCE_ID_REQUIRED', {}, cause);
+  }
+  const courseId = course.source.courseId;
   const { snapped, bbox } = holeExtent(course, manifest);
 
   const features = await providers.searchNaipCandidates({ bbox, endpoint: manifest.providers.imagery });
@@ -49,7 +55,12 @@ export async function resolveManifest({ manifest, course, providers }) {
 
   const next = {
     ...manifest,
-    course: { ...manifest.course, fingerprint },
+    course: {
+      ...manifest.course,
+      fingerprintVersion: 2,
+      courseId,
+      fingerprint,
+    },
     discovered: {
       state: 'resolved',
       bounds: { minX: snapped.minX, minY: snapped.minY, maxX: snapped.maxX, maxY: snapped.maxY },

@@ -1,6 +1,11 @@
 {
   "version": 4,
   "name": "Open Birdie Synthetic Visual",
+  "source": {
+    "courseId": "osm:way:999999001",
+    "osmType": "way",
+    "osmId": 999999001
+  },
   "origin": { "lat": 0, "lon": 0 },
   "surfaces": [
     { "kind": "tee", "poly": [[-10, -4], [10, -4], [10, 12], [-10, 12]] },
