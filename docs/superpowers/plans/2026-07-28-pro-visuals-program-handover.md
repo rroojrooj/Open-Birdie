@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-28
 **Program status:** ACTIVE
-**Immediate package:** SP-02a — independent candidate review and integration
+**Immediate package:** SP-02a — independent corrected-candidate review and integration
 
 ## Done
 
@@ -76,10 +76,22 @@
   `close` before `CHILD_TIMEOUT`; no orphan remained. Earlier top-level smoke at
   `b30d3a3` and the later final-candidate three-course capture are green. Independent
   review assigns severity; SP-02a does not absorb unrelated harness lifecycle work.
+- Independently reviewed exact first code candidate `61d9ab7` / documentation
+  descendant `c7520a3` at 97% and rejected it with 0 Critical, 3 High, 6 Medium,
+  and 0 Low findings.
+- Corrected every finding in six focused commits: `e95ad4a` (owned verified asset
+  bytes and one-read ownership), `be8546a` (canonical identity and native abort),
+  `91b9de0` (stable-bound legacy gameplay and `DATA_DIR/courses`),
+  `02eb751` (cross-process cache publication), `e2e9a78` (typed HD rejection),
+  and `5d13c1c` (client-compatible activation errors).
+- Verified corrected code candidate
+  `5d13c1c5ba8de2628dd294f24bcf5a589065407e`: focused matrix 124/124,
+  full suite 487/487, deterministic course-art check, Windows unpacked package,
+  staged and unpacked smoke all pass.
 
 ## Left
 
-1. Independently review exact code candidate `61d9ab7`, including the preserved
+1. Independently re-review exact corrected code candidate `5d13c1c`, including the preserved
    synthetic process-close evidence.
 2. If accepted, open the PR, require Windows CI, merge, and prove ancestry or
    integrated-tree equivalence.
@@ -123,8 +135,8 @@ SP-01 DONE + SP-02a PLAN ACCEPTED
     -> SP-02b may be planned and dispatched
 ```
 
-SP-01 is present on `origin/main`; SP-02a has a complete candidate awaiting
-independent review and integration.
+SP-01 is present on `origin/main`; SP-02a has a corrected candidate awaiting
+independent re-review and integration.
 
 ## Your turn
 

@@ -2,10 +2,10 @@
 
 ## ACTIVE ROADMAP: Pro Visuals Program (2026-07-23)
 
-### SP-02a CoursePresentation contract — candidate complete, review pending (2026-07-28)
+### SP-02a CoursePresentation contract — corrected candidate complete, re-review pending (2026-07-28)
 
 Branch `codex/sp02a-course-presentation-contract` now has a renderer-free SP-02a
-candidate at code evidence commit `61d9ab78edd1f56e361b7884d203d832483a6c65`
+corrected candidate at code evidence commit `5d13c1c5ba8de2628dd294f24bcf5a589065407e`
 from implementation base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`.
 It delivers stable OSM course identity and collision-safe cache migration, versioned HD
 fingerprints, closed source/runtime course-art schemas and deterministic packaged
@@ -14,7 +14,13 @@ latest-only atomic activation, and a revision-scoped exact-handle asset gateway.
 Stable-source legacy v3 caches remain activatable; source-less caches are not guessed
 from display names.
 
-- Required focused matrix: **116/116**. Full `npm test`: **478/478**.
+- The first candidate `61d9ab78edd1f56e361b7884d203d832483a6c65`
+  was independently rejected at 97% with 0 Critical, 3 High, 6 Medium, and 0 Low
+  findings. Six focused correction commits close owned-byte asset serving, canonical
+  acquisition identity, native cancellation, identity-bound legacy sidecars,
+  cross-process cache publication, typed HD identity rejection, one-read asset
+  ownership, and client-compatible activation errors.
+- Required focused matrix: **124/124**. Full `npm test`: **487/487**.
   `npm run check:course-art`, `npm run pack`, and unpacked packaged smoke all pass;
   the packaged root contains one valid pack and the application asar has zero
   Ajv/esbuild, source-schema, or authoring-root matches.
@@ -39,7 +45,8 @@ from display names.
   `0 files / 0 bytes`. Five alternating post-warmup activations retained none of the
   four obsolete public packages, kept timers at zero and server handles flat, and
   showed `+16,712` bytes of GC heap noise.
-- Next gate: independent candidate review (including the recorded shutdown evidence),
+- Next gate: independent re-review of exact corrected code candidate `5d13c1c`,
+  including the recorded shutdown evidence,
   then PR/Windows CI/merge and a clean post-merge full suite. SP-02b remains blocked
   until SP-02a is accepted and integrated.
 

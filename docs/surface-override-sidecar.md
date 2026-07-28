@@ -15,10 +15,17 @@ today's behaviour, unchanged.
 
 ## Contract
 
-File: `data/courses/<slug>.surfaces.json`, where `<slug>` is `slug(course.name)`
-(same slug as the cached `<slug>.json`). Lives under the data dir
+Preferred file: `data/courses/<stable-id>.surfaces.json`, where `<stable-id>` is the
+source-keyed cache stem such as `osm-way-26787026`. It lives under the data dir
 (`BIRDIE_DATA_DIR`), alongside the course cache — it is **per-install data, not
 committed** (distribution of curated fixes is an open question).
+
+The historical `data/courses/<slug>.surfaces.json` name remains a compatibility
+path only when the JSON carries an exact stable binding. Add either
+`"courseId": "osm:way:26787026"` or a complete normalized `"source"` object.
+An unbound or mismatched slug file is ignored, so two courses with the same display
+name cannot inherit each other's pins or surfaces. Stable-keyed files are preferred
+within each machine-local/curated root; machine-local data still wins.
 
 ```json
 {

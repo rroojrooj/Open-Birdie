@@ -1,14 +1,16 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
-> **UPDATE 2026-07-28 — SP-02a CONTRACT CANDIDATE COMPLETE; REVIEW PENDING.**
+> **UPDATE 2026-07-28 — SP-02a CORRECTED CONTRACT CANDIDATE COMPLETE; RE-REVIEW PENDING.**
 > Branch `codex/sp02a-course-presentation-contract`, code evidence
-> `61d9ab78edd1f56e361b7884d203d832483a6c65`, implementation base
+> `5d13c1c5ba8de2628dd294f24bcf5a589065407e`, implementation base
 > `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. The candidate adds stable OSM
 > identity/collision-safe caches, v1/v2 HD dispatch, strict deterministic course-art
 > staging, automatic/curated presentation, immutable package preparation, latest-only
 > atomic server activation, and revision-scoped exact-handle asset delivery without
-> changing renderer files. Focused tests pass **116/116**; full `npm test` passes
-> **478/478**; validator, package, unpacked smoke, and asar-content gates pass.
+> changing renderer files. The first code candidate `61d9ab7` was independently
+> rejected at 97% (0C/3H/6M/0L); six focused correction commits close every finding.
+> Focused tests pass **124/124**; full `npm test` passes **487/487**; validator,
+> package, unpacked smoke, and asar-content gates pass.
 > Exact-input RTX 3060 comparison is **24/24 byte-identical frames**:
 > `.shots/visual/sp02a/before-identity-retry/baseline-2026-07-28T130251-740Z`
 > versus `.shots/visual/sp02a/after-identity-retry/baseline-2026-07-28T131525-737Z`,
@@ -17,8 +19,9 @@
 > because Electron emitted no `close`; no orphan remained. Earlier top-level smoke at
 > `b30d3a3` is green and the later final-SHA three-course capture is green. Keep this
 > fact unclassified for independent review and do not broaden SP-02a into SP-00
-> harness lifecycle work. Next: independent review, PR/Windows CI, merge, ancestry,
-> and post-merge 478-test rerun. SP-02b stays blocked until integration.
+> harness lifecycle work. Next: independent re-review of `5d13c1c`, PR/Windows CI,
+> merge, ancestry, and post-merge 487-test rerun. SP-02b stays blocked until
+> integration.
 
 > **UPDATE 2026-07-28 — SP-01 P2a SURFACE RECOVERY CANDIDATE COMPLETE.**
 > Branch `codex/sp01-p2a-recovery`, code evidence commit
