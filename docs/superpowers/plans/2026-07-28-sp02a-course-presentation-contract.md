@@ -1,6 +1,6 @@
 # SP-02a — CoursePresentation Contract, Identity, Activation, and Asset Delivery
 
-**Status:** READY_FOR_INTEGRATION  
+**Status:** READY_FOR_INTEGRATION
 **Program charter:** [`2026-07-28-pro-visuals-program-charter.md`](2026-07-28-pro-visuals-program-charter.md)  
 **Program ledger:** [`2026-07-28-pro-visuals-program-ledger.md`](2026-07-28-pro-visuals-program-ledger.md)  
 **Source design:** user-authored `2026-07-23-pro-visuals-program-design.md`,
