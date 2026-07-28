@@ -62,7 +62,7 @@ function instrumentedFs(events, overrides = {}) {
   };
 }
 
-test('legacy migration copies referenced assets, publishes JSON last, and preserves legacy bytes', () => {
+test('legacy migration copies referenced assets, publishes JSON last, and preserves legacy bytes', async () => {
   const cacheDir = tempCache();
   const legacy = writeLegacy(cacheDir);
   const legacyBytes = new Map(
@@ -71,7 +71,7 @@ test('legacy migration copies referenced assets, publishes JSON last, and preser
   const source = normalizeCourseSource({ osmType: 'way', osmId: 92001 });
   const events = [];
 
-  const migrated = migrateLegacyCourseCache({
+  const migrated = await migrateLegacyCourseCache({
     request: {
       name: ' Twin Links ',
       lat: 47.1,
@@ -101,7 +101,7 @@ test('legacy migration copies referenced assets, publishes JSON last, and preser
   assert.equal(legacy.source, undefined);
 });
 
-test('missing origin or wrong geography refuses migration without publishing keyed JSON', () => {
+test('missing origin or wrong geography refuses migration without publishing keyed JSON', async () => {
   const cacheDir = tempCache();
   writeLegacy(cacheDir);
   const source = normalizeCourseSource({ osmType: 'way', osmId: 92001 });
@@ -110,31 +110,34 @@ test('missing origin or wrong geography refuses migration without publishing key
     { name: 'Twin Links' },
     { name: 'Twin Links', lat: 48, lon: -122.4 },
   ]) {
-    const result = migrateLegacyCourseCache({ request, source, cacheDir });
+    const result = await migrateLegacyCourseCache({ request, source, cacheDir });
     assert.equal(result.status, 'rejected');
     assert.equal(result.code, 'CACHE_LEGACY_MIGRATION_REJECTED');
     assert.equal(fs.existsSync(path.join(cacheDir, 'osm-way-92001.json')), false);
   }
-  assert.equal(migrateLegacyCourseCache({
+  assert.equal((await migrateLegacyCourseCache({
     request: { name: 'Other Links', lat: 47.1, lon: -122.4 },
     source,
     cacheDir,
-  }).status, 'absent');
+  })).status, 'absent');
 });
 
-test('injected migration copy failure preserves legacy files and cleans owned temporary files', () => {
+test('injected migration copy failure preserves legacy files and cleans owned temporary files', async () => {
   const cacheDir = tempCache();
   const legacy = writeLegacy(cacheDir);
   const source = normalizeCourseSource({ osmType: 'way', osmId: 92001 });
   const throwingFs = instrumentedFs([], {
     copyFileSync(sourcePath, destination) {
-      if (sourcePath.endsWith(legacy.aerial.classFile)) throw new Error('injected copy failure');
+      if (sourcePath.endsWith(legacy.aerial.classFile)) {
+        fs.writeFileSync(destination, 'partial');
+        throw new Error('injected copy failure');
+      }
       return fs.copyFileSync(sourcePath, destination);
     },
   });
 
-  assert.throws(
-    () => migrateLegacyCourseCache({
+  await assert.rejects(
+    migrateLegacyCourseCache({
       request: { name: 'Twin Links', lat: 47.1, lon: -122.4 },
       source,
       cacheDir,
@@ -149,6 +152,81 @@ test('injected migration copy failure preserves legacy files and cleans owned te
   assert.equal(fs.existsSync(path.join(cacheDir, 'osm-way-92001.json')), false);
   assert.deepEqual(
     fs.readdirSync(cacheDir).filter((name) => name.includes('.tmp.failed-migration')),
+    [],
+  );
+});
+
+test('newer acquisition cancels a fresh-lock wait without blocking the event loop or leaking staged files', async () => {
+  const cacheDir = tempCache();
+  writeLegacy(cacheDir);
+  const source = normalizeCourseSource({ osmType: 'way', osmId: 92001 });
+  const lockPath = path.join(cacheDir, '.osm-way-92001.publish.lock');
+  fs.mkdirSync(lockPath);
+  let ticks = 0;
+  const ticker = setInterval(() => { ticks += 1; }, 1);
+  const coordinator = createCourseAcquisitionCoordinator((request, options) => {
+    if (options.source.courseId !== source.courseId) {
+      return { courseId: options.source.courseId };
+    }
+    return migrateLegacyCourseCache({
+      request,
+      source: options.source,
+      cacheDir,
+      signal: options.signal,
+      nonce: 'cancelled-migration',
+    });
+  });
+  const migration = coordinator.acquire(
+    { name: 'Twin Links', lat: 47.1, lon: -122.4, osmType: 'way', osmId: 92001 },
+    { abortDifferent: true },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 35));
+  const newer = coordinator.acquire(
+    { name: 'Newer Course', osmType: 'way', osmId: 92002 },
+    { abortDifferent: true },
+  );
+
+  try {
+    await assert.rejects(migration, { name: 'AbortError' });
+    assert.deepEqual(await newer, { courseId: 'osm:way:92002' });
+  } finally {
+    clearInterval(ticker);
+  }
+  assert.ok(ticks > 0, 'lock acquisition must yield to the event loop');
+  assert.equal(fs.existsSync(lockPath), true, 'a fresh foreign lock is not removed');
+  assert.deepEqual(
+    fs.readdirSync(cacheDir).filter((name) => name.includes('.tmp.cancelled-migration')),
+    [],
+  );
+});
+
+test('partial staging write failure removes the owned temporary', async () => {
+  const cacheDir = tempCache();
+  const source = normalizeCourseSource({ osmType: 'way', osmId: 92005 });
+  const course = {
+    ...legacyCourse(),
+    source,
+    aerial: null,
+  };
+  const fsImpl = instrumentedFs([], {
+    writeFileSync(file, bytes) {
+      fs.writeFileSync(file, Buffer.from(String(bytes).slice(0, 8)));
+      throw new Error('injected partial stage failure');
+    },
+  });
+
+  await assert.rejects(
+    publishSourceKeyedCourseCache({
+      course,
+      source,
+      cacheDir,
+      fsImpl,
+      nonce: 'partial-stage',
+    }),
+    /injected partial stage failure/u,
+  );
+  assert.deepEqual(
+    fs.readdirSync(cacheDir).filter((name) => name.includes('.tmp.partial-stage')),
     [],
   );
 });
@@ -240,6 +318,39 @@ test('competing same-identity publishers commit one coherent artifact set with J
   );
 });
 
+test('publication error releases its lock and cleans every owned staged temporary', async () => {
+  const cacheDir = tempCache();
+  const source = normalizeCourseSource({ osmType: 'way', osmId: 92004 });
+  const stem = 'osm-way-92004';
+  const course = {
+    ...legacyCourse(),
+    source,
+    aerial: null,
+  };
+  const fsImpl = instrumentedFs([], {
+    renameSync(sourcePath, destination) {
+      if (destination.endsWith(`${stem}.json`)) throw new Error('injected publication failure');
+      return fs.renameSync(sourcePath, destination);
+    },
+  });
+
+  await assert.rejects(
+    publishSourceKeyedCourseCache({
+      course,
+      source,
+      cacheDir,
+      fsImpl,
+      nonce: 'failed-publication',
+    }),
+    /injected publication failure/u,
+  );
+  assert.deepEqual(
+    fs.readdirSync(cacheDir).filter((name) =>
+      name.includes('.tmp.failed-publication') || name.endsWith('.publish.lock')),
+    [],
+  );
+});
+
 test('same stable identity shares one acquisition while different identities stay isolated', async () => {
   const pending = new Map();
   let calls = 0;
@@ -267,6 +378,49 @@ test('same stable identity shares one acquisition while different identities sta
   pending.get('osm:way:2').resolve({ id: 'b' });
   pending.get('osm:relation:2').resolve({ id: 'c' });
   assert.deepEqual(await Promise.all([b, c]), [{ id: 'b' }, { id: 'c' }]);
+});
+
+test('X to Y to X never reuses an aborted promise and newest X cancels Y', async () => {
+  const calls = [];
+  const coordinator = createCourseAcquisitionCoordinator((request, { source, signal }) => {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolveValue, rejectValue) => {
+      resolve = resolveValue;
+      reject = rejectValue;
+    });
+    signal.addEventListener('abort', () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      reject(error);
+    }, { once: true });
+    calls.push({ courseId: source.courseId, signal, resolve });
+    return promise;
+  });
+
+  const firstX = coordinator.acquire(
+    { osmType: 'way', osmId: 1 },
+    { abortDifferent: true },
+  );
+  const y = coordinator.acquire(
+    { osmType: 'way', osmId: 2 },
+    { abortDifferent: true },
+  );
+  const newestX = coordinator.acquire(
+    { osmType: 'way', osmId: 1 },
+    { abortDifferent: true },
+  );
+
+  assert.equal(calls.length, 3);
+  assert.notEqual(firstX, newestX);
+  assert.equal(calls[0].signal.aborted, true);
+  assert.equal(calls[1].signal.aborted, true);
+  assert.equal(calls[2].signal.aborted, false);
+  calls[2].resolve({ id: 'newest-x' });
+  await assert.rejects(firstX, { name: 'AbortError' });
+  await assert.rejects(y, { name: 'AbortError' });
+  assert.deepEqual(await newestX, { id: 'newest-x' });
+  assert.equal(coordinator.inFlightCount(), 0);
 });
 
 test('nested canonical source owns the acquisition request', async () => {

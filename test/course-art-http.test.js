@@ -55,9 +55,8 @@ function fixture(t, {
     bytes: declaredBytes,
     sha256: declaredHash,
     fileIdentity: identity(file),
-    verifiedBytes: Buffer.from(bytes),
-    verifiedMime: 'image/png',
-    verifiedSha256: sha256(bytes),
+    validatedMime: 'image/png',
+    validatedSha256: sha256(bytes),
   });
   const publicEntry = Object.freeze({
     url: `/api/course-art/${REVISION}/${key}`,
@@ -192,7 +191,7 @@ test('case-fold-colliding active keys fail closed with a generic 400', async (t)
   );
 });
 
-test('active snapshot owns HEAD, conditional, and GET after same-inode disk mutation', async (t) => {
+test('HEAD, conditional, and GET reject same-inode disk mutation after activation', async (t) => {
   const item = fixture(t);
   const port = await startServer(t, item);
   const original = await request(port, assetPath(item));
@@ -203,19 +202,19 @@ test('active snapshot owns HEAD, conditional, and GET after same-inode disk muta
   assert.ok(replacement.subarray(0, 24).equals(item.bytes.subarray(0, 24)));
 
   const head = await request(port, assetPath(item), { method: 'HEAD' });
-  assert.equal(head.status, 200);
-  assert.equal(head.headers.etag, original.headers.etag);
+  assert.equal(head.status, 404);
   const conditional = await request(port, assetPath(item), {
     headers: { 'If-None-Match': original.headers.etag },
   });
-  assert.equal(conditional.status, 304);
+  assert.equal(conditional.status, 404);
   const get = await request(port, assetPath(item));
-  assert.equal(get.status, 200);
-  assert.equal(get.headers.etag, original.headers.etag);
-  assert.ok(get.body.equals(item.bytes));
+  assert.equal(get.status, 404);
+  assert.equal(get.headers.etag, undefined);
+  assert.equal(get.headers['cache-control'], 'no-store');
+  assert.ok(!get.body.equals(replacement));
 });
 
-test('GET serves the verified bytes when the same inode mutates after validation', async (t) => {
+test('same-inode mutation in the request window never pairs the original ETag with replacement bytes', async (t) => {
   const item = fixture(t);
   const replacement = pngBytes([180, 30, 90, 255]);
   assert.equal(replacement.length, item.bytes.length);
@@ -231,10 +230,10 @@ test('GET serves the verified bytes when the same inode mutates after validation
         async stat(...statArgs) {
           const stat = await handle.stat(...statArgs);
           statCalls += 1;
-          if (statCalls === 2) fs.writeFileSync(item.file, replacement);
+          if (statCalls === 1) fs.writeFileSync(item.file, replacement);
           return stat;
         },
-        readFile: (...readArgs) => handle.readFile(...readArgs),
+        read: (...readArgs) => handle.read(...readArgs),
         createReadStream: (...streamArgs) => handle.createReadStream(...streamArgs),
         close: () => handle.close(),
       };
@@ -242,9 +241,9 @@ test('GET serves the verified bytes when the same inode mutates after validation
   };
   const port = await startServer(t, item, { fsPromises });
   const response = await request(port, assetPath(item));
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.etag, `"sha256-${sha256(item.bytes)}"`);
-  assert.ok(response.body.equals(item.bytes), 'body must match the bytes that own the ETag');
+  assert.equal(response.status, 404);
+  assert.equal(response.headers.etag, undefined);
+  assert.ok(!response.body.equals(replacement), 'replacement bytes must never be served');
   assert.ok(fs.readFileSync(item.file).equals(replacement), 'mutation window was exercised');
   assert.deepEqual(identity(item.file), originalIdentity, 'mutation kept the same file identity');
 });
@@ -321,6 +320,41 @@ test('an activation route swap during verification cannot serve the prior asset'
   assert.equal(response.headers['cache-control'], 'no-store');
 });
 
+test('request reads stay declaration-bounded and active metadata retains no asset buffer', async (t) => {
+  const item = fixture(t);
+  const real = fs.promises;
+  const requestedLengths = [];
+  const fsPromises = {
+    lstat: (...args) => real.lstat(...args),
+    realpath: (...args) => real.realpath(...args),
+    async open(...args) {
+      const handle = await real.open(...args);
+      return {
+        stat: (...statArgs) => handle.stat(...statArgs),
+        read(buffer, offset, length, position) {
+          assert.equal(buffer.length, item.privateEntry.bytes);
+          assert.ok(length <= item.privateEntry.bytes);
+          requestedLengths.push(length);
+          return handle.read(buffer, offset, length, position);
+        },
+        close: () => handle.close(),
+      };
+    },
+  };
+  const port = await startServer(t, item, { fsPromises });
+  const response = await request(port, assetPath(item));
+  assert.equal(response.status, 200);
+  assert.ok(response.body.equals(item.bytes));
+  assert.ok(requestedLengths.length >= 1);
+  const containsBuffer = (value, seen = new Set()) => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return false;
+    if (Buffer.isBuffer(value)) return true;
+    seen.add(value);
+    return Reflect.ownKeys(value).some((key) => containsBuffer(value[key], seen));
+  };
+  assert.equal(containsBuffer(item.state), false);
+});
+
 test('response failure closes the verified file handle exactly once', async (t) => {
   const item = fixture(t);
   const real = fs.promises;
@@ -334,6 +368,7 @@ test('response failure closes the verified file handle exactly once', async (t) 
       const handle = await real.open(...args);
       return {
         stat: (...statArgs) => handle.stat(...statArgs),
+        read: (...readArgs) => handle.read(...readArgs),
         async close() {
           closes += 1;
           return handle.close();

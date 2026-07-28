@@ -290,7 +290,7 @@ test('candidate validates asset bytes and separates path-free public records fro
   );
 });
 
-test('runtime asset bytes are read and hashed once, then owned by the prepared package', async () => {
+test('runtime asset bytes are read and hashed once without retention in the prepared package', async () => {
   const artDir = tempRoot();
   const { assetPath, bytes, pack, sha256 } = pngPackAt(artDir);
   publishRuntimePack(artDir, pack);
@@ -318,7 +318,15 @@ test('runtime asset bytes are read and hashed once, then owned by the prepared p
   assert.equal(candidate.presentation.tier, 'curated');
   assert.equal(assetReads, 1);
   assert.equal(candidate.privateAssetManifest.turf.sha256, sha256);
-  assert.ok(candidate.privateAssetManifest.turf.verifiedBytes.equals(bytes));
+  assert.equal(candidate.privateAssetManifest.turf.validatedSha256, sha256);
+  const containsBuffer = (value, seen = new Set()) => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return false;
+    if (Buffer.isBuffer(value)) return true;
+    seen.add(value);
+    return Reflect.ownKeys(value).some((key) => containsBuffer(value[key], seen));
+  };
+  assert.equal(containsBuffer(candidate), false);
+  assert.equal(containsBuffer(pack), false);
 });
 
 test('content revision ignores root/name/object/feature order but tracks semantic presentation, gameplay, and assets', async () => {

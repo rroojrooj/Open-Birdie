@@ -101,9 +101,7 @@ test('server integration keeps cached B active when older network A fails late',
     });
     await fetchStarted;
     const responseB = await postActivation({
-      name: 'Cached B',
-      osmType: 'way',
-      osmId: 2,
+      cached: 'osm-way-2.json',
     });
     const resultB = await responseB.json();
     await new Promise((resolve) => setImmediate(resolve));

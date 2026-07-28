@@ -102,9 +102,13 @@ function deriveActivationSource(request) {
   return normalizeCourseSource(null);
 }
 
-async function acquireActivationCourse(request, { abortDifferent }) {
-  if (request.cached) return loadCached(request.cached);
-  return loadCourse(request, { abortDifferent });
+async function acquireActivationCourse(request, { abortDifferent, source }) {
+  const preloadedCourse = request.cached ? loadCached(request.cached) : null;
+  return loadCourse(request, {
+    abortDifferent,
+    source,
+    ...(preloadedCourse ? { preloadedCourse } : {}),
+  });
 }
 
 function commitPreparedActivation({ candidate, resolvedPackage }) {
