@@ -236,7 +236,14 @@ test('candidate validates asset bytes and separates path-free public records fro
   assert.doesNotMatch(JSON.stringify(candidate.publicAssetManifest), /[A-Za-z]:\\|ob-package-/);
   assert.equal(candidate.privateAssetManifest.turf.absolutePath, assetPath);
   assert.equal(candidate.privateAssetManifest.turf.realPath, fs.realpathSync(assetPath));
+  assert.deepEqual(
+    Object.keys(candidate.privateAssetManifest.turf.fileIdentity).sort(),
+    ['birthtimeNs', 'device', 'inode'],
+  );
+  assert.ok(Object.values(candidate.privateAssetManifest.turf.fileIdentity)
+    .every((value) => typeof value === 'string' && /^[0-9]+$/u.test(value)));
   assert.ok(Object.isFrozen(candidate.privateAssetManifest.turf));
+  assert.ok(Object.isFrozen(candidate.privateAssetManifest.turf.fileIdentity));
 
   fs.writeFileSync(assetPath, Buffer.from('tampered bytes'));
   await assert.rejects(

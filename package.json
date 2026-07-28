@@ -7,8 +7,8 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\"",
-    "start": "electron .",
-    "start:server": "node server.js",
+    "start": "npm run prepare:course-art && electron .",
+    "start:server": "npm run prepare:course-art && node server.js",
     "calibrate": "node tools/calibrate.js",
     "shot": "node tools/test-shot.js",
     "watch": "node tools/uneekor-watch.js --speed-scale 2.23694",
@@ -19,15 +19,14 @@
     "smoke:hd-providers": "node tools/smoke-hd-providers.mjs",
     "generate:course-art-validator": "node tools/course-art/generate-validator.mjs",
     "prepare:course-art": "node tools/course-art/prepare-runtime.mjs",
+    "check:course-art": "node tools/course-art/prepare-runtime.mjs --check",
     "smoke:course-art": "node tools/course-art/packaged-smoke.cjs build/course-art",
-    "prepack": "npm run prepare:course-art",
-    "predist": "npm run prepare:course-art",
     "visual:capture": "node tools/visual-capture/cli.mjs capture",
     "visual:smoke": "node tools/visual-capture/cli.mjs smoke",
     "visual:compare": "node tools/visual-capture/cli.mjs compare",
     "visual:perf": "node tools/visual-capture/cli.mjs perf",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder --win"
+    "pack": "npm run prepare:course-art && electron-builder --dir",
+    "dist": "npm run prepare:course-art && electron-builder --win"
   },
   "engines": {
     "node": ">=22"

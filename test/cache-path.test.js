@@ -47,6 +47,17 @@ test('loadCached reads from BIRDIE_DATA_DIR/courses', () => {
   assert.deepStrictEqual(course.loadCached('osm-way-777.json').source, source);
 });
 
+test('packaged main sets cache and staged course-art roots before requiring the server', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const dataAssignment = main.indexOf('process.env.BIRDIE_DATA_DIR');
+  const artAssignment = main.indexOf('process.env.BIRDIE_ART_DIR');
+  const serverRequire = main.indexOf("require('./server')");
+  assert.ok(dataAssignment >= 0);
+  assert.ok(artAssignment > dataAssignment);
+  assert.ok(serverRequire > artAssignment);
+  assert.match(main, /path\.join\(process\.resourcesPath,\s*'course-art'\)/u);
+});
+
 after(() => {
   try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (_) { /* ignore */ }
 });

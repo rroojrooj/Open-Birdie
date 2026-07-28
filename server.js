@@ -10,6 +10,7 @@ const path = require('path');
 const { OpenConnectServer } = require('./lib/openconnect');
 const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/course');
 const { createCourseActivationManager } = require('./lib/course-activation');
+const { serveCourseArtRequest } = require('./lib/course-art-http');
 const { createCourseDiagnostic } = require('./lib/course-diagnostics');
 const { normalizeCourseSource } = require('./lib/course-identity');
 const { prepareCourseCandidate } = require('./lib/resolved-course-package');
@@ -169,6 +170,15 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   try {
+    if (p.startsWith('/api/course-art/')) {
+      return await serveCourseArtRequest(req, res, {
+        artRoot: ART_DIR,
+        getActivePackage: () => activationManager.current(),
+        lookupPrivateAsset: (contentRevision, assetKey) => (
+          activationManager.lookupPrivateAsset(contentRevision, assetKey)
+        ),
+      });
+    }
     if (p === '/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write(`event: state\ndata: ${JSON.stringify(game.state())}\n\n`);

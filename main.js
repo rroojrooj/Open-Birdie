@@ -43,6 +43,7 @@ if (!app.requestSingleInstanceLock()) {
   // keep the repo's data/ via the env-var default in lib/course.js.
   if (app.isPackaged) {
     process.env.BIRDIE_DATA_DIR = path.join(app.getPath('userData'), 'data');
+    process.env.BIRDIE_ART_DIR = path.join(process.resourcesPath, 'course-art');
   }
   let win = null;
   const srv = require('./server');
