@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-28
 **Program status:** ACTIVE
-**Immediate package:** SP-02a — CoursePresentation contract
+**Immediate package:** SP-02a — independent candidate review and integration
 
 ## Done
 
@@ -64,13 +64,27 @@
 - Accepted exact SP-02a plan candidate
   `f8693c3c2995a674d8f5827682d38a820deb227d` in pass 3 at 98% confidence with
   zero Critical, High, Medium, or Low findings and dispatch YES.
+- Implemented Tasks 1–9 on `codex/sp02a-course-presentation-contract` from exact base
+  `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. Code evidence candidate:
+  `61d9ab78edd1f56e361b7884d203d832483a6c65`.
+- Passed the required focused matrix 116/116, full suite 478/478, deterministic
+  course-art check, Windows unpacked package, packaged-root smoke, and asar scan.
+- Captured exact-input RTX 3060 base/candidate evidence and compared 24/24 frames
+  byte-identically with flat renderer counters. No renderer source changed.
+- Preserved two final-candidate synthetic retry failures exactly: each child wrote a
+  complete valid result with no page/fatal errors, then failed to emit process
+  `close` before `CHILD_TIMEOUT`; no orphan remained. Earlier top-level smoke at
+  `b30d3a3` and the later final-candidate three-course capture are green. Independent
+  review assigns severity; SP-02a does not absorb unrelated harness lifecycle work.
 
 ## Left
 
-1. Merge the accepted plan and record the exact implementation base.
-2. Assign one isolated SP-02a implementation lane.
-3. Execute Tasks 1–9 in the accepted dependency order; keep SP-02b renderer work
-   blocked.
+1. Independently review exact code candidate `61d9ab7`, including the preserved
+   synthetic process-close evidence.
+2. If accepted, open the PR, require Windows CI, merge, and prove ancestry or
+   integrated-tree equivalence.
+3. Rerun the full suite on the integrated base and close the Done Record.
+4. Keep SP-02b renderer work blocked until those gates complete.
 
 ## Current facts
 
@@ -89,7 +103,7 @@
 ## Resume commands
 
 ```powershell
-Set-Location 'C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\pro-visuals-program-pic'
+Set-Location 'C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp02a-course-presentation-contract'
 git status --short --branch
 git rev-parse HEAD
 npm test
@@ -103,14 +117,17 @@ Do not run `git reset`, `git clean`, `git pull`, or broad file-copy operations i
 The accepted transition is:
 
 ```text
-SP-01 DONE
-    -> SP-02a plan authoring and independent review
+SP-01 DONE + SP-02a PLAN ACCEPTED
+    -> SP-02a candidate independent review
+    -> PR / Windows CI / merge / post-merge verification
+    -> SP-02b may be planned and dispatched
 ```
 
-SP-01 is present on `origin/main`; SP-02a has no accepted candidate yet.
+SP-01 is present on `origin/main`; SP-02a has a complete candidate awaiting
+independent review and integration.
 
 ## Your turn
 
-No user decision is required to draft and review SP-02a. The next user-reserved
-decision is a material scope change, a deliberate never-regress exception, or final
-visual acceptance.
+No user decision is required for the independent SP-02a candidate gate or normal
+integration. The next user-reserved decision is a material scope change, a deliberate
+never-regress exception, or final visual acceptance.

@@ -1755,32 +1755,32 @@ profile.
 - Candidate ancestry or integrated-tree equivalence proven after merge.
 - Post-merge full suite rerun on `origin/main`.
 
-## 10. Done record
+## 10. Candidate done record
 
 Complete only after integration:
 
 | Field | Evidence |
 |---|---|
-| Implementation owner/worktree | TBD |
+| Implementation owner/worktree | `/root/sp01_implementation`; `C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp02a-course-presentation-contract`; branch `codex/sp02a-course-presentation-contract` |
 | Planning base | `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76` |
-| Implementation base | TBD at dispatch |
-| Candidate commit | TBD |
-| Pull request / merge commit | TBD |
-| Focused tests | TBD |
-| Full test count | TBD |
-| Identity/cache migration evidence | TBD |
-| HD v1/v2 evidence | TBD |
-| Validator/staging evidence | TBD |
-| Activation race/rollback evidence | TBD |
-| Asset HTTP/package-root evidence | TBD |
-| Before capture | TBD |
-| After capture / comparison | TBD |
-| Hardware / renderer | TBD |
-| Package preparation latency | TBD |
-| Asset/resource delta | TBD |
-| Independent review | TBD |
-| Deviations | TBD |
-| SP-02b handoff | TBD |
+| Implementation base | `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef` |
+| Candidate commit | Code evidence `61d9ab78edd1f56e361b7884d203d832483a6c65`; documentation is a code-identical descendant |
+| Pull request / merge commit | Pending independent acceptance |
+| Focused tests | Five required commands pass 116/116: identity/cache 11, HD 43, schema/staging/presentation 31, package/activation/race 18, asset HTTP/package 13 |
+| Full test count | `npm test`: 478 passed, 0 failed, 0 cancelled, 0 skipped |
+| Identity/cache migration evidence | Stable node/way/relation IDs, 250 m legacy verification, atomic non-destructive migration, collision isolation, same-ID acquisition coalescing, and exact embedded identity pass. Stable-source legacy v3 activation regression is covered; source-less activation remains rejected. |
+| HD v1/v2 evidence | V1 golden compatibility and source-less read path pass; v2 stable identity/fingerprint, mismatch rejection, unknown-version fallback, compiler, and multi-bundle resolution pass. |
+| Validator/staging evidence | `check:course-art` passes one deterministic pack; generated validator is current and dependency-free; source/runtime trees stage byte-identically; optional missing asset is pruned; required/malformed/external-reference assets fail closed. |
+| Activation race/rollback evidence | Latest-only same-/different-ID races, prepare/Game failure rollback, coherent Game/HD/revision/timer commit, observer isolation, startup ordering, redacted public failure, sanitized private cause logging, and source-keyed v3 activation pass. |
+| Asset HTTP/package-root evidence | GET/HEAD/ETag/304 and exact-handle TOCTOU/hash/file-identity tests pass; `npm run pack` passes; packaged smoke reports `{"status":"valid","packCount":1}`; 912-entry asar scan has zero Ajv/esbuild/source-schema/authoring-root matches. |
+| Before capture | Clean `2dd82c7` run: `.shots/visual/sp02a/before-identity-retry/baseline-2026-07-28T130251-740Z`; isolated source-identified data hash `d5731d3f75cb6efa7c3be3b5b329805b6af1b06d3d0aad2cb10543b5361e84ac` |
+| After capture / comparison | Clean `61d9ab7` run: `.shots/visual/sp02a/after-identity-retry/baseline-2026-07-28T131525-737Z`; `.shots/visual/sp02a/compare-identity`: 24 total, 0 changed, pixel pass true |
+| Hardware / renderer | Windows 11 Pro, RTX 3060, driver `32.0.15.9186`, Electron 42.4.0, Chrome 148, WebGL 2 / ANGLE D3D11. Per-course textures/geometries/programs/calls/triangles match exactly; no renderer files changed. |
+| Package preparation latency | 100 measured fixture iterations after warmup: automatic/no-asset median/p95 `0.109/0.186 ms`; curated `1.709/2.140 ms`; both have no diagnostics |
+| Asset/resource delta | Staged runtime asset count/bytes `0/0`; no GPU resource introduced. Five alternating post-warmup activations: obsolete packages alive `0/4`, current alive, timeouts `0 -> 0`, TCP servers `2 -> 2`, GC heap `+16,712` bytes measurement noise. |
+| Independent review | Pending; minimum acceptance 75%, with no unresolved Critical/High/Medium |
+| Deviations | Plan examples used unsupported `--output-dir`; executed supported `--output`. Canonical user data was not mutated: captures used an isolated byte copy with verified stable sources. One clean-base capture first hit a post-result Electron close timeout, then clean probe/full rerun passed. Two final-SHA synthetic retries also wrote complete valid results with no page/fatal errors but top-level `CHILD_TIMEOUT` because Electron emitted no `close`; no orphan remained. Earlier top-level smoke at `b30d3a3` and later final-SHA three-course capture are green. Independent review assigns severity; no unrelated harness lifecycle expansion was made. |
+| SP-02b handoff | Consume normalized package fields and revisioned assets; own browser generation/abort/stale disposal and shared GPU handles. Do not delete the renderer name map until St Andrews and Bandon have reviewed stable identities/profiles or reviewed generic derivation. |
 
 ## 11. Parallelization and commit order
 
