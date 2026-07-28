@@ -335,7 +335,7 @@ test('suite validation rejects duplicate IDs, incomplete poses, target mismatch,
   expectIssue((v) => { v.courses[0].frames.pop(); }, '/courses/0/frames');
 });
 
-test('baseline suite pins three real courses, proof coverage, and Chambers legacy cameras', () => {
+test('baseline suite pins three real courses, proof coverage, and the corrected Chambers green camera', () => {
   const baselinePath = path.resolve('tools', 'visual-capture', 'suites', 'baseline.json');
   const legacyPath = path.resolve('docs', 'fixtures', 'chambers-sweep.json');
   const baseline = validateSuite(JSON.parse(fs.readFileSync(baselinePath, 'utf8')));
@@ -377,7 +377,15 @@ test('baseline suite pins three real courses, proof coverage, and Chambers legac
     ['ov_south', chambers.frames.find((frameValue) => frameValue.role === 'hole-overview')],
     ['ov_high', chambers.frames.find((frameValue) => frameValue.role === 'high-overview')],
   ]);
-  for (const legacyFrame of legacy.frames.filter((frameValue) => frameValue.mode === 'free')) {
+  const correctedGreenPose = chambersByLegacyName.get('green').pose;
+  const legacyGreenPose = legacy.frames.find((frameValue) => frameValue.name === 'green').pose;
+  assert.deepEqual(correctedGreenPose, {
+    tx: 193, ty: -263, dist: 30, pitch: -28, yaw: 0, hOff: 0,
+  });
+  assert.notDeepEqual(correctedGreenPose, legacyGreenPose);
+  for (const legacyFrame of legacy.frames.filter(
+    (frameValue) => frameValue.mode === 'free' && frameValue.name !== 'green',
+  )) {
     assert.deepEqual(chambersByLegacyName.get(legacyFrame.name)?.pose, legacyFrame.pose);
   }
   assert.equal(chambersByLegacyName.get('play')?.role, 'address');
@@ -407,6 +415,57 @@ test('baseline suite pins three real courses, proof coverage, and Chambers legac
   assert.deepEqual(stAndrewsById.get('shared-fairway').pose, {
     tx: 720, ty: -1090, dist: 150, pitch: -34, yaw: -86, hOff: 1,
   });
+});
+
+test('SP-01 motion suite is a closed adjacent orbit around the corrected Chambers green', () => {
+  const suitePath = path.resolve('tools', 'visual-capture', 'suites', 'sp01-motion.json');
+  const motion = validateSuite(JSON.parse(fs.readFileSync(suitePath, 'utf8')));
+
+  assert.equal(resolveSuite('sp01-motion').path, suitePath);
+  assert.equal(motion.id, 'sp01-motion');
+  assert.deepEqual(motion.capture, {
+    width: 1280,
+    height: 720,
+    deviceScaleFactor: 1,
+    qualityProfile: 'current-default',
+    readinessTimeoutMs: 120000,
+    settleFrames: 3,
+    fixedTimeSeconds: 12.5,
+  });
+  assert.equal(motion.courses.length, 1);
+
+  const [chambers] = motion.courses;
+  assert.deepEqual({
+    id: chambers.id,
+    cacheFile: chambers.cacheFile,
+    expectedName: chambers.expectedName,
+    hdPolicy: chambers.hdPolicy,
+  }, {
+    id: 'chambers-bay',
+    cacheFile: 'chambers-bay.json',
+    expectedName: 'Chambers Bay',
+    hdPolicy: 'optional',
+  });
+  assert.equal(chambers.frames.length, 5);
+  assert.ok(chambers.frames.every((frameValue) =>
+    frameValue.role === 'close-green' &&
+    frameValue.target === 'canvas' &&
+    frameValue.mode === 'free' &&
+    frameValue.band === 'feature'
+  ));
+
+  const yaws = chambers.frames.map((frameValue) => frameValue.pose.yaw);
+  assert.deepEqual(yaws, [-1, -0.5, 0, 0.5, 1]);
+  assert.ok(yaws.slice(1).every((yaw, index) => yaw - yaws[index] === 0.5));
+  for (const frameValue of chambers.frames) {
+    assert.deepEqual(
+      { ...frameValue.pose, yaw: 0 },
+      { tx: 193, ty: -263, dist: 30, pitch: -28, yaw: 0, hOff: 0 },
+    );
+    assert.deepEqual(frameValue.judges, [
+      'authored green inner edge and collar remain continuous through adjacent orbit poses',
+    ]);
+  }
 });
 
 test('CLI parser recognizes all modes and capture flags', () => {

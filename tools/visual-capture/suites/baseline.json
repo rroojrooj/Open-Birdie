@@ -34,15 +34,15 @@
           "mode": "free",
           "band": "feature",
           "pose": {
-            "tx": 138,
-            "ty": -289,
-            "dist": 70,
-            "pitch": -24,
-            "yaw": 20,
+            "tx": 193,
+            "ty": -263,
+            "dist": 30,
+            "pitch": -28,
+            "yaw": 0,
             "hOff": 0
           },
           "judges": [
-            "green fringe transition, checker pattern, coastal turf texture, and terrain relief"
+            "authored OSM green edge, bounded collar, checker pattern, coastal turf texture, and terrain relief"
           ]
         },
         {

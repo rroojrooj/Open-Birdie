@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import * as THREE from 'three';
 import { makeTurfMaterial } from '../public/render/turf.js';
 
@@ -17,19 +18,38 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4 });
   const s = fakeShader();
   mat.onBeforeCompile(s);
-  for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM', 'uCourseDry']) assert.ok(s.uniforms[u], `missing ${u}`);
+  for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM', 'uCourseDry', 'uMaskRaw', 'uPalGreenA']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.equal(s.uniforms.uCourseDry.value, 0, 'courseDry defaults to 0 (lush)');
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v32');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v37-smoothing');
+  // P2a-T3: an OSM-vicinity signal (dilated raw mask) is computed for classmap reconciliation.
+  assert.match(s.fragmentShader, /float osmNear = max\(/);
+  // P2a: crisp edges composited from the RAW mask via fwidth AA. Green (.g) gets a full
+  // base-colour override; the mown/fairway (.r) crisp mask drives the STRIPE edge.
+  assert.match(s.fragmentShader, /vec4 mkRaw = texture2D\(uMaskRaw, vMapUv\)/);
+  assert.match(s.fragmentShader, /float gCrisp = smoothstep\(0\.5 - gAA, 0\.5 \+ gAA, gRaw\)/);
+  assert.match(s.fragmentShader, /float mCrisp = smoothstep\(0\.5 - mAA, 0\.5 \+ mAA, mRaw\)/);
+  assert.match(s.fragmentShader, /float gRaw = mkRaw\.g, mRaw = mkRaw\.r, bRaw = mkRaw\.b/);
+  assert.match(s.fragmentShader, /float bCrisp = smoothstep\(0\.5 - bAA, 0\.5 \+ bAA, bRaw\)/);
+  assert.doesNotMatch(s.fragmentShader, /float bRaw = texture2D\(uBunker/);
+  // P2a Task 2: base-colour stack rough(splat) -> collar apron -> putting surface.
+  assert.match(s.fragmentShader, /vec3 baseCol = mix\(diffuseColor\.rgb, collarCol, collarBand\)/);
+  assert.match(s.fragmentShader, /mix\(baseCol, uPalGreenA, gCrisp\)/);
+  // the collar apron rides collarBand (crisp inner via 1-gCrisp, distance-faded)
+  assert.match(s.fragmentShader, /float collarBand = clamp\(gDil, 0\.0, 1\.0\) \* \(1\.0 - gCrisp\)/);
+  // stripes gate on the crisp mown edge (unioned with NDVI coverage)
+  assert.match(s.fragmentShader, /max\(mCrisp, cls\.r\)/);
   // v25: the green gate rides uMask.g (packed channel) in BOTH variants —
   // the roughness sheen samples it directly, the map block via the mk swizzle
   assert.match(s.fragmentShader, /texture2D\(uMask, vMapUv\)\.g/);
   assert.match(s.fragmentShader, /roughnessFactor = mix\(roughnessFactor/);
   assert.match(s.fragmentShader, /float g = mk\.g/);
   // v27: the non-macro variant still defines `cls` (as a zero vec4) so the sand
-  // union line `max(texture2D(uBunker...).r, cls.b...)` compiles in BOTH variants.
+  // union line `max(bCrisp, cls.b...)` compiles in BOTH variants.
   assert.match(s.fragmentShader, /vec4 cls = vec4\(0\.0\)/);
-  assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
+  // P2a: the OSM bunker edge is crisped with fwidth (bCrisp) then unioned with NDVI sand.
+  assert.match(s.fragmentShader, /float bCrisp = smoothstep\(0\.5 - bAA, 0\.5 \+ bAA, bRaw\)/);
+  assert.match(s.fragmentShader, /float bm = max\(bCrisp, cls\.b/);
 });
 
 test('macro turf material: adds aerial tint uniforms + a distinct program', () => {
@@ -45,7 +65,22 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.equal(s.uniforms.uMacroLow.value, macro.low);
   assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
   assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v32-macro');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v37-smoothing-macro');
+  // P2a-T4: the classmap is thresholded (after a load-time blur) so only confident coverage
+  // survives — kills the per-pixel dot-screen stipple.
+  assert.match(s.fragmentShader, /cls\.r = smoothstep\(0\.45, 0\.75, cls\.r\)/);
+  assert.match(s.fragmentShader, /cls\.b = smoothstep\(0\.45, 0\.75, cls\.b\)/);
+  // P2a-T3: the feathered NDVI classmap is suppressed where OSM authored the boundary
+  // (osmNear) BEFORE the mown union, so the crisp OSM edge owns it (kills the double edge).
+  assert.match(s.fragmentShader, /max\(max\(mkRaw\.r, mkRaw\.b\)/);
+  assert.match(s.fragmentShader, /cls\.r \*= 1\.0 - osmNear/);
+  assert.match(s.fragmentShader, /cls\.b \*= 1\.0 - osmNear/);
+  assert.ok(s.fragmentShader.indexOf('cls.r *= 1.0 - osmNear') < s.fragmentShader.indexOf('m = max(m, cls.r)'),
+    'NDVI suppression must precede the mown union');
+  assert.ok(s.fragmentShader.indexOf('cls.b *= 1.0 - osmNear') < s.fragmentShader.indexOf('float bm = max(bCrisp, cls.b'),
+    'NDVI suppression must precede the bunker union');
+  assert.ok(s.fragmentShader.indexOf('cls.r = smoothstep(0.45, 0.75, cls.r)') < s.fragmentShader.indexOf('cls.r *= 1.0 - osmNear'),
+    'confidence threshold must precede OSM suppression');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
   // v27: the NDVI class-map (uMacroSurfaces) was declared-but-unsampled — it must now
@@ -58,8 +93,8 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   // mis-order would pass every other assertion. Pin it by source position.
   assert.ok(s.fragmentShader.indexOf('m = max(m, cls.r)') < s.fragmentShader.indexOf('float band = sin('),
     'NDVI mown-union must appear before the stripe block');
-  // …and the sand gate UNIONS NDVI-detected sand (cls.b) into the tiled-sand path.
-  assert.match(s.fragmentShader, /max\(texture2D\(uBunker[^)]*\)\.r, cls\.b/);
+  // …and the sand gate UNIONS NDVI-detected sand (cls.b) with the crisp OSM bunker edge.
+  assert.match(s.fragmentShader, /float bm = max\(bCrisp, cls\.b/);
   // the v23 photo-REPLACEMENT blend is gone — a bad merge restoring it must fail here
   assert.doesNotMatch(s.fragmentShader, /grass = mix\(grass, photo, mw\)/);
 });
@@ -88,4 +123,16 @@ test('macro textures are NOT in turf disposeTextures (owned by the bundle loader
   const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4, macro });
   const disp = mat.userData.disposeTextures || [];
   assert.ok(!disp.includes(macro.albedo) && !disp.includes(macro.surfaces) && !disp.includes(macro.coverage) && !disp.includes(macro.low));
+});
+
+test('raw RGB surface mask is wired in production and disposed exactly once', () => {
+  const raw = tex();
+  const mat = makeTurfMaterial({
+    baseMap: tex(), mownMask: tex(), bunkerMask: tex(), surfaceMaskRaw: raw, bounds, anisotropy: 4,
+  });
+  assert.equal(mat.userData.disposeTextures.filter((texture) => texture === raw).length, 1);
+
+  const sceneSource = fs.readFileSync(new URL('../public/render/scene.js', import.meta.url), 'utf8');
+  assert.match(sceneSource, /surfaceMaskRaw:\s*maskRawTex/);
+  assert.match(sceneSource, /\['fairway', 'tee', 'green', 'bunker'\], RAW_SURFACE_COLORS, 0, true/);
 });

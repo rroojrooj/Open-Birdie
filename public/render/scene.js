@@ -20,6 +20,8 @@ import { makeTerrainSampler } from './terrain-grid.js';
 import { RENDER_CONFIG } from './config.js';
 import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
 import { COLORS, DRY_PALETTE, courseDryFor, blendPalette } from './course-character.js';
+import { paintSurfaceMask, RAW_SURFACE_COLORS } from './surface-mask.js';
+import { smoothClassmapTexture } from './classmap-smoothing.js';
 import { installLoadingTracker } from './capture-readiness.js';
 import {
   classifyAnimationCadence,
@@ -47,6 +49,17 @@ function pointInPoly(x, y, poly) {
     if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
+}
+
+// sRGB hex -> linear [r,g,b] (0..1). The P2a crisp-edge composite overrides the
+// splat albedo per-surface IN-SHADER, where diffuseColor is already linear — so the
+// palette uniforms must be linearized to match (srgbToLinear takes a 0-255 byte).
+function hexToLinearRGB(hex) {
+  return [
+    srgbToLinear(parseInt(hex.slice(1, 3), 16)),
+    srgbToLinear(parseInt(hex.slice(3, 5), 16)),
+    srgbToLinear(parseInt(hex.slice(5, 7), 16)),
+  ];
 }
 
 // The lush COLORS palette lives in course-character.js (shared with the dry-links
@@ -352,7 +365,15 @@ export class GolfScene {
       // turf shader actually SAMPLE this; here we only deliver the texture.
       if (geo.aerial.classes) {
         const cls = new THREE.TextureLoader().load('/api/course-classmap',
-          () => console.log('[render] classmap loaded'),
+          (tex) => {
+            // Per-pixel NDVI scatter becomes a dot screen when sampled raw. Smooth once
+            // at load; on failure the helper warns with the real cause and deliberately
+            // leaves this loaded texture selected as the visible raw fallback.
+            const result = smoothClassmapTexture(tex);
+            console.log(result.status === 'smoothed'
+              ? '[render] classmap loaded + smoothed'
+              : '[render] classmap loaded with raw fallback');
+          },
           undefined,
           () => console.warn('[render] classmap failed to load — OSM-only surfaces'));
         cls.colorSpace = THREE.NoColorSpace;               // data, not colour
@@ -483,6 +504,13 @@ export class GolfScene {
     const bunkerMaskTex = new THREE.CanvasTexture(this._paintMask(b, ['bunker']));
     bunkerMaskTex.colorSpace = THREE.NoColorSpace;
     bunkerMaskTex.anisotropy = tex.anisotropy;
+    // P2a raw packed surface membership (additive channels, so overlaps survive):
+    //   R = mown (fairway / tee / green), G = green, B = bunker.
+    // The blurred masks above remain authoritative for their existing soft uses.
+    const maskRawTex = new THREE.CanvasTexture(this._paintMask(
+      b, ['fairway', 'tee', 'green', 'bunker'], RAW_SURFACE_COLORS, 0, true));
+    maskRawTex.colorSpace = THREE.NoColorSpace;
+    maskRawTex.anisotropy = tex.anisotropy;
 
     // Stashed so _addGreenPatches can build a second, polygon-offset instance of the
     // SAME shader (shared texture/macro objects — in-place tint updates reach both).
@@ -490,6 +518,12 @@ export class GolfScene {
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
       macro: this._macro || this._hdMacros[0] || null,
       courseDry: this._courseDry, // P1b: drives the turf shader (warm-mix, stripes, far-photo)
+      surfaceMaskRaw: maskRawTex, // P2a: crisp fwidth edge source (R=mown/G=green/B=bunker)
+      // P2a: per-surface palette (linear) so the shader can composite the base colour
+      // per-fragment with a crisp fwidth mask, overriding the soft splat/tint/collar.
+      pal: {
+        greenA: hexToLinearRGB(this._pal.greenA),
+      },
     };
     const turfMat = makeTurfMaterial(this._turfInputs);
     if (this._hdPatches.length) {
@@ -664,7 +698,11 @@ export class GolfScene {
     // turf shader (mask-gated) so they survive the tiled grass detail.
     fillKind(['fairway'], this._pal.fairwayA, 1.2);
     fillKind(['tee'], this._pal.tee, 1.5);
-    fillKind(['green'], this._pal.greenA, 1.0);
+    // P2a: the green splat is painted near-crisp (0.35) so it doesn't bleed ~0.45 m of
+    // green PAST the polygon; the in-shader fwidth composite overrides the base colour
+    // AT the edge, but where gCrisp==0 (just outside) it falls back to this splat, so a
+    // soft splat here would re-soften the mow line the shader just crisped.
+    fillKind(['green'], this._pal.greenA, 0.35);
     fillKind(['bunker'], this._pal.bunker, 1.2);
     fillKind(['water'], this._pal.water, 1.5);
     return cv;
@@ -675,29 +713,15 @@ export class GolfScene {
   // With a `colors` map, each kind fills with its own color so one canvas can pack
   // several gates (e.g. .r = mown, .g = green). Kinds paint in the ORDER GIVEN —
   // later kinds overpaint earlier ones where polygons touch.
-  _paintMask(b, kinds, colors = null) {
-    const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
-    const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
-    const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
-    const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-    const px = (x) => (x - b.minX) * ppm, py = (y) => (b.maxY - y) * ppm;
-    ctx.filter = 'blur(1px)';
-    for (const kind of kinds) {
-      ctx.fillStyle = colors ? (colors[kind] || colors.default || '#fff') : '#fff';
-      for (const s of this.geo.surfaces) {
-        if (s.kind !== kind) continue;
-        ctx.beginPath();
-        ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
-        for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    return cv;
+  _paintMask(b, kinds, colors = null, blurPx = 1, additive = false) {
+    return paintSurfaceMask({
+      bounds: b,
+      surfaces: this.geo.surfaces,
+      kinds,
+      colors,
+      blurPx,
+      additive,
+    });
   }
 
   // Animated water (config.water) or the static fallback plane.

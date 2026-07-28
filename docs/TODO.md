@@ -2,6 +2,52 @@
 
 ## ACTIVE ROADMAP: Pro Visuals Program (2026-07-23)
 
+### SP-01 P2a surface recovery — implementation/evidence complete (2026-07-28)
+
+The recovery candidate on `codex/sp01-p2a-recovery` restores authored green, fairway,
+and bunker ownership from `origin/claude/p2-sdf-surfaces`, then corrects the historical
+raw-mask and fallback defects. The packed raw mask is now explicitly
+`R=mown, G=green, B=bunker`; authored OSM coverage wins in a bounded neighborhood while
+the class map remains a gap filler; class-map smoothing has a tested, visible
+`raw-fallback` path. Shader cache/disposal contracts and the corrected Chambers authored
+green proof camera are covered by tests.
+
+- Code evidence commit: `d2305fa524e3ce2d9dc8b87d46611418adb5ca45`
+  (the documentation commit is a code-identical descendant).
+- Automated gate: `npm test` passed **382/382**. Focused camera, mask, shader, and
+  smoothing suites also passed.
+- Clean hardware evidence: synthetic smoke
+  `.shots/visual/sp01/smoke/synthetic-smoke-2026-07-28T090945-084Z`; three-course
+  candidate `.shots/visual/sp01/after/baseline-2026-07-28T091021-742Z`; comparison
+  `.shots/visual/sp01/compare`.
+- Adjacent-pose stability gate: committed suite `sp01-motion` pins five Chambers green
+  poses from yaw `-1` through `+1` in exact `0.5` degree steps around the corrected
+  camera. Its clean RTX 3060 artifact is
+  `.shots/visual/sp01/motion/sp01-motion-2026-07-28T094519-169Z`, with manifest
+  `manifest.json`, Git SHA `a261b564946e000f1688e3e7138f470441f89138`, and suite
+  SHA-256 `4d403e0591b4e573aa7ad27892bf68857626ba9206e4e87df99f17ac715c21eb`.
+  Visual verdict: **PASS** — the authored inner edge and collar remain continuous with
+  stable width/softness across every adjacent pose; no popping, broken coverage, halo
+  flash, or visible `fwidth` shimmer.
+- Visual gate: corrected Chambers green has a crisp authored inner edge and bounded
+  collar; authored bunker/fairway boundaries recover without the class-map double edge;
+  Sawgrass stays lush and its small authored H17 bunker remains; St Andrews changes
+  remain localized.
+- Same-host RTX 3060 performance: median supported GPU frame time
+  `15.400 ms -> 15.438 ms` (**+0.038 ms**, below the `+3 ms` phase budget);
+  texture count stayed `57 -> 57`. The reported program count changed `65 -> 81`,
+  with no measured cadence regression.
+- The Chambers `high-survey` frame still exposes the broad HD patch/far-photo relief
+  seam. That is recorded as **SP-04 input**; SP-01 deliberately does not tune HD
+  terrain, normals, LOD, or far-photo behavior.
+- Deferred reviewer Low: shared texture cleanup can reach an already-disposed Three
+  texture through the pre-existing resource ownership pattern. Three texture disposal
+  is idempotent and SP-01 adds no observed leak or failure, so lifecycle normalization
+  is logged for a later renderer-resource cleanup rather than expanded into this branch.
+
+PIC independent review, merge, and program-ledger acceptance remain pending. SP-02
+renderer wiring continues to wait for that acceptance.
+
 The renderer now has a detailed two-tier target:
 
 - **Automatic Course Baseline:** consistent, artifact-free **5.5–6.5/10** from normal
@@ -18,17 +64,18 @@ Read these before starting new visual work:
   [`superpowers/plans/2026-07-23-pro-visuals-test-plan.md`](superpowers/plans/2026-07-23-pro-visuals-test-plan.md)
 
 **Engineering review decision:** keep the full M1 + M2 roadmap, but authorize one reviewed phase at a time.
-**Immediate next phase:** SP-00, the committed visual benchmark harness and baseline. While that is reviewed,
-prepare SP-01 (recover and merge `origin/claude/p2-sdf-surfaces`) and only SP-02a’s server/schema/activation
-contract. SP-02 renderer wiring waits for SP-01 because both touch `public/render/scene.js`. Do not begin
-another tuning arc without the reproducible capture baseline.
+**Immediate next phase:** independently review and merge the SP-01 recovery candidate, then authorize the
+next dependency-safe lane from the program ledger. SP-02 renderer wiring waits for accepted SP-01 because
+both touch `public/render/scene.js`. Do not begin another tuning arc without the reproducible capture
+baseline.
 
 ### Current integration state
 
 - P0a debug/UI gate: merged.
 - P1b tan-links course character: merged.
-- P2a crisp surface work: 13 commits on `origin/claude/p2-sdf-surfaces`, four implementation tasks complete,
-  final multi-course capture/docs gate incomplete, no PR open.
+- P2a crisp surface work: recovered and corrected on `codex/sp01-p2a-recovery`; implementation, tests,
+  clean multi-course capture, comparison, and same-host performance evidence are complete. Independent
+  PIC review and merge remain pending; no PR is open.
 - The Reality Master Plan remains useful historical rationale, but the Pro Visuals Program owns future
   sequencing and defines the additional course-authoring path required beyond 6–7/10.
 

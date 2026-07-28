@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "id": "sp01-motion",
+  "capture": {
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1,
+    "qualityProfile": "current-default",
+    "readinessTimeoutMs": 120000,
+    "settleFrames": 3,
+    "fixedTimeSeconds": 12.5
+  },
+  "courses": [
+    {
+      "id": "chambers-bay",
+      "cacheFile": "chambers-bay.json",
+      "expectedName": "Chambers Bay",
+      "hdPolicy": "optional",
+      "frames": [
+        {
+          "id": "green-yaw-minus-1",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 193,
+            "ty": -263,
+            "dist": 30,
+            "pitch": -28,
+            "yaw": -1,
+            "hOff": 0
+          },
+          "judges": [
+            "authored green inner edge and collar remain continuous through adjacent orbit poses"
+          ]
+        },
+        {
+          "id": "green-yaw-minus-0-5",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 193,
+            "ty": -263,
+            "dist": 30,
+            "pitch": -28,
+            "yaw": -0.5,
+            "hOff": 0
+          },
+          "judges": [
+            "authored green inner edge and collar remain continuous through adjacent orbit poses"
+          ]
+        },
+        {
+          "id": "green-yaw-0",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 193,
+            "ty": -263,
+            "dist": 30,
+            "pitch": -28,
+            "yaw": 0,
+            "hOff": 0
+          },
+          "judges": [
+            "authored green inner edge and collar remain continuous through adjacent orbit poses"
+          ]
+        },
+        {
+          "id": "green-yaw-plus-0-5",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 193,
+            "ty": -263,
+            "dist": 30,
+            "pitch": -28,
+            "yaw": 0.5,
+            "hOff": 0
+          },
+          "judges": [
+            "authored green inner edge and collar remain continuous through adjacent orbit poses"
+          ]
+        },
+        {
+          "id": "green-yaw-plus-1",
+          "role": "close-green",
+          "target": "canvas",
+          "mode": "free",
+          "band": "feature",
+          "pose": {
+            "tx": 193,
+            "ty": -263,
+            "dist": 30,
+            "pitch": -28,
+            "yaw": 1,
+            "hOff": 0
+          },
+          "judges": [
+            "authored green inner edge and collar remain continuous through adjacent orbit poses"
+          ]
+        }
+      ]
+    }
+  ]
+}
