@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import * as THREE from 'three';
 import { makeTurfMaterial } from '../public/render/turf.js';
 
@@ -20,12 +21,15 @@ test('legacy turf material (options object): same uniforms, no macro', () => {
   for (const u of ['uDetail', 'uMask', 'uBunker', 'uSand', 'uExt', 'uStripeM', 'uCourseDry', 'uMaskRaw', 'uPalGreenA']) assert.ok(s.uniforms[u], `missing ${u}`);
   assert.equal(s.uniforms.uCourseDry.value, 0, 'courseDry defaults to 0 (lush)');
   assert.ok(!s.uniforms.uMacro, 'no macro uniform without macro');
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v33');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v34-rgb');
   // P2a: crisp edges composited from the RAW mask via fwidth AA. Green (.g) gets a full
   // base-colour override; the mown/fairway (.r) crisp mask drives the STRIPE edge.
   assert.match(s.fragmentShader, /vec4 mkRaw = texture2D\(uMaskRaw, vMapUv\)/);
   assert.match(s.fragmentShader, /float gCrisp = smoothstep\(0\.5 - gAA, 0\.5 \+ gAA, gRaw\)/);
   assert.match(s.fragmentShader, /float mCrisp = smoothstep\(0\.5 - mAA, 0\.5 \+ mAA, mRaw\)/);
+  assert.match(s.fragmentShader, /float gRaw = mkRaw\.g, mRaw = mkRaw\.r, bRaw = mkRaw\.b/);
+  assert.match(s.fragmentShader, /float bCrisp = smoothstep\(0\.5 - bAA, 0\.5 \+ bAA, bRaw\)/);
+  assert.doesNotMatch(s.fragmentShader, /float bRaw = texture2D\(uBunker/);
   assert.match(s.fragmentShader, /mix\(diffuseColor\.rgb, uPalGreenA, gCrisp\)/);
   // stripes gate on the crisp mown edge (unioned with NDVI coverage)
   assert.match(s.fragmentShader, /max\(mCrisp, cls\.r\)/);
@@ -55,7 +59,7 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   assert.equal(s.uniforms.uMacroLow.value, macro.low);
   assert.equal(s.uniforms.uMacroAvg.value, macro.avg);
   assert.equal(s.uniforms.uMacroPhotoFar.value, 0.65);
-  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v33-macro');
+  assert.equal(mat.customProgramCacheKey(), 'turf-grain-v34-rgb-macro');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
   // v27: the NDVI class-map (uMacroSurfaces) was declared-but-unsampled — it must now
@@ -98,4 +102,16 @@ test('macro textures are NOT in turf disposeTextures (owned by the bundle loader
   const mat = makeTurfMaterial({ baseMap: tex(), mownMask: tex(), bunkerMask: tex(), bounds, anisotropy: 4, macro });
   const disp = mat.userData.disposeTextures || [];
   assert.ok(!disp.includes(macro.albedo) && !disp.includes(macro.surfaces) && !disp.includes(macro.coverage) && !disp.includes(macro.low));
+});
+
+test('raw RGB surface mask is wired in production and disposed exactly once', () => {
+  const raw = tex();
+  const mat = makeTurfMaterial({
+    baseMap: tex(), mownMask: tex(), bunkerMask: tex(), surfaceMaskRaw: raw, bounds, anisotropy: 4,
+  });
+  assert.equal(mat.userData.disposeTextures.filter((texture) => texture === raw).length, 1);
+
+  const sceneSource = fs.readFileSync(new URL('../public/render/scene.js', import.meta.url), 'utf8');
+  assert.match(sceneSource, /surfaceMaskRaw:\s*maskRawTex/);
+  assert.match(sceneSource, /\['fairway', 'tee', 'green', 'bunker'\], RAW_SURFACE_COLORS, 0, true/);
 });

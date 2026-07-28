@@ -37,11 +37,11 @@ export function makeSandMaterial(bounds, aniso) {
   return mat;
 }
 
-export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisotropy, macro = null, courseDry = 0, mownMaskRaw = null, pal = null }) {
+export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisotropy, macro = null, courseDry = 0, surfaceMaskRaw = null, pal = null }) {
   const splatTex = baseMap, maskTex = mownMask, bunkerMaskTex = bunkerMask, aniso = anisotropy;
   // P2a: a RAW (unblurred) mask for the crisp fwidth edge. Falls back to the blurred
   // mask so the headless material test (no raw mask supplied) still builds.
-  const maskRawTex = mownMaskRaw || mownMask;
+  const maskRawTex = surfaceMaskRaw || mownMask;
   const extX = bounds.maxX - bounds.minX, extY = bounds.maxY - bounds.minY;
   const tileM = 2.0; // grass texture repeats ~every 2m
   const repX = extX / tileM, repY = extY / tileM;
@@ -199,13 +199,16 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // fwidth-AA mask off the RAW (unblurred) mask channels. fwidth collapses the
           // mask's ramp to a ~1px mow line AT the polygon edge regardless of the mask's
           // 0.45 m/px resolution, so the boundary reads crisp instead of airbrushed.
-          // One raw-mask sample: .r = mown (fairway/tee/green), .g = green only.
+          // One additive raw-mask sample: R=mown, G=green, B=bunker. Green overrides
+          // the base colour, fairway only gates mowing structure, and bunker uses raw B.
           vec4 mkRaw = texture2D(uMaskRaw, vMapUv);
-          float gRaw = mkRaw.g, mRaw = mkRaw.r;
+          float gRaw = mkRaw.g, mRaw = mkRaw.r, bRaw = mkRaw.b;
           float gAA = max(fwidth(gRaw), 1e-5);
           float gCrisp = smoothstep(0.5 - gAA, 0.5 + gAA, gRaw);
           float mAA = max(fwidth(mRaw), 1e-5);
           float mCrisp = smoothstep(0.5 - mAA, 0.5 + mAA, mRaw); // crisp mown (fairway) edge
+          float bAA = max(fwidth(bRaw), 1e-5);
+          float bCrisp = smoothstep(0.5 - bAA, 0.5 + bAA, bRaw); // crisp bunker edge
           // Green gets a full crisp BASE override (a distinct putting-surface colour). The
           // fairway does NOT: the splat fairway->rough colour is already near-crisp (~0.5 m
           // blur) and both are close tans/olives — forcing the dry-olive fairwayA over the
@@ -347,9 +350,6 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           // P2a: crisp the OSM bunker edge with fwidth AA so the sand->grass boundary is a
           // ~1px line, killing the soft desaturated "sand halo" band the blurred mask left
           // around each bunker. (The NDVI cls.b feather stays; Task 3 reconciles it.)
-          float bRaw = texture2D(uBunker, vMapUv).r;
-          float bAA = max(fwidth(bRaw), 1e-5);
-          float bCrisp = smoothstep(0.5 - bAA, 0.5 + bAA, bRaw);
           float bm = max(bCrisp, cls.b * (1.0 - m));
           diffuseColor.rgb = mix(grass, sand, bm);
         }
@@ -393,9 +393,9 @@ export function makeTurfMaterial({ baseMap, mownMask, bunkerMask, bounds, anisot
           normal = normalize(normal + mTilt * (0.18 * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)))));
         }`);
   };
-  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v33-macro' : 'turf-grain-v33');
+  mat.customProgramCacheKey = () => (macro ? 'turf-grain-v34-rgb-macro' : 'turf-grain-v34-rgb');
   // textures injected via onBeforeCompile (+ the canvas masks) aren't reachable from
   // the standard material slots, so register them for disposal on course reload.
-  mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex, ...(mownMaskRaw ? [maskRawTex] : [])];
+  mat.userData.disposeTextures = [detail, sand, maskTex, bunkerMaskTex, ...(surfaceMaskRaw ? [maskRawTex] : [])];
   return mat;
 }

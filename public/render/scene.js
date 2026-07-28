@@ -20,6 +20,7 @@ import { makeTerrainSampler } from './terrain-grid.js';
 import { RENDER_CONFIG } from './config.js';
 import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
 import { COLORS, DRY_PALETTE, courseDryFor, blendPalette } from './course-character.js';
+import { paintSurfaceMask, RAW_SURFACE_COLORS } from './surface-mask.js';
 import { installLoadingTracker } from './capture-readiness.js';
 import {
   classifyAnimationCadence,
@@ -494,11 +495,11 @@ export class GolfScene {
     const bunkerMaskTex = new THREE.CanvasTexture(this._paintMask(b, ['bunker']));
     bunkerMaskTex.colorSpace = THREE.NoColorSpace;
     bunkerMaskTex.anisotropy = tex.anisotropy;
-    // P2a: a RAW (unblurred) copy of the packed mown/green mask. The turf shader
-    // derives a crisp fwidth mow-line edge from this; the blurred maskTex above stays
-    // for the soft mown gate + green-collar dilation. Same packing / bounds / ppm.
+    // P2a raw packed surface membership (additive channels, so overlaps survive):
+    //   R = mown (fairway / tee / green), G = green, B = bunker.
+    // The blurred masks above remain authoritative for their existing soft uses.
     const maskRawTex = new THREE.CanvasTexture(this._paintMask(
-      b, ['fairway', 'tee', 'green'], { default: '#ff0000', green: '#ffff00' }, 0));
+      b, ['fairway', 'tee', 'green', 'bunker'], RAW_SURFACE_COLORS, 0, true));
     maskRawTex.colorSpace = THREE.NoColorSpace;
     maskRawTex.anisotropy = tex.anisotropy;
 
@@ -508,16 +509,11 @@ export class GolfScene {
       baseMap: tex, mownMask: maskTex, bunkerMask: bunkerMaskTex, bounds: b, anisotropy: tex.anisotropy,
       macro: this._macro || this._hdMacros[0] || null,
       courseDry: this._courseDry, // P1b: drives the turf shader (warm-mix, stripes, far-photo)
-      mownMaskRaw: maskRawTex,    // P2a: crisp fwidth edge source
+      surfaceMaskRaw: maskRawTex, // P2a: crisp fwidth edge source (R=mown/G=green/B=bunker)
       // P2a: per-surface palette (linear) so the shader can composite the base colour
       // per-fragment with a crisp fwidth mask, overriding the soft splat/tint/collar.
       pal: {
         greenA: hexToLinearRGB(this._pal.greenA),
-        fairwayA: hexToLinearRGB(this._pal.fairwayA),
-        rough: hexToLinearRGB(this._pal.rough),
-        base: hexToLinearRGB(this._pal.base),
-        tee: hexToLinearRGB(this._pal.tee),
-        bunker: hexToLinearRGB(this._pal.bunker),
       },
     };
     const turfMat = makeTurfMaterial(this._turfInputs);
@@ -708,31 +704,15 @@ export class GolfScene {
   // With a `colors` map, each kind fills with its own color so one canvas can pack
   // several gates (e.g. .r = mown, .g = green). Kinds paint in the ORDER GIVEN —
   // later kinds overpaint earlier ones where polygons touch.
-  _paintMask(b, kinds, colors = null, blurPx = 1) {
-    const extX = b.maxX - b.minX, extY = b.maxY - b.minY;
-    const ppm = Math.min(2.2, 4096 / Math.max(extX, extY));
-    const W = Math.round(extX * ppm), H = Math.round(extY * ppm);
-    const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-    const px = (x) => (x - b.minX) * ppm, py = (y) => (b.maxY - y) * ppm;
-    // blurPx 0 -> a RAW (hard-edged) mask; the turf shader crisps it with fwidth
-    // (P2a). blurPx 1 (default) keeps the shipping soft mown gate / green collar.
-    ctx.filter = blurPx > 0 ? `blur(${blurPx}px)` : 'none';
-    for (const kind of kinds) {
-      ctx.fillStyle = colors ? (colors[kind] || colors.default || '#fff') : '#fff';
-      for (const s of this.geo.surfaces) {
-        if (s.kind !== kind) continue;
-        ctx.beginPath();
-        ctx.moveTo(px(s.poly[0][0]), py(s.poly[0][1]));
-        for (let i = 1; i < s.poly.length; i++) ctx.lineTo(px(s.poly[i][0]), py(s.poly[i][1]));
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    return cv;
+  _paintMask(b, kinds, colors = null, blurPx = 1, additive = false) {
+    return paintSurfaceMask({
+      bounds: b,
+      surfaces: this.geo.surfaces,
+      kinds,
+      colors,
+      blurPx,
+      additive,
+    });
   }
 
   // Animated water (config.water) or the static fallback plane.
