@@ -438,14 +438,15 @@ V2 canonical fields:
 
 Build/runtime manifest rule:
 
-- absent `course.fingerprintVersion` means v1;
+- absent `course.fingerprintVersion` on an already-built manifest means v1;
 - new discover/build output writes both `fingerprintVersion: 2` and the exact
   `courseId`;
 - the v2 compiler requires a valid `course.source.courseId` and rejects source-less
   input with `HD_SOURCE_ID_REQUIRED`;
 - the v2 compiler rejects disagreement between requested/manifest identity and cached
   `course.source.courseId` with `HD_SOURCE_ID_MISMATCH`;
-- source-less legacy caches may continue to build or resolve v1 only;
+- source-less legacy inputs are not rebuilt; already-built v1 manifests remain
+  runtime-readable when their version field is absent or explicitly `1`;
 - runtime v2 resolution requires the active base course identity to equal the
   descriptor identity before comparing fingerprint bytes;
 - runtime selects the matching computation;
@@ -825,6 +826,12 @@ ResolvedCoursePackage = {
   ...publicCandidateData,
   courseRevision
 }
+
+ActiveCourseState = {
+  publicPackage: ResolvedCoursePackage,
+  privateAssetManifest,
+  hdDescriptors
+}
 ```
 
 Preparation order:
@@ -847,6 +854,12 @@ clone acquired cache object as untouched base ownership
 `PreparedCourseCandidate` is private to the activation manager and is never broadcast.
 It contains all fallible work, including prepared Game state, but no
 `activationGeneration` or `courseRevision`.
+
+`ActiveCourseState` is the activation manager's retained private record. `current()`
+returns only `publicPackage`; the HTTP gateway receives a private lookup capability
+over `privateAssetManifest`, never the record itself. Commit moves the candidate's
+private manifest and HD descriptors into the active record atomically with the public
+package and prepared Game state. Superseded/failed candidates are discarded.
 
 New module `lib/canonical-json.js` defines the exact bytes used for
 `contentRevision`:
@@ -929,8 +942,10 @@ State machine:
 ```text
 request arrives
     -> increment activationGeneration
-    -> abort prior acquisition where supported
-    -> acquire/coalesce source-keyed base course
+    -> derive stable source key
+    -> ask acquisition coordinator to acquire(source key)
+         same key already in flight -> attach; preserve its shared fetch
+         different stale key -> coordinator may abort its fetch where supported
     -> if generation stale: return superseded, no mutation
     -> prepare PreparedCourseCandidate + Game state
     -> if generation stale: return superseded, no mutation
@@ -966,8 +981,13 @@ returns a redacted typed error and leaves the prior course playable.
 
 Course acquisition also coordinates disk effects:
 
+- the acquisition coordinator owns every underlying `AbortController`; activation
+  callers never abort a shared promise directly;
 - one in-flight acquisition promise per stable `courseId`;
-- concurrent requests for the same identity coalesce;
+- concurrent requests for the same identity attach to the shared promise without
+  aborting it, even when the later request supersedes the earlier generation;
+- a request for a different identity may cause the coordinator to abort an obsolete
+  acquisition where the transport supports abort;
 - different identities use unique `.tmp.<pid>.<nonce>` paths;
 - activation generation governs active commit, while the acquisition coordinator
   governs cache publication;
@@ -1216,7 +1236,8 @@ and are never deleted.
 - Preserve exact v1 bytes.
 - Add v2 identity/geometry canonicalization.
 - Emit v2 for new build/discover output.
-- Treat absent manifest version as v1.
+- Treat absent version on an already-built manifest as v1 at runtime; do not rebuild
+  source-less inputs.
 - Select correct runtime comparison and typed unsupported fallback.
 
 **Tests**
@@ -1228,7 +1249,8 @@ and are never deleted.
 - v2 build rejects source-less legacy input with migration-required diagnostic;
 - v2 build/runtime reject requested, cached, and manifest identity mismatch;
 - runtime/compiler parity;
-- old committed manifests resolve;
+- old committed explicit-v1 and absent-version manifests resolve from source-less
+  runtime fixtures without rewrite;
 - unsupported version never activates bundle.
 
 **Commit**
@@ -1412,7 +1434,8 @@ lands.
 **Behavior**
 
 - Allocate generation before acquisition.
-- Abort superseded fetch where supported.
+- Derive the source key before acquisition; let the coordinator preserve a same-key
+  shared fetch and abort only obsolete different-key fetches where supported.
 - Gate after acquisition and preparation.
 - Allocate revision and create `ResolvedCoursePackage` only after the final stale gate.
 - Commit package/Game/HD/revision/timer once through a synchronous non-throwing
@@ -1430,6 +1453,9 @@ lands.
 - A failure then B success;
 - B success then late A success;
 - concurrent same-identity acquisition coalesces and publishes one cache set;
+- with abort-capable transport, A(X) begins and B(X) supersedes A: exactly one fetch
+  occurs, the shared fetch is not aborted, A returns superseded, and B commits;
+- with abort-capable transport, B(Y) may abort obsolete A(X), and only B commits;
 - preparation failure with prior active course;
 - Game preparation failure before commit;
 - resolved public revision matches active Game/HD/timer revision;
@@ -1677,6 +1703,8 @@ must account for it.
 - V1 HD golden hashes and committed manifests remain compatible.
 - Source-key collision/migration tests pass.
 - Same-identity concurrent acquisition test passes.
+- Same-identity supersession with abort-capable transport performs one un-aborted
+  fetch, supersedes the older caller, and commits the newer caller.
 - V2 source-less/mismatched identity tests pass while v1 compatibility remains green.
 - Canonical content bytes are invariant across insertion order, line ending, root
   path, locale, and development/package staging.
@@ -1792,8 +1820,9 @@ No SP-02b renderer work begins until SP-02a is accepted and integrated.
 |---|---|---:|---|
 | Current-base census | COMPLETE | — | Stable identity absent; all cache artifacts name-keyed; HD v1 includes display name; activation mutates before commit; `Game.setCourse` can partially assign; no pack/schema/gateway/package root; six source-document contradictions resolved in Section 5.1 |
 | Independent plan gate, pass 1 (`dc8814fa754f401bd6164611de960e043064ab79`) | REJECT | 97% | 3 High: package-unsafe generated validator, inconsistent candidate/active/Game transaction types, missing exact staged runtime contract. 10 Medium: optional-asset atomicity, v2 source mismatch, canonical bytes, exact served-byte verification, stage/package hooks, unsafe dependency graph, GLB validation, startup semantics, optional manual profiles, unowned rollback switches. 2 Low: concurrent same-identity disk writes and Windows/header hardening. All recommended corrections are incorporated in the next revision. |
-| Independent plan gate, pass 2 | PENDING | — | — |
+| Independent plan gate, pass 2 (`6c3494d0b0193a54052ab03183e95f6a50fc3c51`) | REJECT | 96% | 0 Critical, 0 High, 1 Medium, 2 Low. Medium: activation-level abort conflicted with same-identity shared acquisition. Low: source-less v1 build/read wording and private active-state ownership were not pinned. This revision assigns abort ownership to the source-keyed coordinator, adds exact same-/different-ID abort tests, limits source-less v1 compatibility to already-built runtime manifests, and defines the private `ActiveCourseState`. |
+| Independent plan gate, pass 3 | PENDING | — | — |
 
 Dispatch verdict: **NOT READY / CORRECTION COMPLETE, RE-REVIEW REQUIRED**. No
-implementation lane may start until pass 2 confirms every Critical/High/Medium finding
+implementation lane may start until pass 3 confirms every Critical/High/Medium finding
 is closed and the PIC records the exact implementation base.

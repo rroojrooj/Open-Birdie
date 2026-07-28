@@ -53,10 +53,18 @@
   schemas/tree, deterministic canonical bytes, exact-handle asset hashing, GLB
   parsing, bootstrap ordering, safe dependency order, one rollback gate, concurrent
   cache acquisition, and Windows path/header hardening.
+- Ran pass-2 review of exact candidate `6c3494d0b0193a54052ab03183e95f6a50fc3c51`.
+  It closed every prior High and rejected at 96% for one Medium and two Low findings:
+  same-identity supersession could abort its shared fetch; source-less v1 build/read
+  wording and retained private active-state ownership were ambiguous.
+- Corrected all three findings by assigning abort ownership to the source-keyed
+  acquisition coordinator, adding exact same-/different-ID abort-capable race tests,
+  limiting source-less v1 support to already-built manifests, and defining private
+  `ActiveCourseState` ownership.
 
 ## Left
 
-1. Run independent pass-2 review of the corrected SP-02a plan.
+1. Run independent pass-3 review of the corrected SP-02a plan.
 2. Correct any remaining Critical, High, or Medium finding.
 3. Merge the accepted plan and record the exact implementation base.
 4. Assign one isolated SP-02a implementation lane; keep SP-02b renderer work blocked.
