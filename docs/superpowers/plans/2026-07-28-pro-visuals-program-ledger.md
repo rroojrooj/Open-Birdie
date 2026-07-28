@@ -21,7 +21,7 @@
 |---|---|---|---|---|---|
 | SP-00 Visual benchmark | DONE | Historical `codex/sp00-visual-benchmark` | — | Candidate `7d89b6ac24eb965039d5bdae6a30c943718ea81e`; PR #40; merge `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`; CI green; `npm test` 375/375 | Harness is mandatory evidence path for every later visual unit |
 | SP-01 P2a recovery | DONE | `/root/sp01_implementation`; `codex/sp01-p2a-recovery` | SP-00 | Candidate `7e18723e294153ff086d222d8ecf94bcc3ca41e1`; ACCEPT 99%; PR #43; merge `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`; CI and post-merge 382/382; RTX 3060 three-course, motion, and perf evidence; GPU median +0.038 ms | Feed the visible high-survey HD/far-photo seam into SP-04 |
-| SP-02a CoursePresentation contract | UNCLAIMED | PIC planning lane | SP-00 | Master-plan scope and current renderer/API census pending | Author and independently review the current-base sub-plan |
+| SP-02a CoursePresentation contract | UNCLAIMED | PIC planning lane | SP-00 | Current-base census complete; detailed draft `2026-07-28-sp02a-course-presentation-contract.md` in PLAN_REVIEW; six source-document contradictions resolved explicitly | Independent plan gate; correct every Critical/High/Medium finding before dispatch |
 | SP-02b Activation transaction | BLOCKED | — | SP-01, SP-02a | — | Both predecessor units integrated |
 | SP-03 World context | BLOCKED | — | SP-02b | — | Reviewed sub-plan after SP-02b |
 | SP-04 Surface system / HD seam | BLOCKED | — | SP-02b | Receives deferred SP-01 HD macro-seam finding | Reviewed sub-plan after SP-02b |
@@ -107,6 +107,6 @@ Until those are resolved, the historical branch remains **REPORTED**, not accept
 
 ## 7. Current bottleneck
 
-SP-02a is the current bottleneck. The program needs a reviewed, current-base
-CoursePresentation contract sub-plan before the activation transaction in SP-02b can
-begin.
+SP-02a is the current bottleneck. Its detailed current-base plan is drafted and awaits
+independent engineering review. Implementation and SP-02b remain blocked until that
+gate clears all Critical, High, and Medium findings.

@@ -41,14 +41,19 @@
 - Merged SP-01 through PR #43 as
   `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`; Windows CI passed, candidate
   ancestry was verified, and the clean post-merge suite passed 382/382.
+- Completed the current-base SP-02a code/API census and authored
+  `2026-07-28-sp02a-course-presentation-contract.md` for independent review.
+- Kept the user-authored 2026-07-23 source documents untouched in the protected
+  original worktree. The SP-02a plan is self-contained and records how it resolves
+  their six contract contradictions.
 
 ## Left
 
-1. Reconcile the user-authored pro-visuals master/spec/test documents with the accepted
-   program base without modifying the protected original worktree.
-2. Census current presentation/config/activation interfaces and their tests.
-3. Author the current-base SP-02a CoursePresentation contract sub-plan.
-4. Independently review and correct that plan before assigning implementation.
+1. Independently review the SP-02a plan against current code and the protected source
+   documents.
+2. Correct every Critical, High, and Medium plan finding.
+3. Merge the accepted plan and record the exact implementation base.
+4. Assign one isolated SP-02a implementation lane; keep SP-02b renderer work blocked.
 
 ## Current facts
 

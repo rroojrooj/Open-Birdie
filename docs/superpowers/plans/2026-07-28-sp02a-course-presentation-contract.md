@@ -1,0 +1,1486 @@
+# SP-02a — CoursePresentation Contract, Identity, Activation, and Asset Delivery
+
+**Status:** PLAN_REVIEW  
+**Program charter:** [`2026-07-28-pro-visuals-program-charter.md`](2026-07-28-pro-visuals-program-charter.md)  
+**Program ledger:** [`2026-07-28-pro-visuals-program-ledger.md`](2026-07-28-pro-visuals-program-ledger.md)  
+**Source design:** user-authored `2026-07-23-pro-visuals-program-design.md`,
+`2026-07-23-pro-visuals-master-plan.md`, and
+`2026-07-23-pro-visuals-test-plan.md`, read from the protected original
+worktree without modifying it  
+**Planning/review base:** `origin/main` at
+`03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`  
+**Implementation base:** the current `origin/main` containing this accepted plan;
+the PIC records the exact SHA before dispatch  
+**Target branch:** `codex/sp02a-course-presentation-contract`  
+**Owner/module:** unassigned implementation lane; server-side course package
+contract and local curated-asset gateway  
+**Estimate:** 5–8 focused engineering days plus packaged-root and hardware smoke  
+**Dependencies:** SP-00 and SP-01 accepted; SP-02b remains blocked until SP-02a is
+accepted and integrated
+
+## 1. Outcome
+
+Loading a course produces one identity-safe, revisioned, immutable-by-ownership
+`ResolvedCoursePackage`. A slow or failed course request cannot replace a newer or
+currently playable course. Optional curated data can change presentation through a
+strict normalized contract, while missing or corrupt curated data falls back to a
+generic automatic presentation without leaking another course's content.
+
+This phase establishes the server/data seam. It intentionally does not change the
+visible renderer:
+
+- `/api/course-geometry` gains sanitized `courseId`, `contentRevision`,
+  `presentation`, `assetManifest`, `terrainPatches`, and diagnostics fields;
+- the current browser ignores those new fields until SP-02b;
+- `public/render/scene.js`, shader uniforms, placement logic, and GPU asset ownership
+  remain unchanged;
+- the existing name-based `courseDryFor()` consumer is removed only in SP-02b, after
+  the browser consumes normalized presentation.
+
+Observable proof is behavioral rather than a beauty claim:
+
+- two same-name courses cannot share a base cache or curated pack;
+- renaming a course with the same OSM source keeps its identity and HD v2
+  compatibility;
+- failed preparation leaves the previous course, revision, HD state, and readiness
+  timer intact;
+- slow request A cannot commit after newer request B;
+- active curated assets are available only through a revision/key allowlist;
+- packs-disabled mode resolves Chambers, Sawgrass, St Andrews, and unknown fixtures as
+  `tier: "automatic"` and ignores legacy curated sidecars;
+- the accepted SP-01 visual baseline remains pixel-equivalent because no renderer
+  consumer changes.
+
+Viewing bands affected: none intentionally. The address, feature, hole, course, and
+world bands are regression controls.
+
+Proof courses:
+
+- Chambers Bay — stable identity `osm:way:26787026`, curated and packs-disabled paths;
+- TPC Sawgrass — lush automatic control and no Chambers leakage;
+- St Andrews Old Course — rough/legacy-cache control;
+- two synthetic same-name/different-origin fixtures;
+- one unknown/no-pack fixture.
+
+## 2. What already exists
+
+### Course acquisition and caches
+
+`lib/course.js` already owns:
+
+- `searchCourses()` and Nominatim `osmType`/`osmId` results;
+- `loadCourse()` and the complete OSM/elevation/aerial/class-map acquisition path;
+- `listCached()` and `loadCached()`;
+- `applySurfaceOverride()` and `loadSurfaceOverride()`;
+- atomic single-file JSON writes through `.tmp` plus rename.
+
+The acquisition work is reusable, but selection is currently unsafe:
+
+- `loadCourse()` keys JSON by `slug(name)`;
+- aerial and class-map filenames also use `slug(name)`;
+- `parseOsm()` drops the OSM source identity;
+- a cache hit checks only cache version and hole presence;
+- legacy surface/pin sidecars are selected by display name and mutate the supplied
+  course.
+
+Existing tests to retain and extend:
+
+- `test/cache-path.test.js`
+- `test/course-classmap.test.js`
+- `test/course-override.test.js`
+- `test/course-curated-fallback.test.js`
+
+### HD fingerprint and path safety
+
+`lib/hd-bundle.js` and `tools/hd-course/course-source.mjs` contain byte-equivalent
+canonical sorting and SHA-256 fingerprint logic. Runtime bundle validation returns
+typed `absent`, `rejected`, or `valid` states. The compiler and runtime already have a
+parity assertion.
+
+The current fingerprint is v1:
+
+- it includes mutable `course.name` and hole names;
+- manifests do not identify a fingerprint version;
+- runtime and compiler compute duplicate implementations;
+- `resolveHdBundles()` compares only one fingerprint.
+
+`lib/hd-bundle.js:resolveAssetPath()` and
+`tools/hd-course/paths.mjs:resolveWithin()` provide useful containment patterns.
+Course-art validation must add realpath containment so a Windows junction or symlink
+cannot escape an allowed root.
+
+Tests to reuse:
+
+- `test/hd-fingerprint.test.mjs`
+- `test/hd-bundle.test.js`
+- `test/hd-resolve-bundle.test.mjs`
+- `test/hd-paths.test.mjs`
+- `test/hd-manifest.test.mjs`
+- `test/hd-compiler.test.mjs`
+
+### Server activation and readiness
+
+`server.js:activateCourse()` currently:
+
+1. resolves HD bundles;
+2. mutates `activeHd`;
+3. increments `courseRevision`;
+4. loads and mutates the course with a legacy override;
+5. calls `game.setCourse()`;
+6. replaces the HD readiness timer.
+
+`POST /api/load-course` awaits `loadCourse()` before any generation is allocated, so
+slow A can commit after fast B. A failure after `activeHd` or revision mutation can
+leave mixed state.
+
+`lib/hd-readiness.js:verifyReadinessAck()` already validates revision, bundle IDs,
+primary nonce, loopback origin, and mode. Preserve this contract.
+
+`lib/game.js:Game.setCourse()` already centralizes physics activation, but assigns
+`this.course` before constructing every derived value. It needs a prepare-then-commit
+primitive so a sampler/surface error cannot leave partial game state.
+
+Existing tests:
+
+- `test/game.test.js`
+- `test/robustness.test.js`
+- `test/hd-readiness.test.js`
+- `test/hd-terrain-inject.test.js`
+- the synthetic server exercised by `test/visual-capture-config.test.mjs`
+
+### Presentation and current manual data
+
+`public/render/course-character.js` provides reusable pure palette data and
+`blendPalette()`. It also contains the renderer-side manual `COURSE_DRY` name map:
+
+- Chambers Bay `0.85`;
+- TPC Sawgrass `0.0`;
+- St Andrews Old Course `0.7`;
+- Bandon Dunes `0.8`.
+
+SP-02a creates identity-bound curated source profiles for non-default manual values
+needed to preserve default pack-enabled visuals later. It does not yet remove the
+renderer map. SP-02b consumes the normalized contract, proves byte-equivalent default
+behavior, and then deletes the name lookup.
+
+Ajv is already a development dependency. No course-art schema, generated standalone
+validator, pack index, presentation resolver, asset manifest, or content revision
+exists.
+
+### HTTP and packaged roots
+
+`lib/hd-http.js` is the closest serving template:
+
+- exact opaque lookup;
+- GET/HEAD;
+- fixed MIME handling;
+- private paths retained server-side.
+
+The current course aerial/class-map endpoints use `path.basename()` but have no active
+content revision, opaque registry, content hash, immutable ETag, total byte budget, or
+realpath containment.
+
+`main.js` already redirects writable course data to `BIRDIE_DATA_DIR` in packaged
+mode. `package.json` includes `lib/**/*` and `public/**/*`, but no
+`BIRDIE_ART_DIR` or `extraResources/course-art` contract exists.
+
+### Historical work
+
+No prior SP-02 identity/package implementation branch was found. The user-authored
+design documents are requirements, not executable code. Do not copy SP-01 renderer
+changes into this lane; SP-01 is already integrated.
+
+## 3. Scope and non-scope
+
+### In scope
+
+- Stable OSM identity and geographic legacy identity.
+- Source-keyed JSON, aerial, and class-map cache artifacts.
+- Verified, recoverable migration from name-keyed legacy caches.
+- HD fingerprint v2 plus explicit v1 read compatibility.
+- Strict course-art schema v1 and committed standalone validator.
+- Canonical multi-file authoring pack and deterministic runtime staging contract.
+- Automatic and curated presentation adapters with one normalized output.
+- Packs-disabled isolation and temporary identity-verified legacy sidecar adapter.
+- Runtime asset validation, hashing, public/private manifest split, and
+  `contentRevision`.
+- Pure `ResolvedCoursePackage` preparation.
+- Atomic `Game` prepare/commit primitive.
+- Separate latest-only activation generation and committed course revision.
+- Server startup and POST activation through the same manager.
+- Sanitized geometry/package response.
+- Active-package GET/HEAD asset gateway with revision, key, ETag, limits, and
+  containment.
+- Development and packaged course-art roots.
+- Typed diagnostics and public redaction.
+- Empty ordered terrain-patch transport and capability declaration.
+- Full unit/contract/server/package-fixture verification.
+- Renderer smoke and fixed-frame regression proving no visible change.
+
+### Not in scope
+
+- No `public/render/scene.js` presentation wiring.
+- No renderer load generation or `CourseBuildContext`.
+- No reference-counted browser texture/model registry.
+- No removal of `courseDryFor()` or renderer name map until SP-02b.
+- No world, coast, atmosphere, surface-material, vegetation, landmark, or HUD visual
+  implementation.
+- No terrain-feature compiler. Schema-valid non-empty terrain-feature requests are
+  rejected by capability policy until SP-05.
+- No live art-pack preview or general authoring CLI. SP-07a owns authoring workflow;
+  SP-02a owns only validation and deterministic runtime staging.
+- No CDN, remote service, or renderer filesystem access.
+- No deletion of legacy caches or sidecars during migration.
+- No broad dependency upgrade or `npm audit fix`.
+- No change to golf physics except making course commit failure-atomic.
+
+### Deferred ownership
+
+| Deferred item | Owner |
+|---|---|
+| Browser generation, abort, stale-result disposal | SP-02b |
+| Normalized presentation consumed by renderer | SP-02b |
+| Shared GPU asset handles | SP-02b |
+| World/coast/atmosphere implementation | SP-03 |
+| HD/far-photo seam and material presentation | SP-04 |
+| Terrain-feature compilation | SP-05 |
+| Vegetation/landmarks | SP-06 |
+| Authoring validation CLI and reference hydration | SP-07a |
+| Packaged preview and second-pack proof | SP-07b |
+
+## 4. Task 0 — Contract and transaction falsification gate
+
+### Hypotheses
+
+1. One server-owned normalized presentation object can express all current character
+   intent without exposing shader uniforms or local paths.
+2. Stable source identity can key every new cache artifact while legacy caches remain
+   readable through a verified, non-destructive migration.
+3. HD v2 can ignore display names while v1 bundles continue to resolve.
+4. Course activation can prepare all fallible work before a non-throwing commit.
+5. A public asset manifest can contain only opaque keys while the server retains exact
+   validated absolute paths privately.
+
+### Cheapest falsification
+
+Before production edits, create pure fixtures and tests that prove:
+
+- Chambers, Sawgrass, and unknown courses normalize through the same presentation
+  shape;
+- same name plus different OSM IDs yields different cache bases;
+- same OSM ID plus renamed display name yields the same cache base and v2
+  fingerprint;
+- a legacy cache matches only normalized name plus origin within 250 m;
+- a deferred A/B activation manager commits only B;
+- a prepared package serializes without private paths;
+- a temporary asset root rejects `..`, absolute paths, and a realpath escape.
+
+### GO
+
+Proceed when:
+
+- normalized examples have no renderer uniform or filesystem field;
+- v1 and v2 fingerprint fixtures both pass;
+- active state is unchanged after injected prepare failure;
+- the public/private asset split is explicit and tested.
+
+### CHANGE
+
+- If existing benchmark caches lack source identity, keep them readable and migrate
+  only after request name plus geographic proof. Do not invent a source ID.
+- If an old HD manifest cannot identify v1 explicitly, treat missing
+  `fingerprintVersion` as v1. Never rewrite it silently.
+- If a junction/symlink cannot be created in CI, keep pure realpath tests mandatory
+  and run the actual Windows escape case on the named release machine.
+- If automatic derivation cannot preserve a current manual value generically, keep
+  that value in an identity-bound curated source profile. Do not add an automatic
+  name/ID special case.
+
+### NO-GO
+
+Stop and return to plan review if:
+
+- a complete course package requires renderer-specific fields;
+- successful preparation must mutate `game`, `activeHd`, the current timer, or the
+  base course;
+- v1 compatibility requires weakening v2 identity verification;
+- the asset gateway cannot prove realpath containment or public diagnostic redaction;
+- duplicate stable identities or overlapping legacy aliases cannot fail
+  deterministically.
+
+## 5. Architecture
+
+### 5.1 Resolved contradictions
+
+| Source tension | Decision |
+|---|---|
+| SP-02a is renderer-free, but the full SP-02 exit expects renderer presentation consumption | SP-02a produces and serves the contract; SP-02b consumes it and removes the renderer name map. Packs-disabled server assertions belong to SP-02a; visible byte-equivalence belongs to SP-02b. |
+| Design load order derives identity after HD | Normalize identity before any v2 fingerprint or HD resolution. HD still sees the untouched base course. |
+| Schema mentions terrain features while pre-SP-05 tests reject them | Structural validation accepts the defined shape; package capability policy rejects any non-empty request with `ART_CAPABILITY_UNSUPPORTED`. |
+| Unknown fields fail only in development | Unknown fields fail closed in every environment so accepted bytes and revisions are deterministic. |
+| Multi-file source pack has one named schema | `profile.json` is the canonical root; it references a closed set of component files. One schema owns root and component `$defs`; the generator exports validators for each entry point. |
+| Activation generation and course revision are ambiguous | `activationGeneration` increments per request before acquisition; `courseRevision` increments only on successful commit. |
+| Manual values exist for more than Chambers | Non-default values required for default pack-enabled regression become identity-bound curated profiles; automatic mode remains generic. |
+
+### 5.2 Stable identity
+
+New module: `lib/course-identity.js`.
+
+Public pure interface:
+
+```js
+normalizeCourseSource({ osmType, osmId }) -> {
+  courseId: "osm:way:26787026",
+  osmType: "way",
+  osmId: 26787026
+}
+
+deriveRequestedOrigin({ lat, lon, bbox }) -> { lat, lon } | null
+
+normalizeDisplayName(name) -> normalized string
+
+legacyIdentityMatches({
+  requestedName,
+  requestedOrigin,
+  cachedName,
+  cachedOrigin,
+  toleranceM: 250
+}) -> boolean
+
+courseCacheStem(source) -> "osm-way-26787026"
+```
+
+Rules:
+
+- OSM type is exactly `node`, `way`, or `relation`.
+- OSM ID is a safe positive integer.
+- Stable identity is `osm:<type>:<id>`.
+- Stable identity always wins over display name.
+- Requested origin uses explicit `lat/lon`, then bbox center, otherwise null.
+- Legacy matching requires normalized alias equality and Haversine distance at or
+  below 250 m.
+- A malformed or missing identity never selects a stable-ID pack.
+- Duplicate packs claiming one `courseId`, or legacy aliases whose 250 m regions
+  overlap, fail pack-index validation; there is no order-dependent winner.
+
+### 5.3 Source-keyed caches and non-destructive migration
+
+For new fetches:
+
+```text
+data/courses/
+  osm-way-26787026.json
+  osm-way-26787026.aerial.jpg
+  osm-way-26787026.classmap.png
+```
+
+The cache JSON retains current cache `version: 4` and adds:
+
+```json
+{
+  "source": {
+    "courseId": "osm:way:26787026",
+    "osmType": "way",
+    "osmId": 26787026
+  }
+}
+```
+
+This is an additive cache field, not a course-shape version bump. Keeping version 4
+prevents an identity migration from invalidating existing HD v1 bundles.
+
+Cache lookup order:
+
+1. derive and validate requested stable source;
+2. read the source-keyed JSON if it exists;
+3. verify its embedded source exactly;
+4. otherwise inspect the legacy `slug(name).json`;
+5. migrate only if normalized name and origin tolerance pass;
+6. write source-keyed asset copies through `.tmp` plus rename;
+7. write the cloned source-keyed JSON last;
+8. keep original legacy files untouched for rollback;
+9. return the keyed course.
+
+A failed migration removes only owned `.tmp` files. It never renames, truncates, or
+deletes the legacy set.
+
+`listCached()` deduplicates source-keyed and verified legacy entries by `courseId`.
+Public entries include `{ file, name, courseId }`; no absolute path.
+
+### 5.4 Fingerprint versions
+
+New shared conceptual owner: `lib/course-fingerprint.js`. Because runtime is CJS and
+compiler tooling is ESM, one implementation may be wrapped by ESM rather than copied.
+If module interoperability prevents one file, byte-parity tests remain mandatory and
+both implementations import the same canonical field specification fixture.
+
+```js
+courseFingerprintV1(course) // exact existing bytes
+courseFingerprintV2(course, courseId)
+courseFingerprintFor(course, { version, courseId })
+```
+
+V2 canonical fields:
+
+- constant fingerprint schema `2`;
+- stable `courseId`;
+- origin;
+- boundary;
+- sorted surface kind/polygons;
+- sorted holes: ref, par, tee, pin, line, length only;
+- sorted trees and woods;
+- coarse elevation metadata/heights;
+- no course display name;
+- no hole display name;
+- no presentation, aerial, class map, buildings, generated green patches, curated
+  gameplay overlay, or runtime asset bytes.
+
+Build/runtime manifest rule:
+
+- absent `course.fingerprintVersion` means v1;
+- new discover/build output writes `fingerprintVersion: 2`;
+- runtime selects the matching computation;
+- unsupported versions produce a typed rejected descriptor and procedural fallback;
+- committed v1 manifests remain byte-compatible and are not rewritten.
+
+### 5.5 Source-pack and runtime-pack contract
+
+Authoring root:
+
+```text
+courses/curated/
+  index.json
+  chambers-bay/
+    profile.json
+    references.json
+    landmarks.json
+    vegetation.json
+    terrain-features.json
+    assets/
+```
+
+`index.json` maps stable identity to a pack directory and includes legacy match
+metadata so a corrupt selected `profile.json` can still produce one actionable
+diagnostic instead of disappearing.
+
+`profile.json` is the canonical root:
+
+```json
+{
+  "version": 1,
+  "courseId": "osm:way:26787026",
+  "displayName": "Chambers Bay",
+  "legacyMatch": {
+    "names": ["Chambers Bay"],
+    "origin": {
+      "lat": 47.2057007,
+      "lon": -122.5750529,
+      "toleranceM": 250
+    }
+  },
+  "tier": "curated",
+  "character": { "biome": "pnw-links", "dryness": 0.85 },
+  "world": {},
+  "atmosphere": {},
+  "materials": {},
+  "components": {
+    "references": "references.json",
+    "landmarks": "landmarks.json",
+    "vegetation": "vegetation.json",
+    "terrainFeatures": "terrain-features.json"
+  },
+  "gameplay": {},
+  "assets": {}
+}
+```
+
+Component rules:
+
+- `references.json` is authoring-only provenance and is excluded from runtime staging
+  and `contentRevision`;
+- landmarks, vegetation, terrain features, gameplay overlays, and runtime asset
+  declarations are validated and normalized;
+- missing optional component files normalize to empty;
+- an explicitly referenced corrupt component rejects the selected pack;
+- the runtime stage contains only normalized `manifest.json` plus validated runtime
+  assets;
+- raw references and authoring intermediates never enter the installer.
+
+Schema is strict and closed in every environment. Central limits live in
+`lib/course-art-limits.js` and are imported by runtime checks and generator tests:
+
+| Limit | v1 value |
+|---|---:|
+| Root/component JSON file | 1 MiB each |
+| Runtime assets | 256 |
+| Single asset | 128 MiB |
+| Total runtime assets | 512 MiB |
+| Source texture dimension | 8192 px |
+| Asset key | 1–64 chars, `^[a-z][a-z0-9._-]*$` |
+| Local coordinate envelope | ±20,000 m |
+| Landmark instances | 4,096 |
+| Vegetation rules | 256 |
+| Terrain feature declarations | 512 |
+| Legacy aliases | 16 |
+
+Allowed runtime v1 asset types:
+
+- PNG;
+- JPEG;
+- WebP;
+- KTX2;
+- self-contained GLB.
+
+SVG, HTML, JavaScript, external glTF graphs, arbitrary JSON, absolute paths, device
+paths, alternate data streams, traversal, junction escapes, and unknown extensions are
+rejected. Extension, declared MIME, magic bytes, dimensions where applicable, file
+size, and SHA-256 must agree.
+
+Ajv remains development-only. The committed standalone CJS validator is the only
+runtime validator. `npm test` regenerates into memory or a temporary directory and
+fails if bytes differ from `lib/generated/course-art-pack-validator.js`.
+
+### 5.6 Presentation adapters
+
+New module: `lib/course-presentation.js`.
+
+```js
+resolveCoursePresentation({
+  course,
+  courseId,
+  curatedPack,
+  packsEnabled,
+  environment
+}) -> {
+  courseId,
+  tier,
+  character,
+  world,
+  surfaces,
+  materials,
+  vegetation,
+  landmarks,
+  atmosphere,
+  assetKeys,
+  qualityHints,
+  diagnostics
+}
+```
+
+Automatic adapter:
+
+- returns one complete frozen normalized shape;
+- uses generic defaults and broad data/geography signals only;
+- has no course display-name or stable-ID cases;
+- never reads legacy surface/pin sidecars;
+- default dryness is `0` until a reviewed generic signal exists;
+- never exposes file paths or shader uniforms.
+
+Curated adapter:
+
+- is selected only by verified stable ID or valid legacy alias plus origin;
+- validates the whole selected source pack before merge;
+- overlays only schema-owned fields;
+- clamps no invalid values silently; invalid input rejects the pack;
+- missing pack returns automatic with no diagnostic;
+- corrupt/unsupported selected pack returns automatic plus exactly one root
+  actionable diagnostic;
+- non-empty terrain-feature declarations produce
+  `ART_CAPABILITY_UNSUPPORTED` and reject the selected pack until SP-05;
+- packs-disabled mode skips pack and legacy compatibility lookup completely.
+
+Legacy compatibility:
+
+- is considered curated input, never automatic;
+- is allowed only when packs are enabled and identity has been verified;
+- wraps the current sidecar through the same gameplay-overlay validator;
+- is applied to a cloned gameplay course;
+- emits one deprecation diagnostic;
+- is ignored in packs-disabled mode;
+- remains until source profiles contain the required gameplay data.
+
+### 5.7 Diagnostics
+
+New module: `lib/course-diagnostics.js`.
+
+Public records:
+
+```js
+{
+  code,
+  severity: "info" | "warning" | "error",
+  stage,
+  courseId,
+  message,
+  recovery
+}
+```
+
+Rules:
+
+- records never contain an absolute root, stack, raw exception object, query secret,
+  or local username;
+- private logs may retain a redacted cause ID and stack;
+- expected missing pack is silent;
+- corrupt selected pack emits one root warning and falls back;
+- core acquisition/gameplay preparation errors abort activation;
+- API responses expose code/stage/recovery, not raw `err.message`;
+- duplicate diagnostics are collapsed by code/stage/courseId;
+- unexpected `error` diagnostics fail benchmark/release evidence.
+
+Required initial codes:
+
+- `COURSE_IDENTITY_INVALID`
+- `CACHE_IDENTITY_MISMATCH`
+- `CACHE_LEGACY_MIGRATION_REJECTED`
+- `HD_FINGERPRINT_VERSION_UNSUPPORTED`
+- `ART_PACK_INVALID`
+- `ART_PACK_VERSION_UNSUPPORTED`
+- `ART_PACK_IDENTITY_MISMATCH`
+- `ART_PACK_CONFLICT`
+- `ART_ASSET_INVALID`
+- `ART_ASSET_MISSING`
+- `ART_CAPABILITY_UNSUPPORTED`
+- `ACTIVATION_SUPERSEDED`
+- `ACTIVATION_PREPARE_FAILED`
+- `COURSE_ART_NOT_FOUND`
+
+### 5.8 ResolvedCoursePackage preparation
+
+New module: `lib/resolved-course-package.js`.
+
+```js
+prepareResolvedCoursePackage({
+  baseCourse,
+  requestedIdentity,
+  packsEnabled,
+  dataDir,
+  artDir,
+  resolveHd,
+  loadPack,
+  loadLegacyOverride
+}) -> Promise<{
+  courseId,
+  contentRevision,
+  baseCourse,
+  gameplayCourse,
+  terrainPatches,
+  presentation,
+  hdDescriptors,
+  publicAssetManifest,
+  privateAssetManifest,
+  diagnostics
+}>
+```
+
+Preparation order:
+
+```text
+clone acquired cache object as untouched base ownership
+    -> normalize/verify stable identity
+    -> resolve HD v1/v2 against untouched base
+    -> locate and validate complete optional source pack
+    -> normalize automatic/curated presentation
+    -> clone base as gameplayCourse
+    -> validate/apply curated or compatibility gameplay overlays to clone
+    -> declare empty terrain-feature patch list/capabilities
+    -> validate/hash runtime assets into private/public manifests
+    -> compute contentRevision
+    -> prepare Game state without assignment
+    -> return frozen package metadata
+```
+
+`contentRevision` is SHA-256 over canonical:
+
+- contract version;
+- `courseId`;
+- normalized accepted presentation;
+- validated gameplay overlays;
+- ordered terrain-patch metadata;
+- each public asset key, MIME, byte size, and content hash.
+
+It excludes:
+
+- display-only source filenames;
+- absolute paths;
+- authoring references;
+- diagnostics text;
+- activation generation;
+- committed `courseRevision`;
+- base display name when it does not affect presentation.
+
+Changing presentation, gameplay overlay, or same-key asset bytes changes
+`contentRevision`. Presentation-only changes do not alter the HD base fingerprint.
+
+The top-level package and normalized metadata are frozen. Large course/elevation arrays
+are not recursively frozen because that would add an O(n) activation cost; immutability
+is enforced by exclusive ownership, defensive cloning, and tests that hash the base
+before/after every fallible preparation stage.
+
+### 5.9 Game and activation transaction
+
+`lib/game.js` adds:
+
+```js
+game.prepareCourse(course, options) -> preparedGameCourse
+game.commitPreparedCourse(preparedGameCourse) // assignment-only, non-throwing
+game.setCourse(course, options) // backward-compatible wrapper
+```
+
+All validation, surface lookup, terrain sampler construction, starting-hole selection,
+and derived values happen in `prepareCourse()`. No active field changes until
+`commitPreparedCourse()`.
+
+New module: `lib/course-activation.js`.
+
+```js
+createCourseActivationManager({
+  acquireCourse,
+  preparePackage,
+  commitPackage,
+  onCommitted
+}) -> {
+  activate(request) -> Promise<
+    { status: "committed", package, courseRevision } |
+    { status: "superseded", generation } |
+    { status: "failed", diagnostic }
+  >,
+  current()
+}
+```
+
+State machine:
+
+```text
+request arrives
+    -> increment activationGeneration
+    -> abort prior acquisition where supported
+    -> acquire base course
+    -> if generation stale: return superseded, no mutation
+    -> prepare complete package + Game state
+    -> if generation stale: return superseded, no mutation
+    -> increment next committed courseRevision
+    -> commit Game prepared state
+    -> replace active package/HD/revision
+    -> replace readiness timer
+    -> broadcast package course event and state once
+```
+
+`activationGeneration` and `courseRevision` are separate. Failed or superseded
+attempts do not change current package or revision.
+
+Startup autoload and `POST /api/load-course` use the same manager. A superseded POST
+returns a typed 409 without broadcasting. An unexpected failure returns a redacted
+typed error and leaves the prior course playable.
+
+### 5.10 Public package and active asset gateway
+
+`courseGeometry()` returns the current gameplay geometry plus:
+
+```js
+{
+  courseId,
+  courseRevision,
+  contentRevision,
+  presentation,
+  terrainPatches,
+  assetManifest: {
+    [assetKey]: {
+      url,
+      mime,
+      bytes,
+      sha256
+    }
+  },
+  diagnostics
+}
+```
+
+No filesystem path, authoring filename, private reference, or pack root is serialized.
+
+New module: `lib/course-art-http.js`.
+
+```text
+GET|HEAD /api/course-art/:contentRevision/:assetKey
+    -> exact active contentRevision
+    -> valid opaque key
+    -> exact private-manifest entry
+    -> final realpath containment
+    -> recheck size and supported MIME/magic
+    -> ETag/conditional response
+```
+
+Response:
+
+- `Content-Type` from validated manifest;
+- `Content-Length`;
+- `ETag: "sha256-<hash>"`;
+- `Cache-Control: private, max-age=31536000, immutable`;
+- `If-None-Match` returns 304;
+- HEAD returns identical headers and no body.
+
+Wrong/stale revision, unknown key, encoded traversal, and inactive content return a
+generic typed 404. Malformed key returns generic 400. No error body contains a path.
+
+Development root defaults to `courses/curated`. Runtime staging writes
+`build/course-art`. Packaged `main.js` sets:
+
+```js
+process.env.BIRDIE_ART_DIR = path.join(process.resourcesPath, "course-art")
+```
+
+Electron Builder copies only `build/course-art` through `extraResources`; raw
+references, tools, and authoring files are excluded.
+
+### 5.11 Dependency and ownership diagram
+
+```text
+search/request source
+        |
+        v
+course-identity.js -----> source-keyed course.js cache
+        |                           |
+        +---------------------------+
+        |
+        v
+course-fingerprint.js -> HD v1/v2 resolver (untouched base)
+        |
+        v
+course-art index/schema/standalone validator
+        |
+        +---- absent ----------------> AutomaticPresentationAdapter
+        |
+        +---- valid -----------------> CuratedPresentationAdapter
+        |
+        +---- invalid ---------------> one diagnostic + automatic
+        |
+        v
+course-art-assets.js -> private paths + public opaque manifest
+        |
+        v
+resolved-course-package.js -> prepared Game state
+        |
+        v
+course-activation.js latest-only commit
+        |
+        +---- server active package
+        +---- Game active course
+        +---- HD readiness state
+        +---- sanitized course geometry
+        +---- revisioned asset gateway
+```
+
+Ownership:
+
+- acquisition owns the returned base object until package preparation clones it;
+- the package owns its base clone, gameplay clone, HD descriptors, and manifests;
+- `Game` owns only committed prepared gameplay state;
+- the server owns the active package and readiness timer;
+- the private asset manifest owns no file descriptors, only validated path metadata;
+- each HTTP request owns and closes its read stream;
+- SP-02a creates no GPU resource.
+
+## 6. Implementation tasks
+
+### Task 1 — Pin contracts and Task 0 fixtures
+
+**Files**
+
+- `test/fixtures/course-presentation/automatic-course.json` (new)
+- `test/fixtures/course-presentation/chambers-profile.json` (new)
+- `test/fixtures/course-presentation/same-name-a.json` (new)
+- `test/fixtures/course-presentation/same-name-b.json` (new)
+- `test/course-presentation-contract.test.js` (new)
+- this plan and program ledger
+
+**Behavior**
+
+- Commit the normalized presentation/package examples.
+- Pin public/private manifest separation.
+- Pin the two revision counters and diagnostic shape.
+- Run the Task 0 falsification cases before production extraction.
+
+**Tests first**
+
+- No normalized/public object contains a Windows drive, leading slash path, `..`, or
+  shader uniform name.
+- Same external interface covers automatic and curated examples.
+- Deferred A/B fake manager proves latest-only semantics.
+
+**Commit**
+
+`test(sp02a): pin course package and presentation contracts`
+
+**Rollback**
+
+Delete fixtures/tests only; no production behavior has changed.
+
+### Task 2 — Stable identity and source-keyed cache artifacts
+
+**Files**
+
+- `lib/course-identity.js` (new)
+- `lib/course.js`
+- `test/course-identity.test.js` (new)
+- `test/course-cache-identity.test.js` (new)
+- `test/cache-path.test.js`
+- `test/course-classmap.test.js`
+
+**Behavior**
+
+- Add strict OSM and geographic identity helpers.
+- Persist `source` on new cache objects.
+- Key JSON, aerial, and class-map artifacts by stable source.
+- Verify source on cache hit.
+- Implement non-destructive atomic legacy migration.
+- Deduplicate cache listing and keep existing SP-00 legacy fixture filenames readable.
+
+**Tests**
+
+- way/relation/node identities;
+- malformed/overflow IDs;
+- renamed same identity;
+- same name/different identity;
+- legacy tolerance at 249.9/250/250.1 m;
+- missing origin does not migrate;
+- migration copies referenced artifacts and writes JSON last;
+- injected copy/write failure leaves legacy set and no published keyed JSON;
+- cache hit source mismatch is typed;
+- no absolute paths in list output.
+
+**Commit**
+
+`feat(sp02a): add stable course identity and collision-safe caches`
+
+**Rollback**
+
+New lookup can be disabled behind an internal compatibility switch for one release;
+do not delete source-keyed or legacy files.
+
+### Task 3 — HD fingerprint v2 with v1 compatibility
+
+**Files**
+
+- `lib/course-fingerprint.js` (new)
+- `lib/hd-bundle.js`
+- `tools/hd-course/course-source.mjs`
+- `tools/hd-course/config.mjs`
+- `tools/hd-course/discover.mjs`
+- `tools/hd-course/compiler.mjs`
+- `tools/hd-course/encode.mjs`
+- `tools/hd-course/schemas/build-manifest.schema.json`
+- representative committed HD manifests only if generator output requires it
+- `test/hd-fingerprint.test.mjs`
+- `test/hd-bundle.test.js`
+- `test/hd-compiler.test.mjs`
+- `test/hd-manifest.test.mjs`
+- `test/hd-resolve-bundle.test.mjs`
+
+**Behavior**
+
+- Preserve exact v1 bytes.
+- Add v2 identity/geometry canonicalization.
+- Emit v2 for new build/discover output.
+- Treat absent manifest version as v1.
+- Select correct runtime comparison and typed unsupported fallback.
+
+**Tests**
+
+- v1 golden hashes unchanged;
+- v2 ignores course and hole display-name changes;
+- v2 changes for source, geometry, routing, or coarse elevation;
+- v2 ignores presentation/aerial/class-map/building/generated-patch changes;
+- runtime/compiler parity;
+- old committed manifests resolve;
+- unsupported version never activates bundle.
+
+**Commit**
+
+`feat(sp02a): version HD fingerprints by stable course identity`
+
+**Rollback**
+
+Compiler can temporarily emit v1 while runtime keeps dual-read support. Never remove
+v1 read compatibility in this program.
+
+### Task 4 — Strict schema, generated validator, and runtime staging
+
+**Files**
+
+- `lib/course-art-limits.js` (new)
+- `lib/schemas/course-art-pack.schema.json` (new)
+- `lib/generated/course-art-pack-validator.js` (new)
+- `lib/course-art-assets.js` (new)
+- `tools/course-art/generate-validator.mjs` (new)
+- `tools/course-art/prepare-runtime.mjs` (new)
+- `courses/curated/index.json` (new)
+- `courses/curated/README.md` (new)
+- `courses/curated/chambers-bay/profile.json` (new)
+- `courses/curated/chambers-bay/references.json` (new)
+- optional identity-bound St Andrews/Bandon compatibility profiles after Task 0
+  confirms their exact source identities
+- `package.json`
+- `test/course-art-pack-schema.test.js` (new)
+- `test/course-art-staging.test.mjs` (new)
+
+**Behavior**
+
+- Define strict root/component entry points and all limits.
+- Generate standalone CJS validation.
+- Fail stale generated output.
+- Validate index/profile/component consistency and duplicate identity/alias conflicts.
+- Validate realpath, magic, dimensions, MIME, counts, and byte budgets.
+- Stage runtime-only normalized manifest/assets deterministically.
+- Exclude references and authoring intermediates.
+
+**Tests**
+
+- valid minimal pack;
+- every unknown field and unsupported version;
+- duplicate IDs and overlapping aliases;
+- NaN/Infinity, coordinate/count/dimension/byte limits;
+- traversal, absolute/UNC/device/ADS paths;
+- symlink/junction escape where environment permits;
+- extension/MIME/magic disagreement;
+- stale validator;
+- two staging runs produce byte-identical manifests;
+- authoring references absent from runtime stage.
+
+**Commit**
+
+`feat(sp02a): validate and stage versioned course-art packs`
+
+**Rollback**
+
+Remove staged output and pack lookup. No renderer consumer exists yet.
+
+### Task 5 — Automatic/curated presentation and legacy isolation
+
+**Files**
+
+- `lib/course-diagnostics.js` (new)
+- `lib/course-presentation.js` (new)
+- `lib/course.js` legacy loader adapter
+- curated profile files from Task 4
+- `test/course-presentation.test.js` (new)
+- `test/course-curated-fallback.test.js`
+- `test/course-override.test.js`
+
+**Behavior**
+
+- Implement complete automatic and curated normalized outputs.
+- Select by stable identity or strict legacy geographic match.
+- Make missing pack silent.
+- Make corrupt selected pack one actionable diagnostic plus automatic fallback.
+- Ignore packs and sidecars completely when disabled.
+- Wrap verified legacy sidecar as curated gameplay data when enabled.
+- Reject unsupported terrain-feature capability after structural validation.
+
+**Tests**
+
+- unknown course automatic;
+- Chambers curated 0.85 dryness;
+- Sawgrass automatic default;
+- packs-disabled Chambers automatic with no manual dryness;
+- packs-disabled mode never calls sidecar loader;
+- present valid sidecar applies only to cloned gameplay course;
+- corrupt selected pack produces exactly one deduplicated diagnostic;
+- malformed identity cannot select a pack;
+- no course-name or stable-ID branch exists in automatic adapter;
+- normalized records are frozen and path-free.
+
+**Commit**
+
+`feat(sp02a): resolve automatic and curated course presentation`
+
+**Rollback**
+
+Force `packsEnabled:false`; automatic normalized package remains valid.
+
+### Task 6 — Prepare package and harden Game commit
+
+**Files**
+
+- `lib/resolved-course-package.js` (new)
+- `lib/game.js`
+- `test/resolved-course-package.test.js` (new)
+- `test/course-activation.test.js` (new)
+- `test/game.test.js`
+- `test/robustness.test.js`
+- `test/hd-terrain-inject.test.js`
+
+**Behavior**
+
+- Clone and preserve untouched base.
+- Resolve HD before any gameplay overlay.
+- Build presentation, gameplay course, empty patches/capabilities, manifests,
+  diagnostics, and content revision.
+- Precompute complete Game state before assignment.
+- Keep `Game.setCourse()` as compatible wrapper.
+
+**Tests**
+
+- base deep hash unchanged after success and every injected failure;
+- HD resolver observes untouched base;
+- overlays affect gameplay clone only;
+- presentation-only change updates content revision, not HD fingerprint;
+- gameplay and same-key asset-byte changes update content revision;
+- authoring reference changes do not update content revision;
+- prepare failure leaves every current Game field unchanged;
+- commit is assignment-only and invoked once;
+- invalid terrain-feature request rejects curated pack, not base activation.
+
+**Commit**
+
+`feat(sp02a): prepare immutable resolved course packages`
+
+**Rollback**
+
+Server may continue calling the backward-compatible `Game.setCourse()` until Task 7
+lands.
+
+### Task 7 — Latest-only server activation
+
+**Files**
+
+- `lib/course-activation.js` (new)
+- `server.js`
+- `lib/hd-readiness.js` only if package metadata requires a compatible extension
+- `test/course-activation.test.js`
+- `test/course-load-race.test.mjs` (new)
+- `test/hd-readiness.test.js`
+- `test/visual-capture-config.test.mjs`
+
+**Behavior**
+
+- Allocate generation before acquisition.
+- Abort superseded fetch where supported.
+- Gate after acquisition and preparation.
+- Commit package/Game/HD/revision/timer once.
+- Route startup autoload and POST through manager.
+- Broadcast revisions/content only after commit.
+- Preserve readiness nonce and HD fallback.
+- Return typed/redacted failed/superseded responses.
+
+**Tests**
+
+- slow A/fast B;
+- A failure then B success;
+- B success then late A success;
+- preparation failure with prior active course;
+- `game.setCourse` equivalent commit exactly once;
+- prior timer remains on failure and is replaced on success;
+- stale readiness ack remains rejected;
+- startup autoload uses same package builder;
+- public responses contain no root path or raw stack.
+
+**Commit**
+
+`feat(sp02a): commit course activation as latest-only transaction`
+
+**Rollback**
+
+Internal activation manager can be bypassed only by reverting this focused commit; do
+not restore partial state mutation piecemeal.
+
+### Task 8 — Active asset gateway and packaged root
+
+**Files**
+
+- `lib/course-art-http.js` (new)
+- `server.js`
+- `main.js`
+- `package.json`
+- `test/course-art-http.test.js` (new)
+- `test/course-art-packaging.test.mjs` (new)
+- `test/cache-path.test.js`
+
+**Behavior**
+
+- Serve exact active revision/key through GET/HEAD.
+- Add immutable ETag/304.
+- Recheck containment/type/size at request.
+- Set `BIRDIE_ART_DIR` for packaged mode.
+- Stage/copy runtime-only root through `extraResources`.
+- Keep source references and local paths out of package and HTTP.
+
+**Tests**
+
+- exact GET/HEAD;
+- conditional 304;
+- stale revision and unknown key;
+- encoded traversal and malformed key;
+- realpath escape;
+- disallowed/oversized/replaced bytes;
+- route swap after activation;
+- error body redaction;
+- development and packaged fixture roots hash identically;
+- package config includes runtime stage and excludes authoring references.
+
+**Commit**
+
+`feat(sp02a): serve revisioned active course-art assets`
+
+**Rollback**
+
+Disable active asset route and omit `extraResources`; package activation remains
+automatic-only and coherent.
+
+### Task 9 — Verification, regression evidence, and handoff
+
+**Files**
+
+- `docs/TODO.md`
+- `docs/HANDOFF.md`
+- this plan Done Record
+- program ledger/handover
+
+**Behavior**
+
+- Run all focused tests and full suite.
+- Capture clean baseline at planning/implementation base before code.
+- Capture unchanged full three-course baseline after candidate.
+- Compare and require pixel equivalence or investigate every changed pixel.
+- Run synthetic renderer smoke.
+- Run packaged-root fixture and server activation race tests.
+- Record preparation latency, asset bytes, and diagnostics.
+- Route renderer consumption/ownership to SP-02b.
+
+**Commit**
+
+`docs(sp02a): record contract and activation evidence`
+
+Documentation follows accepted code. Failed review does not mark the unit done.
+
+## 7. Test diagram
+
+```text
+request identity
+  +-- valid OSM ----------------> source-key cache
+  |                                -> test/course-identity.test.js
+  |                                -> test/course-cache-identity.test.js
+  +-- legacy verified ----------> non-destructive migration
+  +-- collision/mismatch -------> typed reject/refetch
+
+base course
+  -> HD fingerprint dispatch
+       +-- missing version ------> v1 compatibility
+       +-- version 2 -----------> stable identity canonical
+       +-- unknown -------------> typed procedural fallback
+          -> test/hd-fingerprint.test.mjs
+          -> test/hd-bundle.test.js
+
+pack lookup
+  +-- disabled/absent ----------> automatic, silent
+  +-- selected invalid ---------> automatic + one diagnostic
+  +-- selected valid -----------> curated normalized
+  +-- terrain feature requested -> capability reject + automatic
+     -> test/course-art-pack-schema.test.js
+     -> test/course-presentation.test.js
+
+prepare package
+  +-- success ------------------> immutable-by-ownership candidate
+  +-- failure ------------------> no current-state mutation
+     -> test/resolved-course-package.test.js
+     -> test/game.test.js
+
+activation generation
+  +-- current success ----------> one commit + one broadcast
+  +-- superseded ---------------> typed 409, no mutation
+  +-- current failure ----------> previous course remains
+     -> test/course-activation.test.js
+     -> test/course-load-race.test.mjs
+
+asset request
+  +-- active revision + key ----> GET/HEAD/ETag/304
+  +-- stale/unknown/path escape -> generic redacted reject
+     -> test/course-art-http.test.js
+     -> test/course-art-packaging.test.mjs
+
+renderer regression
+  -> synthetic smoke
+  -> Chambers/Sawgrass/St Andrews fixed baseline
+  -> before/after comparison
+```
+
+### Required commands
+
+Focused commands are exact once files exist:
+
+```powershell
+node --test test/course-identity.test.js test/course-cache-identity.test.js
+node --test test/hd-fingerprint.test.mjs test/hd-bundle.test.js test/hd-compiler.test.mjs test/hd-resolve-bundle.test.mjs
+node --test test/course-art-pack-schema.test.js test/course-art-staging.test.mjs test/course-presentation.test.js
+node --test test/resolved-course-package.test.js test/course-activation.test.js test/course-load-race.test.mjs
+node --test test/course-art-http.test.js test/course-art-packaging.test.mjs
+npm test
+npm run visual:smoke -- --suite baseline --data-dir "<canonical data root>" --require-clean --output-dir ".shots/visual/sp02a/smoke"
+npm run visual:capture -- --suite baseline --data-dir "<canonical data root>" --require-clean --output-dir ".shots/visual/sp02a/after"
+npm run visual:compare -- --before "<clean SP-02a base capture>" --after "<candidate capture>" --output-dir ".shots/visual/sp02a/compare"
+```
+
+### Environment ownership
+
+| Test | Environment |
+|---|---|
+| Pure identity/schema/presentation/package | Node 22+ CI |
+| Race and HTTP contract | Node 22+ CI with temp roots |
+| Realpath/junction escape | CI pure case; named Windows host for actual junction |
+| Packaged-root fixture | Node CI; built Windows app is SP-07b final proof |
+| Synthetic render smoke | hardware if available; typed capability skip otherwise |
+| Full visual regression | named RTX 3060 / WebGL 2 host |
+
+Coverage goal: every conditional branch introduced by SP-02a has a named unit or
+contract assertion. No untested catch-and-fallback path is accepted.
+
+## 8. Failure modes
+
+| Failure | Required behavior | Visibility | Test |
+|---|---|---|---|
+| Malformed source identity | Do not select stable cache/pack; typed failure or safe refetch | Actionable code | identity |
+| Same-name cache collision | Separate source-key paths | No wrong course | cache identity |
+| Legacy name matches but origin does not | Refuse migration; retain legacy bytes | Typed recovery | migration |
+| Migration interrupted | No published keyed JSON; legacy untouched | Retryable | injected write |
+| Keyed cache embeds wrong source | Refuse/quarantine; never use | Typed error | cache hit |
+| HD v1 manifest | Resolve with exact old bytes | Silent compatibility | HD |
+| Unsupported fingerprint version | Reject descriptor; procedural fallback | Typed warning | HD |
+| Duplicate pack course ID/alias overlap | Reject index deterministically | Build/runtime diagnostic | schema |
+| Pack absent | Automatic presentation | Silent | presentation |
+| Selected pack corrupt/unsupported | Automatic plus one diagnostic | Concise recoverable | presentation |
+| Unknown field in production | Reject selected pack | Same as development | schema |
+| Unsupported terrain feature | Reject curated pack, keep automatic course | Typed capability | package |
+| Optional asset missing after valid pack | Drop referencing optional feature; keep course | One warning | assets |
+| Required asset missing/changed | Reject curated pack or request; never serve stale bytes | Typed | assets/HTTP |
+| Junction/symlink escapes root | Reject before read | Generic external error | path |
+| Slow A finishes after B | A superseded, B stays active | Old request gets typed 409 | race |
+| Package preparation throws | Prior package/game/HD/revision/timer stay intact | Recoverable error | activation |
+| `Game` preparation throws | No active Game field changes | Typed core failure | game |
+| Stale asset URL after switch | Generic 404 | Browser refetches current | HTTP |
+| Raw filesystem exception | Redact public record; keep private stack | No path leak | diagnostics |
+| Runtime staging differs by machine | Build/test fails | Developer-facing | staging |
+| Renderer pixels change | Reject or explain exact non-renderer cause | Review sheet | visual |
+
+Known unresolved Low from SP-01: a shared raw texture may receive idempotent duplicate
+dispose calls through the pre-existing multi-material pattern. SP-02a creates no GPU
+resource and does not expand into that cleanup. SP-02b's reference-counted registry
+must account for it.
+
+## 9. Acceptance
+
+### Automated hard gates
+
+- Exact implementation base and candidate SHAs recorded.
+- Worktree clean.
+- Every focused command passes.
+- Full `npm test` passes with zero failures/skips newly introduced by SP-02a.
+- Generated validator byte-current check passes.
+- `git diff --check` passes.
+- No `courseDryFor`, `COURSE_DRY`, renderer scene, shader, or UI file changes.
+- No automatic adapter course-name or stable-ID special case.
+- No public manifest/diagnostic contains an absolute path.
+- V1 HD golden hashes and committed manifests remain compatible.
+- Source-key collision/migration tests pass.
+- A/B race and prepare-failure atomicity tests pass.
+- GET/HEAD/ETag/304/security tests pass.
+- Development and packaged fixture roots produce the same content hashes.
+- Synthetic renderer smoke has no unexpected console/fatal event.
+- Hardware baseline is pixel-equivalent to the clean SP-02a base or every change is
+  treated as a blocker pending explanation.
+
+### Performance and resource evidence
+
+SP-02a adds no renderer resource. Record:
+
+- base/candidate renderer textures, geometries, programs, and draw calls — expected
+  flat;
+- median/p95 package preparation time for automatic/no-asset and curated fixture;
+- total validated runtime asset bytes and count;
+- five alternating server activations with no monotonic open-stream/timer/heap growth;
+- no default-on GPU delta claim beyond the unchanged baseline.
+
+No arbitrary activation-latency budget is invented before measurement. A regression
+that makes local cached switching visibly slow returns to plan review with the measured
+profile.
+
+### Human/behavioral review
+
+- Same-name fixtures never cross-select.
+- Corrupt curated pack message states pack, field/stage, cause class, and recovery
+  without a machine path.
+- Previous course remains playable after injected base/package failure.
+- Chambers automatic path contains no manual dryness or legacy sidecar.
+- Default pack-enabled profiles preserve current manual character data for later
+  SP-02b consumption.
+- No visual improvement claim is made; fixed frames remain unchanged.
+
+### Independent gate
+
+- Independent review confidence at least 75%.
+- No unresolved Critical, High, or Medium finding.
+- All changed files remain in SP-02a ownership.
+- Windows CI green.
+- Candidate ancestry or integrated-tree equivalence proven after merge.
+- Post-merge full suite rerun on `origin/main`.
+
+## 10. Done record
+
+Complete only after integration:
+
+| Field | Evidence |
+|---|---|
+| Implementation owner/worktree | TBD |
+| Planning base | `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76` |
+| Implementation base | TBD at dispatch |
+| Candidate commit | TBD |
+| Pull request / merge commit | TBD |
+| Focused tests | TBD |
+| Full test count | TBD |
+| Identity/cache migration evidence | TBD |
+| HD v1/v2 evidence | TBD |
+| Validator/staging evidence | TBD |
+| Activation race/rollback evidence | TBD |
+| Asset HTTP/package-root evidence | TBD |
+| Before capture | TBD |
+| After capture / comparison | TBD |
+| Hardware / renderer | TBD |
+| Package preparation latency | TBD |
+| Asset/resource delta | TBD |
+| Independent review | TBD |
+| Deviations | TBD |
+| SP-02b handoff | TBD |
+
+## 11. Parallelization and commit order
+
+After Task 0 freezes interfaces:
+
+```text
+Task 2 identity/cache ----+
+                          +--> Task 5 adapters --> Task 6 package --> Task 7 activation
+Task 3 HD v2 -------------+
+                          |
+Task 4 schema/assets -----+-------------------------> Task 8 gateway/package
+                                                     |
+                                                     v
+                                               Task 9 evidence
+```
+
+One implementation owner should integrate this unit because `lib/course.js`,
+`server.js`, package metadata, and tests cross the same transaction boundary. If the
+lane delegates internally:
+
+- identity/HD and schema/assets may be developed in isolated child branches;
+- only the assigned SP-02a owner edits the integration branch;
+- `server.js`, `lib/game.js`, `package.json`, and program docs have one owner;
+- integration remains in the exact task order above.
+
+No SP-02b renderer work begins until SP-02a is accepted and integrated.
+
+## 12. Engineering review record
+
+| Review | Result | Confidence | Findings |
+|---|---|---:|---|
+| Current-base census | COMPLETE | — | Stable identity absent; all cache artifacts name-keyed; HD v1 includes display name; activation mutates before commit; `Game.setCourse` can partially assign; no pack/schema/gateway/package root; six source-document contradictions resolved in Section 5.1 |
+| Independent plan gate, pass 1 | PENDING | — | — |
+
+Dispatch verdict: **NOT READY** until the independent plan gate clears all
+Critical/High/Medium findings and the PIC records the exact implementation base.

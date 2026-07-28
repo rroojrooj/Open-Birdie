@@ -1,9 +1,9 @@
 # SP-01 — P2a Recovery, Verification, and Integration Plan
 
 **Status:** DONE
-**Parent specification:** [`../specs/2026-07-23-pro-visuals-program-design.md`](../specs/2026-07-23-pro-visuals-program-design.md)
-**Master plan:** [`2026-07-23-pro-visuals-master-plan.md`](2026-07-23-pro-visuals-master-plan.md)
-**Program test strategy:** [`2026-07-23-pro-visuals-test-plan.md`](2026-07-23-pro-visuals-test-plan.md)
+**Source design provenance:** user-authored `2026-07-23` specification, master plan,
+and test strategy in the protected original worktree; this accepted current-base plan
+restates SP-01's owned requirements
 **Historical plan:** `origin/claude/p2-sdf-surfaces:docs/superpowers/plans/2026-07-07-p2a-sdf-surfaces.md`
 **Target branch:** `codex/sp01-p2a-recovery`
 **Required base:** `origin/main` at `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`
