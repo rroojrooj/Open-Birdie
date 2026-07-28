@@ -21,7 +21,7 @@
 |---|---|---|---|---|---|
 | SP-00 Visual benchmark | DONE | Historical `codex/sp00-visual-benchmark` | — | Candidate `7d89b6ac24eb965039d5bdae6a30c943718ea81e`; PR #40; merge `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`; CI green; `npm test` 375/375 | Harness is mandatory evidence path for every later visual unit |
 | SP-01 P2a recovery | DONE | `/root/sp01_implementation`; `codex/sp01-p2a-recovery` | SP-00 | Candidate `7e18723e294153ff086d222d8ecf94bcc3ca41e1`; ACCEPT 99%; PR #43; merge `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`; CI and post-merge 382/382; RTX 3060 three-course, motion, and perf evidence; GPU median +0.038 ms | Feed the visible high-survey HD/far-photo seam into SP-04 |
-| SP-02a CoursePresentation contract | READY | `/root/sp01_implementation`; `codex/sp02a-course-presentation-contract` | SP-00 | Pass 3 accepted candidate `f8693c3c2995a674d8f5827682d38a820deb227d` at 98% with zero findings; PR #44; merge/implementation base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`; CI and post-merge 382/382. | Dispatch isolated owner at the exact recorded base |
+| SP-02a CoursePresentation contract | IN_PROGRESS | `/root/sp01_implementation`; `codex/sp02a-course-presentation-contract` | SP-00 | Pass 3 accepted candidate `f8693c3c2995a674d8f5827682d38a820deb227d` at 98% with zero findings; PR #44; merge/implementation base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`; CI, post-merge, and implementation-lane baseline 382/382. | Build Tasks 1–9, then independent candidate review |
 | SP-02b Activation transaction | BLOCKED | — | SP-01, SP-02a | — | Both predecessor units integrated |
 | SP-03 World context | BLOCKED | — | SP-02b | — | Reviewed sub-plan after SP-02b |
 | SP-04 Surface system / HD seam | BLOCKED | — | SP-02b | Receives deferred SP-01 HD macro-seam finding | Reviewed sub-plan after SP-02b |
@@ -113,5 +113,5 @@ Until those are resolved, the historical branch remains **REPORTED**, not accept
 
 SP-02a implementation is the current bottleneck. Its detailed plan passed independent
 review at 98% with zero findings and is integrated at exact implementation base
-`2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. Dispatch the isolated owner and execute
+`2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. The isolated owner is executing
 Tasks 1–9. SP-02b remains blocked.

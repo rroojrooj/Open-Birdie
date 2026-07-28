@@ -69,13 +69,18 @@
   candidate ancestry was verified, and the clean post-merge suite passed 382/382.
 - Pinned that merge as the exact SP-02a implementation base and assigned
   `/root/sp01_implementation` on `codex/sp02a-course-presentation-contract`.
+- Created the isolated implementation worktree at exact base `2dd82c7`, ran
+  `npm ci`, and verified the lane baseline with `npm test`: 382 passed, 0 failed.
+- Dispatched `/root/sp01_implementation` to execute accepted Tasks 1–9. SP-02b
+  renderer wiring remains blocked.
 
 ## Left
 
-1. Create the isolated SP-02a worktree at exact base `2dd82c7`.
-2. Dispatch the assigned implementation owner.
-3. Execute Tasks 1–9 in the accepted dependency order; keep SP-02b renderer work
-   blocked.
+1. Execute Tasks 1–9 in the accepted dependency order.
+2. Build a clean candidate and run focused/full, packaging, synthetic, and
+   hardware-baseline evidence gates.
+3. Run independent candidate review before push, PR, or merge; keep SP-02b renderer
+   work blocked.
 
 ## Current facts
 
