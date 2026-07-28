@@ -69,6 +69,7 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
   // P2a-T4: the classmap is thresholded (after a load-time blur) so only confident coverage
   // survives — kills the per-pixel dot-screen stipple.
   assert.match(s.fragmentShader, /cls\.r = smoothstep\(0\.45, 0\.75, cls\.r\)/);
+  assert.match(s.fragmentShader, /cls\.b = smoothstep\(0\.45, 0\.75, cls\.b\)/);
   // P2a-T3: the feathered NDVI classmap is suppressed where OSM authored the boundary
   // (osmNear) BEFORE the mown union, so the crisp OSM edge owns it (kills the double edge).
   assert.match(s.fragmentShader, /max\(max\(mkRaw\.r, mkRaw\.b\)/);
@@ -78,6 +79,8 @@ test('macro turf material: adds aerial tint uniforms + a distinct program', () =
     'NDVI suppression must precede the mown union');
   assert.ok(s.fragmentShader.indexOf('cls.b *= 1.0 - osmNear') < s.fragmentShader.indexOf('float bm = max(bCrisp, cls.b'),
     'NDVI suppression must precede the bunker union');
+  assert.ok(s.fragmentShader.indexOf('cls.r = smoothstep(0.45, 0.75, cls.r)') < s.fragmentShader.indexOf('cls.r *= 1.0 - osmNear'),
+    'confidence threshold must precede OSM suppression');
   // the tint must be SAMPLED (a declaration alone would pass a bare /uMacroLow/ match)
   assert.match(s.fragmentShader, /texture2D\(\s*uMacroLow/);
   // v27: the NDVI class-map (uMacroSurfaces) was declared-but-unsampled — it must now

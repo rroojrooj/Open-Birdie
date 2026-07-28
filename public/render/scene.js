@@ -21,6 +21,7 @@ import { RENDER_CONFIG } from './config.js';
 import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
 import { COLORS, DRY_PALETTE, courseDryFor, blendPalette } from './course-character.js';
 import { paintSurfaceMask, RAW_SURFACE_COLORS } from './surface-mask.js';
+import { smoothClassmapTexture } from './classmap-smoothing.js';
 import { installLoadingTracker } from './capture-readiness.js';
 import {
   classifyAnimationCadence,
@@ -365,22 +366,13 @@ export class GolfScene {
       if (geo.aerial.classes) {
         const cls = new THREE.TextureLoader().load('/api/course-classmap',
           (tex) => {
-            // P2a-T4: the runtime NDVI classmap is per-pixel scatter (false positives that
-            // NDVI misreads as mown/sand) — rendered raw it's a "dot-screen" stipple on the
-            // turf. Blur it into SMOOTH coverage at load: isolated noise averages toward 0,
-            // contiguous real regions stay high (the turf shader then thresholds the
-            // low-amplitude survivors so only confident coverage adds surface).
-            try {
-              const im = tex.image;
-              if (im && im.width) {
-                const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
-                const c = cv.getContext('2d');
-                c.filter = 'blur(4px)';
-                c.drawImage(im, 0, 0);
-                tex.image = cv; tex.needsUpdate = true;
-              }
-            } catch (e) { /* keep the raw texture on failure */ }
-            console.log('[render] classmap loaded + smoothed');
+            // Per-pixel NDVI scatter becomes a dot screen when sampled raw. Smooth once
+            // at load; on failure the helper warns with the real cause and deliberately
+            // leaves this loaded texture selected as the visible raw fallback.
+            const result = smoothClassmapTexture(tex);
+            console.log(result.status === 'smoothed'
+              ? '[render] classmap loaded + smoothed'
+              : '[render] classmap loaded with raw fallback');
           },
           undefined,
           () => console.warn('[render] classmap failed to load — OSM-only surfaces'));
