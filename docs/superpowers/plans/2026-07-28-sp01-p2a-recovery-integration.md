@@ -1,13 +1,13 @@
 # SP-01 — P2a Recovery, Verification, and Integration Plan
 
-**Status:** ACTIVE
+**Status:** DONE
 **Parent specification:** [`../specs/2026-07-23-pro-visuals-program-design.md`](../specs/2026-07-23-pro-visuals-program-design.md)
 **Master plan:** [`2026-07-23-pro-visuals-master-plan.md`](2026-07-23-pro-visuals-master-plan.md)
 **Program test strategy:** [`2026-07-23-pro-visuals-test-plan.md`](2026-07-23-pro-visuals-test-plan.md)
 **Historical plan:** `origin/claude/p2-sdf-surfaces:docs/superpowers/plans/2026-07-07-p2a-sdf-surfaces.md`
 **Target branch:** `codex/sp01-p2a-recovery`
 **Required base:** `origin/main` at `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`
-**Owner/module:** Unassigned recovery lane; `public/render` surface presentation
+**Owner/module:** `/root/sp01_implementation`; `public/render` surface presentation
 **Estimate:** 1–2 focused engineering days plus hardware capture review
 **Dependency:** SP-00 accepted and integrated through PR #40
 
@@ -597,19 +597,20 @@ Complete only after integration:
 |---|---|
 | Implementation owner/worktree | `/root/sp01_implementation`; `C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp01-p2a-recovery` |
 | Base commit | `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5` |
-| Candidate commit | TBD |
-| Pull request / merge commit | TBD |
-| Focused tests | TBD |
-| Full test count | TBD |
-| Before capture | TBD |
-| After capture | TBD |
-| Comparison report | TBD |
-| Hardware / renderer | TBD |
-| Performance before/after | TBD |
-| Texture/resource delta | One additional raw packed surface-mask texture per loaded course; measured result TBD |
-| Independent review | TBD |
-| Deviations | TBD |
-| SP-04 seam evidence | TBD |
+| Candidate commit | `7e18723e294153ff086d222d8ecf94bcc3ca41e1` |
+| Pull request / merge commit | PR #43; `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`; candidate ancestry verified |
+| Focused tests | Candidate review: camera/mask/shader tests 67/67; motion-suite config tests 57/57 |
+| Full test count | Candidate and post-merge `origin/main`: 382 passed, 0 failed |
+| Before capture | `.shots/visual/sp01/before/baseline-2026-07-28T084819-153Z` |
+| After capture | `.shots/visual/sp01/after/baseline-2026-07-28T091021-742Z` |
+| Comparison report | `.shots/visual/sp01/compare`; 24/24 frames changed and received human visual review; pixel difference was diagnostic, not the realism verdict |
+| Motion evidence | `.shots/visual/sp01/motion/sp01-motion-2026-07-28T094519-169Z`; clean five-pose yaw sequence at `-1`, `-0.5`, `0`, `0.5`, `1`; no visible shimmer, pop, broken coverage, or halo flash |
+| Hardware / renderer | Windows; NVIDIA GeForce RTX 3060; ANGLE D3D11; WebGL 2; clean Git and matching suite/input hashes |
+| Performance before/after | CPU median 16.7 -> 16.7 ms; GPU median 15.400 -> 15.438 ms (+0.038 ms, within +3 ms budget); GPU p95 24.856 -> 24.446 ms |
+| Texture/resource delta | Textures 57 -> 57; geometries 463 -> 463; programs 65 -> 81 with no measured frame-time regression |
+| Independent review | Pass 1 REJECT 97% for missing motion evidence; pass 2 ACCEPT 99%; zero unresolved Critical/High/Medium findings |
+| Deviations | Initial before-capture child startup failure was preserved as typed evidence and the clean retry succeeded. Historical mutually exclusive channel packing was corrected to additive independent RGB ownership. The motion-capture wrapper timed out while its owned process continued; the run published a complete clean manifest and 5/5 verified frames. |
+| SP-04 seam evidence | `.shots/visual/sp01/after/baseline-2026-07-28T091021-742Z/chambers-bay/high-survey.png`; broad HD/far-photo relief seam remains visible and is not hidden by SP-01 |
 
 ## 11. Parallelization
 
@@ -641,8 +642,8 @@ Current-program review:
 | Independent plan gate, pass 1 | REJECT | 93% | Six Medium: perf comparison, exact camera, test carve-out, additive RGB semantics, recovery order, runtime fallback test |
 | Independent plan gate, pass 2 | ACCEPT | 97% | All six corrected; zero unresolved Critical/High/Medium findings |
 | Independent candidate review, pass 1 (`b4ab4a237777d217efeaeae874343e5a7f238c29`) | REJECT | 97% | One Medium evidence gap: fixed frames did not satisfy the required hardware adjacent-pose/orbit shimmer check; one non-blocking Low shared-texture disposal observation |
+| Independent candidate review, pass 2 (`7e18723e294153ff086d222d8ecf94bcc3ca41e1`) | ACCEPT | 99% | Motion suite and clean five-pose RTX 3060 evidence close the prior Medium; zero Critical/High/Medium findings; shared-texture disposal observation remains Low |
 
-Dispatch verdict: **ACTIVE / EVIDENCE CORRECTION**. Implementation followed the staged
-sequence and passed its code/static/performance checks, but the first candidate remains
-unaccepted until clean adjacent-pose evidence is recorded and the new exact SHA passes
-independent re-review.
+Integration verdict: **DONE**. PR #43 passed Windows CI, merged as
+`03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`, contains the exact accepted candidate
+as an ancestor, and passed the post-merge 382-test suite.
