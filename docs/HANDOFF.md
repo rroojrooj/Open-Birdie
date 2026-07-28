@@ -1,5 +1,15 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **ACTIVE PROGRAM 2026-07-23 → [Pro Visuals design specification](superpowers/specs/2026-07-23-pro-visuals-program-design.md)
+> + [master implementation plan](superpowers/plans/2026-07-23-pro-visuals-master-plan.md)
+> + [test strategy](superpowers/plans/2026-07-23-pro-visuals-test-plan.md).**
+> The program separates an automatic 5.5–6.5/10 course baseline from curated 7.5–8.5/10 hero-course packs.
+> Engineering review chose scope posture 1A: keep the full program, but authorize one reviewed phase at a
+> time. It now defines atomic course activation, stable course identity, safe packaged asset delivery,
+> stale-load cancellation, one terrain-feature compiler, complete test paths, and safe worktree lanes.
+> **Start with SP-00 visual benchmarking**, then recover `origin/claude/p2-sdf-surfaces` as SP-01 while
+> SP-02a prepares server/schema contracts; SP-02 renderer wiring waits for SP-01.
+
 > **ARC SUPERSEDED 2026-07-07 → the phased [Reality Master Plan](superpowers/plans/2026-07-06-reality-master-plan.md).**
 > A dual assessment (vs the 106-photo real library + vs GSPro/EA/TrackMan) scored the build **3/10** and drove
 > a 5-phase roadmap (P0a UI gate → P1a Sound / P1b tan palette → P2 SDF surfaces → P3 bunkers/greens → P4

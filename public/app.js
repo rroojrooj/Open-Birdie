@@ -1,12 +1,15 @@
 // Open-Birdie UI glue: SSE <-> HUD <-> 3D scene.
 import { GolfScene } from './render/scene.js';
 import { loadHdBundle } from './render/hd-bundle.js';
+import { buildHdAckEvidence, validateHdPolicy, waitForCaptureReady } from './render/capture-readiness.js';
 import { toPar, forwardLabel, verdict } from './scoring.mjs';
 
 const $ = (id) => document.getElementById(id);
 const scene = new GolfScene($('scene'));
 // Readiness nonce handed only to the loopback Electron primary client (absent on LAN mirrors).
-const primaryNonce = new URLSearchParams(location.search).get('primaryNonce') || '';
+const query = new URLSearchParams(location.search);
+const primaryNonce = query.get('primaryNonce') || '';
+const visualCaptureEnabled = query.get('visualCapture') === '1';
 window.__birdie = { scene, get state() { return state; } };
 
 let state = null;
@@ -16,6 +19,24 @@ let lastHoleKey = '';
 let clubPresets = {};
 let prevOver = false;   // round-over auto-open latch (open the card once, not every state event)
 let reviewHole = null;  // index of a played hole being reviewed on the scorecard
+let captureCourse = null;
+let captureHd = {
+  advertisedIds: [], loadedIds: [], ackRequestIds: [], acknowledgedIds: [], failures: [], ack: null,
+};
+let captureFonts = { state: visualCaptureEnabled ? 'loading' : 'not-requested' };
+if (visualCaptureEnabled) {
+  if (!document.fonts?.ready) {
+    captureFonts = { state: 'unsupported' };
+  } else {
+    Promise.resolve(document.fonts.ready).then(
+      () => { captureFonts = { state: 'ready' }; },
+      (error) => {
+        captureFonts = { state: 'failed', error: error?.message || String(error) };
+        console.error('[visual-capture] font settlement failed', error);
+      },
+    );
+  }
+}
 
 const CLUBS = [
   ['DR', 'DR'], ['3W', 'W3'], ['3H', 'H3'], ['4i', 'I4'], ['5i', 'I5'], ['6i', 'I6'],
@@ -65,20 +86,46 @@ function applyState(s) {
 async function loadGeometry() {
   const geo = await (await fetch('/api/course-geometry')).json();
   if (!geo || !geo.name) return;
+  captureCourse = { name: geo.name, revision: geo.courseRevision };
   // geo.hd is an ARRAY of bundle metadata (one per built hole) or null. Load each;
   // a single failed bundle just drops that one hole's HD relief, not the rest.
   const metas = Array.isArray(geo.hd) ? geo.hd : (geo.hd ? [geo.hd] : []);
+  captureHd = {
+    advertisedIds: metas.map((meta) => meta.bundleId),
+    loadedIds: [],
+    ackRequestIds: [],
+    acknowledgedIds: [],
+    failures: [],
+    ack: null,
+  };
   let hdAssets = [];
   if (metas.length) {
-    const loaded = await Promise.all(metas.map((meta) =>
-      loadHdBundle(meta, {
-        imageDecoder: (bytes, opts) => createImageBitmap(new Blob([bytes]), opts),
-        expectedRevision: geo.courseRevision,
-      }).catch((e) => { console.warn('[hd] bundle load failed — skipping hole', meta && meta.hole, e && e.message); return null; })));
-    hdAssets = loaded.filter(Boolean);
+    const loaded = await Promise.all(metas.map(async (meta) => {
+      try {
+        return {
+          asset: await loadHdBundle(meta, {
+            imageDecoder: (bytes, opts) => createImageBitmap(new Blob([bytes]), opts),
+            expectedRevision: geo.courseRevision,
+          }),
+          meta,
+          error: null,
+        };
+      } catch (error) {
+        console.warn('[hd] bundle load failed — skipping hole', meta && meta.hole, error && error.message);
+        return { asset: null, meta, error: error?.message || String(error) };
+      }
+    }));
+    hdAssets = loaded.map((entry) => entry.asset).filter(Boolean);
+    captureHd.loadedIds = loaded.filter((entry) => entry.asset).map((entry) => entry.meta.bundleId);
+    captureHd.failures = loaded.filter((entry) => entry.error).map((entry) => ({
+      bundleId: entry.meta?.bundleId || null,
+      hole: entry.meta?.hole || null,
+      message: entry.error,
+    }));
   }
   const mode = hdAssets.length ? 'hd' : 'procedural';
   scene.loadCourse(geo, { hdAssets });
+  if (visualCaptureEnabled) await scene.compileVisualCaptureShaders();
   lastHoleKey = '';
   if (state) applyState(state);
   // Acknowledge readiness so the server activates the matching physics. HD courses are
@@ -86,13 +133,64 @@ async function loadGeometry() {
   // names the FULL advertised bundle set (the server requires the exact active set);
   // physics is server-side, so it stays HD even if a client texture decode failed.
   if (metas.length) {
+    const requestedBundleIds = metas.map((meta) => meta.bundleId);
+    captureHd.ackRequestIds = [...requestedBundleIds];
     try {
-      await fetch('/api/course-runtime-ready', {
+      const response = await fetch('/api/course-runtime-ready', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courseRevision: geo.courseRevision, bundleIds: metas.map((m) => m.bundleId), mode, primaryNonce }),
+        body: JSON.stringify({ courseRevision: geo.courseRevision, bundleIds: requestedBundleIds, mode, primaryNonce }),
       });
-    } catch (e) { /* LAN mirror / transient — the server's readiness timeout covers it */ }
+      captureHd.ack = await response.json();
+      Object.assign(captureHd, buildHdAckEvidence(requestedBundleIds, captureHd.ack));
+    } catch (e) {
+      captureHd.ack = { ok: false, error: e?.message || String(e) };
+      Object.assign(captureHd, buildHdAckEvidence(requestedBundleIds, captureHd.ack));
+      /* LAN mirror / transient — the server's readiness timeout covers it */
+    }
   }
+}
+
+if (query.get('visualCapture') === '1') {
+  window.__birdie.visualCapture = Object.freeze({
+    status() {
+      const render = scene.visualCaptureStatus();
+      return {
+        course: captureCourse,
+        runtimeReady: !!state?.runtimeReady,
+        environment: render.environment,
+        loader: render.loader,
+        hd: JSON.parse(JSON.stringify(captureHd)),
+        fonts: { ...captureFonts },
+        shaderCompile: render.shaderCompile,
+        postfx: render.postfx,
+      };
+    },
+    waitUntilReady(options = {}) {
+      return waitForCaptureReady({
+        ...options,
+        status: () => this.status(),
+        nextFrame: () => new Promise((resolve) => requestAnimationFrame(resolve)),
+      });
+    },
+    applyFrame(frame) {
+      return scene.renderVisualCaptureStill(frame);
+    },
+    canvasPng() {
+      return scene.renderer.domElement.toDataURL('image/png');
+    },
+    diagnostics(options = {}) {
+      return { ...this.status(), scene: scene.visualCaptureDiagnostics(options) };
+    },
+    samplePerformance(options = {}) {
+      return scene.sampleVisualCapturePerformance(options);
+    },
+    vegetationTextureChecksums() {
+      return scene.visualCaptureVegetationChecksums();
+    },
+    validateHdPolicy(policy) {
+      return validateHdPolicy(captureHd, policy);
+    },
+  });
 }
 
 // ---------- SSE ----------

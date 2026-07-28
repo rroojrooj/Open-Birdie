@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-smoke",
+  "capture": {
+    "width": 1280,
+    "height": 720,
+    "deviceScaleFactor": 1,
+    "qualityProfile": "current-default",
+    "readinessTimeoutMs": 30000,
+    "settleFrames": 3,
+    "fixedTimeSeconds": 12.5
+  },
+  "courses": [
+    {
+      "id": "synthetic-visual",
+      "cacheFile": "synthetic-visual.json",
+      "expectedName": "Open Birdie Synthetic Visual",
+      "hdPolicy": "forbidden",
+      "frames": [
+        {
+          "id": "overview",
+          "role": "high-overview",
+          "target": "canvas",
+          "mode": "free",
+          "band": "overview",
+          "pose": {
+            "tx": 0,
+            "ty": 145,
+            "dist": 260,
+            "pitch": -32,
+            "yaw": 0,
+            "hOff": 0
+          },
+          "judges": [
+            "deterministic synthetic overview"
+          ]
+        }
+      ]
+    }
+  ]
+}

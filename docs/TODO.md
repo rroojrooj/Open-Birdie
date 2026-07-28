@@ -1,6 +1,38 @@
 # Open-Birdie — TODO
 
-## ACTIVE ROADMAP: Reality Master Plan (2026-07-06) — 3/10 → 6–7/10
+## ACTIVE ROADMAP: Pro Visuals Program (2026-07-23)
+
+The renderer now has a detailed two-tier target:
+
+- **Automatic Course Baseline:** consistent, artifact-free **5.5–6.5/10** from normal
+  OSM/elevation/aerial inputs.
+- **Curated Hero Course:** versioned course-art packs targeting **7.5–8.5/10**, with Chambers Bay first.
+
+Read these before starting new visual work:
+
+- Design and acceptance contract:
+  [`superpowers/specs/2026-07-23-pro-visuals-program-design.md`](superpowers/specs/2026-07-23-pro-visuals-program-design.md)
+- Dependency-ordered execution plan and reusable sub-plan template:
+  [`superpowers/plans/2026-07-23-pro-visuals-master-plan.md`](superpowers/plans/2026-07-23-pro-visuals-master-plan.md)
+- Program test-path, failure-mode, GPU, and packaging strategy:
+  [`superpowers/plans/2026-07-23-pro-visuals-test-plan.md`](superpowers/plans/2026-07-23-pro-visuals-test-plan.md)
+
+**Engineering review decision:** keep the full M1 + M2 roadmap, but authorize one reviewed phase at a time.
+**Immediate next phase:** SP-00, the committed visual benchmark harness and baseline. While that is reviewed,
+prepare SP-01 (recover and merge `origin/claude/p2-sdf-surfaces`) and only SP-02a’s server/schema/activation
+contract. SP-02 renderer wiring waits for SP-01 because both touch `public/render/scene.js`. Do not begin
+another tuning arc without the reproducible capture baseline.
+
+### Current integration state
+
+- P0a debug/UI gate: merged.
+- P1b tan-links course character: merged.
+- P2a crisp surface work: 13 commits on `origin/claude/p2-sdf-surfaces`, four implementation tasks complete,
+  final multi-course capture/docs gate incomplete, no PR open.
+- The Reality Master Plan remains useful historical rationale, but the Pro Visuals Program owns future
+  sequencing and defines the additional course-authoring path required beyond 6–7/10.
+
+## PREVIOUS ROADMAP: Reality Master Plan (2026-07-06) — 3/10 → 6–7/10
 
 A dual assessment (one agent vs the 106-photo real library, one vs the GSPro/EA/TrackMan bar) scored
 the current build **3/10 on both axes** (convergent, independent). The full phased roadmap lives in

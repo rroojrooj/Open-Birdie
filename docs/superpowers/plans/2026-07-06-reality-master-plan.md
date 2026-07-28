@@ -1,5 +1,11 @@
 # Reality Master Plan — 3/10 → 6–7/10 (all phases)
 
+> **Sequencing superseded 2026-07-23:** preserve this document as the rationale and scope record for
+> P0–P4. New visual work follows the
+> [Pro Visuals design specification](../specs/2026-07-23-pro-visuals-program-design.md) and
+> [master implementation plan](2026-07-23-pro-visuals-master-plan.md), which add reproducible benchmarking,
+> deep renderer modules, automatic vs curated quality tiers, and the hero-course authoring path.
+
 > **How to use this doc:** this is the MASTER roadmap. Each phase gets its own detailed sub-plan
 > (`2026-MM-DD-phase-N-<name>.md`, written when the phase starts) which goes through
 > `/plan-eng-review` + an outside voice BEFORE implementation, then superpowers:subagent-driven-development

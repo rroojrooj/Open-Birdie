@@ -7,7 +7,7 @@ import { loadHDRIEnvironment, makeSun, makeGroundedSkybox, makeFallbackEnv } fro
 import { makeAerialFog } from './atmosphere.js';
 import { buildCardTrees } from './tree-cards.js';
 import { buildGrounding } from './grounding.js';
-import { buildPineStraw, buildFlowers } from './vegetation.js';
+import { buildPineStraw, buildFlowers, vegetationTexturePixelChecksums } from './vegetation.js';
 import { buildRakes } from './props.js';
 import { buildGrass } from './grass.js';
 import { buildWater } from './water.js';
@@ -20,6 +20,12 @@ import { makeTerrainSampler } from './terrain-grid.js';
 import { RENDER_CONFIG } from './config.js';
 import { isPlayFraming, ballReadScale, pinReadScale } from './framing.js';
 import { COLORS, DRY_PALETTE, courseDryFor, blendPalette } from './course-character.js';
+import { installLoadingTracker } from './capture-readiness.js';
+import {
+  classifyAnimationCadence,
+  disjointQueryDisposition,
+  normalizePerformanceRequest,
+} from './capture-performance.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, z, -y); // sim -> three
 
@@ -64,6 +70,9 @@ export class GolfScene {
     this.camera = new THREE.PerspectiveCamera(58, container.clientWidth / container.clientHeight, 0.3, 12000);
     this.camera.position.set(0, 30, 60);
 
+    // Install before HDRI/texture requests begin so capture readiness observes
+    // every asynchronous renderer load without changing Three's callbacks.
+    this.loadingTracker = installLoadingTracker(THREE.DefaultLoadingManager);
     this._setupSkyAndLights();
 
     // gameplay objects
@@ -107,7 +116,12 @@ export class GolfScene {
     this.waterDepth = RENDER_CONFIG.waterFoam ? makeWaterDepth(this.renderer) : null;
     window.addEventListener('resize', () => this.resize());
     new ResizeObserver(() => this.resize()).observe(container);
-    this.renderer.setAnimationLoop(() => this._frame());
+    this._liveFrame = () => this._frame();
+    this._visualCaptureCourseRevision = 0;
+    this.shaderCompileStatus = { state: 'waiting-for-course', revision: 0 };
+    this._animationLoopLive = true;
+    this._captureFixedTime = null;
+    this.renderer.setAnimationLoop(this._liveFrame);
   }
 
   resize() {
@@ -120,6 +134,7 @@ export class GolfScene {
   }
 
   _setupSkyAndLights() {
+    this.environmentStatus = { state: 'loading' };
     // neutral hold until the HDRI resolves (avoids a black flash)
     this.scene.background = new THREE.Color(0x9fb8cf);
     // sun must exist before the first frame / first _fitShadows; aim refined on load
@@ -139,10 +154,12 @@ export class GolfScene {
       if (RENDER_CONFIG.aerialFog) this.scene.fog = makeAerialFog(horizonColor);
       if (this.bounds) this._placeSkybox();                     // course already loaded
       if (this._activeHole) this._fitShadows(this._activeHole); // re-aim shadows to HDRI sun
+      this.environmentStatus = { state: 'ready' };
     }).catch((e) => {
       console.error('[env] HDRI load failed, using fallback env', e);
       this.scene.environment = makeFallbackEnv(this.renderer);  // D1: keep scene lit
       this.scene.environmentIntensity = RENDER_CONFIG.environmentIntensity;
+      this.environmentStatus = { state: 'fallback', error: e?.message || String(e) };
     });
   }
 
@@ -222,6 +239,11 @@ export class GolfScene {
 
   // ---------- course construction ----------
   loadCourse(geo, { hdAssets = null } = {}) {
+    this._visualCaptureCourseRevision += 1;
+    this.shaderCompileStatus = {
+      state: 'pending',
+      revision: this._visualCaptureCourseRevision,
+    };
     this._treeWind = this._grassWind = this._waterUpdate = this._waterMeshList = this._terrain = null; // drop stale per-course refs
     this._fairwayGrassMesh = this._fairwayGrassWind = this._fairwayGrassCenter = this._fgGeo = this._fgGroup = this._fairwayZoneColorFn = null;
     // HD bundles (one per built hole) each own their textures. hdAssets may be an
@@ -380,6 +402,27 @@ export class GolfScene {
 
     this.courseGroup = group;
     this.scene.add(group);
+  }
+
+  async compileVisualCaptureShaders() {
+    const revision = this._visualCaptureCourseRevision;
+    this.shaderCompileStatus = { state: 'compiling', revision };
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+      if (revision === this._visualCaptureCourseRevision) {
+        this.shaderCompileStatus = { state: 'ready', revision };
+      }
+    } catch (error) {
+      if (revision === this._visualCaptureCourseRevision) {
+        this.shaderCompileStatus = {
+          state: 'failed',
+          revision,
+          error: error?.message || String(error),
+        };
+      }
+      console.error('[visual-capture] shader compilation failed', error);
+    }
+    return { ...this.shaderCompileStatus };
   }
 
   _bounds(geo) {
@@ -1296,8 +1339,11 @@ export class GolfScene {
     this.lookT.copy(V(f.tx, f.ty, f.h));
   }
 
-  _frame() {
-    const dt = Math.min(this.clock.getDelta(), 0.05);
+  _frame(capture = null) {
+    const fixed = capture && typeof capture === 'object';
+    const dt = fixed ? Math.max(0, Number(capture.fixedDelta) || 0) : Math.min(this.clock.getDelta(), 0.05);
+    const frameTime = fixed ? (Number(capture.fixedTime) || 0) : this.clock.elapsedTime;
+    this._captureFixedTime = fixed ? frameTime : null;
 
     if (this.anim) this._animStep(dt);
 
@@ -1306,7 +1352,7 @@ export class GolfScene {
     if (this.camMode === 'idle') this._idleTargets();
     else if (this.camMode === 'free') { this._freeStep(dt); this._freeTargets(); }
 
-    const k = 1 - Math.exp(-4.2 * dt);
+    const k = capture?.snapCamera ? 1 : 1 - Math.exp(-4.2 * dt);
     this.camera.position.lerp(this.camPosT, k);
     this.lookCur.lerp(this.lookT, k);
     this.camera.lookAt(this.lookCur);
@@ -1321,17 +1367,342 @@ export class GolfScene {
     if (this.aimLine) this.aimLine.visible = isPlayFraming(this.camMode, this.anim);
 
     this._updateMarkers();
-    if (this._treeWind) this._treeWind(this.clock.elapsedTime);
-    if (this._grassWind) this._grassWind(this.clock.elapsedTime);
+    if (this._treeWind) this._treeWind(frameTime);
+    if (this._grassWind) this._grassWind(frameTime);
     if (RENDER_CONFIG.foregroundGrass && this.camMode === 'idle' && this._fairwayGrassCenter) {
       const fdx = this.ballSim.x - this._fairwayGrassCenter.x, fdy = this.ballSim.y - this._fairwayGrassCenter.y;
       if (fdx * fdx + fdy * fdy > 64) this._placeFairwayGrass(); // ball moved > 8m -> re-anchor the foreground patch
     }
-    if (this._fairwayGrassWind) this._fairwayGrassWind(this.clock.elapsedTime);
-    if (this._flagU) this._flagU.value = this.clock.elapsedTime;
-    if (this._waterUpdate) this._waterUpdate(this.clock.elapsedTime);
+    if (this._fairwayGrassWind) this._fairwayGrassWind(frameTime);
+    if (this._flagU) this._flagU.value = frameTime;
+    if (this._waterUpdate) this._waterUpdate(frameTime);
     if (this.waterDepth && this._terrain) this.waterDepth.prepass(this._terrain, this.camera);
     this.postfx.render();
+    if (fixed) {
+      this._lastVisualCapture = {
+        sequence: (this._lastVisualCapture?.sequence || 0) + 1,
+        fixedTime: frameTime,
+        renderPath: 'postfx.render',
+      };
+    }
+  }
+
+  visualCaptureStatus() {
+    return {
+      environment: { ...this.environmentStatus },
+      loader: this.loadingTracker.status(),
+      postfx: this.postfx ? 'effect-composer' : null,
+      geometryReady: !!this.geo,
+      shaderCompile: { ...this.shaderCompileStatus },
+    };
+  }
+
+  renderVisualCaptureStill(frame = {}) {
+    const width = Number(frame.width);
+    const height = Number(frame.height);
+    if (Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0) {
+      this.renderer.setPixelRatio(1);
+      this.camera.aspect = width / height;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(width, height, false);
+      this.postfx.setSize(width, height);
+      this.waterDepth?.setSize(width, height);
+    }
+
+    // Capture URLs own their render loop. Normal URLs never call this method and
+    // keep the existing animation loop untouched.
+    this.renderer.setAnimationLoop(null);
+    this._animationLoopLive = false;
+    if (frame.mode === 'free') {
+      this.enterFreeCam(true);
+      Object.assign(this.free, frame.pose || {});
+      this._freeTargets();
+    } else {
+      this.enterFreeCam(false);
+      this.camMode = 'idle';
+      this._idleTargets();
+    }
+    this._frame({ fixedTime: Number(frame.time) || 0, fixedDelta: 0, snapCamera: true });
+    // Synchronize only the still readback path; the interactive render loop
+    // remains fully asynchronous.
+    this.renderer.getContext().finish();
+    return this.visualCaptureDiagnostics();
+  }
+
+  _sceneObjectCounts() {
+    const counts = { total: 0, visible: 0, meshes: 0, instancedMeshes: 0, lights: 0, cameras: 0 };
+    this.scene.traverse((object) => {
+      counts.total += 1;
+      if (object.visible) counts.visible += 1;
+      if (object.isMesh) counts.meshes += 1;
+      if (object.isInstancedMesh) counts.instancedMeshes += 1;
+      if (object.isLight) counts.lights += 1;
+      if (object.isCamera) counts.cameras += 1;
+    });
+    return counts;
+  }
+
+  _rendererInfoSnapshot() {
+    const info = this.renderer.info;
+    return {
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      points: info.render.points,
+      lines: info.render.lines,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      programs: info.programs?.length || 0,
+    };
+  }
+
+  visualCaptureDiagnostics({ resetRendererInfo = false } = {}) {
+    const info = this.renderer.info;
+    if (resetRendererInfo) info.reset();
+    const gl = this.renderer.getContext();
+    const debug = gl.getExtension('WEBGL_debug_renderer_info');
+    const rendererInfo = this._rendererInfoSnapshot();
+    return {
+      canvas: { width: this.renderer.domElement.width, height: this.renderer.domElement.height },
+      camera: {
+        mode: this.camMode,
+        position: this.camera.position.toArray(),
+        lookAt: this.lookCur.toArray(),
+      },
+      renderer: {
+        webglVersion: gl.getParameter(gl.VERSION),
+        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+        vendor: gl.getParameter(gl.VENDOR),
+        renderer: gl.getParameter(gl.RENDERER),
+        unmaskedVendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null,
+        unmaskedRenderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null,
+        ...rendererInfo,
+        drawCalls: rendererInfo.calls,
+        infoAutoReset: info.autoReset,
+      },
+      sceneObjects: this._sceneObjectCounts(),
+      postfx: 'effect-composer',
+      lastVisualCapture: this._lastVisualCapture ? { ...this._lastVisualCapture } : null,
+      fixedCaptureTime: this._captureFixedTime,
+      animationLoopLive: this._animationLoopLive,
+      environment: { ...this.environmentStatus },
+      loader: this.loadingTracker.status(),
+    };
+  }
+
+  async sampleVisualCapturePerformance(options = {}) {
+    const { sampleDuration, performanceClaim, routeFrames } = normalizePerformanceRequest(options);
+    const minimumWarmupFrames = performanceClaim ? 300 : 10;
+    const minimumWarmupMs = performanceClaim ? 5000 : 1000;
+    const info = this.renderer.info;
+    const previousAutoReset = info.autoReset;
+    this.renderer.setAnimationLoop(null);
+    this._animationLoopLive = false;
+    this._captureFixedTime = null;
+    info.autoReset = false;
+
+    const gl = this.renderer.getContext();
+    const isWebGl2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+    const timerExtension = isWebGl2 ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null;
+    const pendingQueries = [];
+    const gpuSamples = [];
+    let issueGpuQueries = true;
+    let discardedInvalid = 0;
+    let discardedDisjoint = 0;
+    let frameWaiter = null;
+    const nextFrame = () => new Promise((resolve) => { frameWaiter = resolve; });
+    let renderedFrames = 0;
+
+    const applyRouteFrame = (frame) => {
+      if (!frame) return;
+      if (frame.mode === 'free') {
+        this.enterFreeCam(true);
+        Object.assign(this.free, frame.pose || {});
+        this._freeTargets();
+      } else {
+        this.enterFreeCam(false);
+        this.camMode = 'idle';
+        this._idleTargets();
+      }
+    };
+
+    const collectQueries = () => {
+      if (!timerExtension) return;
+      const disjoint = !!gl.getParameter(timerExtension.GPU_DISJOINT_EXT);
+      const disposition = disjointQueryDisposition({
+        disjoint,
+        pendingCount: pendingQueries.length,
+      });
+      if (disposition.discardAll) {
+        discardedDisjoint += disposition.discardedDisjoint;
+        pendingQueries.splice(0).forEach((query) => gl.deleteQuery(query));
+        return;
+      }
+      for (let index = pendingQueries.length - 1; index >= 0; index -= 1) {
+        const query = pendingQueries[index];
+        if (!gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) continue;
+        pendingQueries.splice(index, 1);
+        const nanoseconds = Number(gl.getQueryParameter(query, gl.QUERY_RESULT));
+        gl.deleteQuery(query);
+        if (!Number.isFinite(nanoseconds) || nanoseconds <= 0) discardedInvalid += 1;
+        else gpuSamples.push(nanoseconds / 1e6);
+      }
+    };
+
+    const renderSampleFrame = () => {
+      let query = null;
+      if (timerExtension && issueGpuQueries) {
+        query = gl.createQuery();
+        try {
+          gl.beginQuery(timerExtension.TIME_ELAPSED_EXT, query);
+        } catch {
+          gl.deleteQuery(query);
+          query = null;
+          discardedInvalid += 1;
+        }
+      }
+      this._frame();
+      renderedFrames += 1;
+      if (query) {
+        gl.endQuery(timerExtension.TIME_ELAPSED_EXT);
+        pendingQueries.push(query);
+      }
+      collectQueries();
+    };
+
+    try {
+      // Sample the same animation source used by normal play. The callback must
+      // keep rendering while hidden: a callback that only waits for another rAF
+      // can be suspended by Chromium after still capture even when background
+      // throttling is disabled.
+      this.renderer.setAnimationLoop((timestamp) => {
+        renderSampleFrame();
+        const resolve = frameWaiter;
+        frameWaiter = null;
+        if (resolve) resolve(timestamp);
+      });
+      const warmupStarted = performance.now();
+      while (renderedFrames < minimumWarmupFrames || performance.now() - warmupStarted < minimumWarmupMs) {
+        await nextFrame();
+      }
+
+      info.reset();
+      pendingQueries.splice(0).forEach((query) => gl.deleteQuery(query));
+      gpuSamples.length = 0;
+      discardedInvalid = 0;
+      discardedDisjoint = 0;
+      const resetPoint = {
+        name: 'after-warmup-before-timed-sample',
+        warmupFrames: renderedFrames,
+        warmupDurationMs: Number((performance.now() - warmupStarted).toFixed(3)),
+        requiredFrames: minimumWarmupFrames,
+        requiredDurationMs: minimumWarmupMs,
+        autoReset: false,
+      };
+      const intervals = [];
+      const sampleStarted = performance.now();
+      let previousTimestamp = null;
+      let sampleFrames = 0;
+      while (performance.now() - sampleStarted < sampleDuration) {
+        const timestamp = await nextFrame();
+        if (previousTimestamp !== null) intervals.push(timestamp - previousTimestamp);
+        previousTimestamp = timestamp;
+        if (routeFrames.length) {
+          const progress = Math.min(0.999999, (performance.now() - sampleStarted) / sampleDuration);
+          applyRouteFrame(routeFrames[Math.floor(progress * routeFrames.length)]);
+        }
+        sampleFrames += 1;
+      }
+
+      const sampleEnded = performance.now();
+      const timedRendererCounts = this._rendererInfoSnapshot();
+      issueGpuQueries = false;
+      const queryDeadline = performance.now() + 1000;
+      while (pendingQueries.length && performance.now() < queryDeadline) {
+        await nextFrame();
+        collectQueries();
+      }
+      discardedInvalid += pendingQueries.length;
+      pendingQueries.splice(0).forEach((query) => gl.deleteQuery(query));
+
+      const sorted = [...intervals].filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+      const average = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
+      const percentile = (fraction) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1))];
+      const median = sorted.length % 2
+        ? sorted[Math.floor(sorted.length / 2)]
+        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+      const sortedGpu = [...gpuSamples].sort((a, b) => a - b);
+      const averageGpu = sortedGpu.reduce((sum, value) => sum + value, 0) / sortedGpu.length;
+      const medianGpu = sortedGpu.length % 2
+        ? sortedGpu[Math.floor(sortedGpu.length / 2)]
+        : (sortedGpu[sortedGpu.length / 2 - 1] + sortedGpu[sortedGpu.length / 2]) / 2;
+      const cadenceQualification = classifyAnimationCadence({
+        samples: sorted.length,
+        medianMs: median,
+      });
+      if (!cadenceQualification.qualifying) {
+        cadenceQualification.recovery = 'Rerun visual:perf with --show-window so rAF is not occlusion-throttled.';
+      }
+      return {
+        evidenceClass: performanceClaim
+          ? (cadenceQualification.qualifying ? 'performance' : 'performance-non-qualifying')
+          : 'diagnostic-only',
+        requestedPerformanceClaim: performanceClaim,
+        performanceClaim: performanceClaim && cadenceQualification.qualifying,
+        cadenceQualification,
+        routeFrames: routeFrames.map((frame) => frame.id || null),
+        warmup: resetPoint,
+        sample: {
+          requestedDurationMs: sampleDuration,
+          actualDurationMs: Number((sampleEnded - sampleStarted).toFixed(3)),
+          renderedFrames: sampleFrames,
+          intervals: sorted.length,
+        },
+        cpu: sorted.length ? {
+          samples: sorted.length,
+          averageMs: Number(average.toFixed(3)),
+          medianMs: Number(median.toFixed(3)),
+          p95Ms: Number(percentile(0.95).toFixed(3)),
+          worstMs: Number(sorted.at(-1).toFixed(3)),
+          averageFps: Number((1000 / average).toFixed(3)),
+          onePercentLowFps: Number((1000 / percentile(0.99)).toFixed(3)),
+        } : { samples: 0, reason: 'no-valid-raf-intervals' },
+        gpu: timerExtension ? {
+          supported: true,
+          validSampleCount: sortedGpu.length,
+          validSamplesMs: sortedGpu.map((value) => Number(value.toFixed(3))),
+          discardedInvalid,
+          discardedDisjoint,
+          ...(sortedGpu.length ? {
+            averageMs: Number(averageGpu.toFixed(3)),
+            medianMs: Number(medianGpu.toFixed(3)),
+            p95Ms: Number(sortedGpu[Math.min(sortedGpu.length - 1, Math.ceil(sortedGpu.length * 0.95) - 1)].toFixed(3)),
+            worstMs: Number(sortedGpu.at(-1).toFixed(3)),
+          } : { reason: discardedDisjoint ? 'all-samples-disjoint-or-invalid' : 'no-valid-samples' }),
+        } : {
+          supported: false,
+          reason: isWebGl2 ? 'extension-unavailable' : 'webgl2-unavailable',
+          validSampleCount: 0,
+          discardedInvalid: 0,
+          discardedDisjoint: 0,
+        },
+        renderer: {
+          resetPoint,
+          aggregation: 'cumulative-across-postfx-passes-during-timed-sample',
+          counts: timedRendererCounts,
+          sceneObjects: this._sceneObjectCounts(),
+          postfx: 'effect-composer',
+        },
+      };
+    } finally {
+      info.autoReset = previousAutoReset;
+      this._captureFixedTime = null;
+      this._animationLoopLive = true;
+      this.renderer.setAnimationLoop(this._liveFrame);
+    }
+  }
+
+  visualCaptureVegetationChecksums() {
+    return vegetationTexturePixelChecksums();
   }
 
   _inputs() {
