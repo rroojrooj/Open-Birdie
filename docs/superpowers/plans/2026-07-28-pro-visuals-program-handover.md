@@ -91,19 +91,19 @@
 - Independently reviewed exact corrected code candidate `5d13c1c` / documentation
   descendant `d8040a5` at 98% and rejected it with 0 Critical, 1 High, 3 Medium,
   and 1 Low finding.
-- Corrected all five pass-2 findings in `82e715d`: request-local bounded exact-handle
+- Corrected all five pass-2 findings in `82e715d` plus final contract pin `5215524`: request-local bounded exact-handle
   validation for GET/HEAD/304 with no active asset `Buffer`; real cached-load and
   X→Y→X coordinator cancellation; asynchronous cancellable legacy publication-lock
   acquisition; and `finally` cleanup for late winners, aborts, partial staging
   failures, and publication errors.
 - Verified pass-3 code candidate
-  `82e715d79bdce46a5f8e09c22b37fe7d417eba0e`: focused matrix 129/129,
+  `521552466ece23cee6134285fce1ef4d344b3932`: focused matrix 129/129,
   full suite 492/492, deterministic course-art check, Windows unpacked package,
   staged and unpacked smoke all pass.
 
 ## Left
 
-1. Independently review exact pass-3 code candidate `82e715d`, including the preserved
+1. Independently review exact pass-3 code candidate `5215524`, including the preserved
    synthetic process-close evidence.
 2. If accepted, open the PR, require Windows CI, merge, and prove ancestry or
    integrated-tree equivalence.

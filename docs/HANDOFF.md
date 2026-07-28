@@ -2,14 +2,14 @@
 
 > **UPDATE 2026-07-28 — SP-02a PASS-3 CONTRACT CANDIDATE COMPLETE; REVIEW PENDING.**
 > Branch `codex/sp02a-course-presentation-contract`, code evidence
-> `82e715d79bdce46a5f8e09c22b37fe7d417eba0e`, implementation base
+> `521552466ece23cee6134285fce1ef4d344b3932`, implementation base
 > `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. The candidate adds stable OSM
 > identity/collision-safe caches, v1/v2 HD dispatch, strict deterministic course-art
 > staging, automatic/curated presentation, immutable package preparation, latest-only
 > atomic server activation, and revision-scoped exact-handle asset delivery without
 > changing renderer files. The first code candidate `61d9ab7` was independently
 > rejected at 97% (0C/3H/6M/0L). Corrected candidate `5d13c1c` / docs `d8040a5`
-> was then rejected at 98% (0C/1H/3M/1L). `82e715d` closes the second-pass findings
+> was then rejected at 98% (0C/1H/3M/1L). `82e715d` plus final pin `5215524` close the second-pass findings
 > with request-local exact-handle asset verification and zero active asset buffers,
 > cached/X→Y→X coordinator cancellation, asynchronous cancellable publication-lock
 > waits, and complete staged-temp cleanup.
@@ -23,7 +23,7 @@
 > because Electron emitted no `close`; no orphan remained. Earlier top-level smoke at
 > `b30d3a3` is green and the later final-SHA three-course capture is green. Keep this
 > fact unclassified for independent review and do not broaden SP-02a into SP-00
-> harness lifecycle work. Next: independent pass-3 review of `82e715d`, PR/Windows CI,
+> harness lifecycle work. Next: independent pass-3 review of `5215524`, PR/Windows CI,
 > merge, ancestry, and post-merge 492-test rerun. SP-02b stays blocked until
 > integration.
 
