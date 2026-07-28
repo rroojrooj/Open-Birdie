@@ -417,6 +417,57 @@ test('baseline suite pins three real courses, proof coverage, and the corrected 
   });
 });
 
+test('SP-01 motion suite is a closed adjacent orbit around the corrected Chambers green', () => {
+  const suitePath = path.resolve('tools', 'visual-capture', 'suites', 'sp01-motion.json');
+  const motion = validateSuite(JSON.parse(fs.readFileSync(suitePath, 'utf8')));
+
+  assert.equal(resolveSuite('sp01-motion').path, suitePath);
+  assert.equal(motion.id, 'sp01-motion');
+  assert.deepEqual(motion.capture, {
+    width: 1280,
+    height: 720,
+    deviceScaleFactor: 1,
+    qualityProfile: 'current-default',
+    readinessTimeoutMs: 120000,
+    settleFrames: 3,
+    fixedTimeSeconds: 12.5,
+  });
+  assert.equal(motion.courses.length, 1);
+
+  const [chambers] = motion.courses;
+  assert.deepEqual({
+    id: chambers.id,
+    cacheFile: chambers.cacheFile,
+    expectedName: chambers.expectedName,
+    hdPolicy: chambers.hdPolicy,
+  }, {
+    id: 'chambers-bay',
+    cacheFile: 'chambers-bay.json',
+    expectedName: 'Chambers Bay',
+    hdPolicy: 'optional',
+  });
+  assert.equal(chambers.frames.length, 5);
+  assert.ok(chambers.frames.every((frameValue) =>
+    frameValue.role === 'close-green' &&
+    frameValue.target === 'canvas' &&
+    frameValue.mode === 'free' &&
+    frameValue.band === 'feature'
+  ));
+
+  const yaws = chambers.frames.map((frameValue) => frameValue.pose.yaw);
+  assert.deepEqual(yaws, [-1, -0.5, 0, 0.5, 1]);
+  assert.ok(yaws.slice(1).every((yaw, index) => yaw - yaws[index] === 0.5));
+  for (const frameValue of chambers.frames) {
+    assert.deepEqual(
+      { ...frameValue.pose, yaw: 0 },
+      { tx: 193, ty: -263, dist: 30, pitch: -28, yaw: 0, hOff: 0 },
+    );
+    assert.deepEqual(frameValue.judges, [
+      'authored green inner edge and collar remain continuous through adjacent orbit poses',
+    ]);
+  }
+});
+
 test('CLI parser recognizes all modes and capture flags', () => {
   for (const mode of ['capture', 'smoke', 'perf']) {
     assert.equal(parseCliArgs([mode]).mode, mode);
