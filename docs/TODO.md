@@ -2,7 +2,7 @@
 
 ## ACTIVE ROADMAP: Pro Visuals Program (2026-07-23)
 
-### SP-02a CoursePresentation contract — pass-3 candidate complete, review pending (2026-07-28)
+### SP-02a CoursePresentation contract — review accepted, ready for integration (2026-07-28)
 
 Branch `codex/sp02a-course-presentation-contract` now has a renderer-free SP-02a
 pass-3 candidate at code evidence commit `521552466ece23cee6134285fce1ef4d344b3932`
@@ -28,10 +28,14 @@ from display names.
   cancellation, replaces the blocking legacy publication lock wait with an
   asynchronous cancellable wait, and guarantees staged-temp cleanup on late-winner,
   abort, partial-write, and publication-error paths.
+- Independent pass-3 review accepted exact code `521552466ece23cee6134285fce1ef4d344b3932`
+  with reviewed documentation candidate `9ed6cbf7de50e992c16e3009a556f318b899abe5`
+  at 98% confidence: **ACCEPT / merge YES**, 0 Critical, 0 High, 0 Medium, and
+  0 Low findings. SP-02a is `REVIEW_ACCEPTED / READY_FOR_INTEGRATION`, not Done.
 - Required focused matrix: **129/129**. Full `npm test`: **492/492**.
   `npm run check:course-art`, `npm run pack`, and unpacked packaged smoke all pass;
-  the packaged root contains one valid pack and the application asar has zero
-  Ajv/esbuild, source-schema, or authoring-root matches.
+  the packaged root contains one valid pack and all 913 application-asar entries have
+  zero Ajv/esbuild, source-schema, or authoring-root matches.
 - Same-input RTX 3060 evidence:
   - clean base:
     `.shots/visual/sp02a/before-identity-retry/baseline-2026-07-28T130251-740Z`
@@ -45,18 +49,18 @@ from display names.
   page-console error or fatal event, but the top-level harness reported
   `CHILD_TIMEOUT` because Electron did not emit `close`; no owned orphan remained.
   The earlier clean top-level synthetic smoke at `b30d3a3` is green, and the later
-  final-SHA three-course hardware capture is green. Preserve the failed artifacts
-  under `.shots/visual/sp02a/smoke-final*` for independent severity review; do not
-  expand SP-02a into unrelated SP-00 harness lifecycle work.
+  final-SHA three-course hardware capture is green. Independent pass-3 review
+  classified the timeout as a non-finding. Preserve the artifacts under
+  `.shots/visual/sp02a/smoke-final*`; do not expand SP-02a into unrelated SP-00
+  harness lifecycle work.
 - Fixture preparation (100 measured iterations): automatic/no-asset median/p95
   `0.109/0.186 ms`; curated median/p95 `1.709/2.140 ms`; staged runtime assets
   `0 files / 0 bytes`. Five alternating post-warmup activations retained none of the
   four obsolete public packages, kept timers at zero and server handles flat, and
   showed `+16,712` bytes of GC heap noise.
-- Next gate: independent pass-3 review of exact corrected code candidate `5215524`,
-  including the recorded shutdown evidence,
-  then PR/Windows CI/merge and a clean post-merge full suite. SP-02b remains blocked
-  until SP-02a is accepted and integrated.
+- Next gate: open the PR, require Windows CI, merge, prove candidate ancestry or
+  integrated-tree equivalence, and run the clean 492-test post-merge suite. SP-02b
+  remains blocked until SP-02a is integrated.
 
 ### SP-01 P2a surface recovery — implementation/evidence complete (2026-07-28)
 

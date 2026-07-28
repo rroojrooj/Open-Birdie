@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-28
 **Program status:** ACTIVE
-**Immediate package:** SP-02a — independent pass-3 review and integration
+**Immediate package:** SP-02a — reviewed candidate integration
 
 ## Done
 
@@ -100,15 +100,19 @@
   `521552466ece23cee6134285fce1ef4d344b3932`: focused matrix 129/129,
   full suite 492/492, deterministic course-art check, Windows unpacked package,
   staged and unpacked smoke all pass.
+- Independent pass-3 review accepted exact code `521552466ece23cee6134285fce1ef4d344b3932`
+  and reviewed documentation `9ed6cbf7de50e992c16e3009a556f318b899abe5`
+  at 98% confidence with merge YES and 0 Critical, 0 High, 0 Medium, and 0 Low
+  findings. The 24/24 visual exact comparison remains valid, the 913-entry asar scan
+  has zero forbidden matches, and the synthetic process-close timeout is a
+  non-finding. Status is `REVIEW_ACCEPTED / READY_FOR_INTEGRATION`, not Done.
 
 ## Left
 
-1. Independently review exact pass-3 code candidate `5215524`, including the preserved
-   synthetic process-close evidence.
-2. If accepted, open the PR, require Windows CI, merge, and prove ancestry or
+1. Open the PR, require Windows CI, merge, and prove ancestry or
    integrated-tree equivalence.
-3. Rerun the 492-test full suite on the integrated base and close the Done Record.
-4. Keep SP-02b renderer work blocked until those gates complete.
+2. Rerun the 492-test full suite on the integrated base and close the Done Record.
+3. Keep SP-02b renderer work blocked until those gates complete.
 
 ## Current facts
 
