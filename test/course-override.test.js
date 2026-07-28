@@ -60,3 +60,15 @@ test('loadSurfaceOverride: null when no sidecar, parsed object when present', ()
   fs.writeFileSync(path.join(dir, slug('Test Links') + '.surfaces.json'), JSON.stringify({ pins: { 1: [5, 6] } }));
   assert.deepEqual(loadSurfaceOverride(course, dir).pins['1'], [5, 6]);
 });
+
+test('applySurfaceOverride mutates only the explicitly supplied clone', () => {
+  const original = baseCourse();
+  const cloned = structuredClone(original);
+  applySurfaceOverride(cloned, {
+    pins: { 1: [7, 8] },
+    surfaces: [{ kind: 'green', poly: [[0, 0], [10, 0], [10, 10]] }],
+  });
+  assert.deepEqual(original.holes[0].pin, [200, 200]);
+  assert.equal(original.surfaces.length, 0);
+  assert.deepEqual(cloned.holes[0].pin, [7, 8]);
+});

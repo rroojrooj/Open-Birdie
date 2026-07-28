@@ -29,3 +29,14 @@ test('the machine-local override wins over the curated fixture', () => {
 test('returns null when neither exists', () => {
   assert.equal(loadSurfaceOverride(course, tmp(), tmp()), null);
 });
+
+test('legacy gameplay adapter clones returned data and exposes no file path', () => {
+  const { loadLegacyGameplayOverlay } = require('../lib/course');
+  const dataDir = tmp();
+  fs.writeFileSync(path.join(dataDir, fname), JSON.stringify({ pins: { 1: [5, 6] } }));
+  const first = loadLegacyGameplayOverlay({ course, dataDir, curatedDir: tmp() });
+  first.pins['1'][0] = 999;
+  const second = loadLegacyGameplayOverlay({ course, dataDir, curatedDir: tmp() });
+  assert.deepEqual(second, { pins: { 1: [5, 6] } });
+  assert.doesNotMatch(JSON.stringify(second), /ob-ovr-|[A-Za-z]:\\/);
+});

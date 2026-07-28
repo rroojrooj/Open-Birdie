@@ -464,8 +464,31 @@ test('runtime loader validates staged index, identity, manifest, and private ass
   });
   assert.equal(valid.status, 'valid');
   assert.equal(valid.runtimePack.courseId, profile.courseId);
+  assert.deepEqual(valid.selection, {
+    mode: 'stable',
+    requestedCourseId: profile.courseId,
+    selectedCourseId: profile.courseId,
+  });
   assert.deepEqual(Object.keys(valid.runtimePack.assetPaths), ['turf']);
   assert.ok(!JSON.stringify(valid.runtimePack).includes(runtimeRoot), 'private paths are non-enumerable');
+
+  const legacySelected = loadRuntimeCourseArt({
+    runtimeRoot,
+    courseId: 'osm:way:99999',
+    legacyIdentity: {
+      name: profile.displayName,
+      origin: {
+        lat: profile.legacyMatch.origin.lat,
+        lon: profile.legacyMatch.origin.lon,
+      },
+    },
+  });
+  assert.equal(legacySelected.status, 'valid');
+  assert.deepEqual(legacySelected.selection, {
+    mode: 'legacy',
+    requestedCourseId: 'osm:way:99999',
+    selectedCourseId: profile.courseId,
+  });
 
   assert.equal(loadRuntimeCourseArt({
     runtimeRoot,
