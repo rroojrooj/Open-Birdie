@@ -26,9 +26,9 @@ visual gaps defined by the design specification and records the remaining gap ho
 
 | Artifact | Path | Purpose |
 |---|---|---|
-| Design specification | `docs/superpowers/specs/2026-07-23-pro-visuals-program-design.md` | Locked product and architecture decisions |
-| Master implementation plan | `docs/superpowers/plans/2026-07-23-pro-visuals-master-plan.md` | Work breakdown, dependency graph, and sub-plan contract |
-| Program test strategy | `docs/superpowers/plans/2026-07-23-pro-visuals-test-plan.md` | Cross-program verification contract |
+| Design specification source | Protected original worktree: `docs/superpowers/specs/2026-07-23-pro-visuals-program-design.md` | User-authored architecture source; do not modify or silently import it |
+| Master-plan source | Protected original worktree: `docs/superpowers/plans/2026-07-23-pro-visuals-master-plan.md` | User-authored breakdown and sub-plan contract; accepted current-base sub-plans restate their owned requirements |
+| Program-test source | Protected original worktree: `docs/superpowers/plans/2026-07-23-pro-visuals-test-plan.md` | User-authored verification source; accepted current-base sub-plans name their exact test paths |
 | Program charter | `docs/superpowers/plans/2026-07-28-pro-visuals-program-charter.md` | Authority, isolation, review, and integration policy |
 | Program ledger | `docs/superpowers/plans/2026-07-28-pro-visuals-program-ledger.md` | Live package status and evidence |
 | Program handover | `docs/superpowers/plans/2026-07-28-pro-visuals-program-handover.md` | Resume point, risks, and immediate actions |

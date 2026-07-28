@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-28
 **Program status:** ACTIVE
-**Immediate package:** SP-01 — recover, verify, and merge P2a
+**Immediate package:** SP-02a — CoursePresentation contract
 
 ## Done
 
@@ -34,15 +34,43 @@
 - Independently reviewed the first candidate at 97% confidence. Code and static
   visual judgments passed, but the candidate was rejected for one Medium evidence
   gap: no adjacent-pose/orbit record proved the claimed movement stability.
+- Added a closed five-pose adjacent-yaw suite and captured clean RTX 3060 evidence at
+  exact Git SHA `a261b564946e000f1688e3e7138f470441f89138`.
+- Accepted corrected candidate `7e18723e294153ff086d222d8ecf94bcc3ca41e1`
+  at 99% confidence with no unresolved Critical, High, or Medium findings.
+- Merged SP-01 through PR #43 as
+  `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`; Windows CI passed, candidate
+  ancestry was verified, and the clean post-merge suite passed 382/382.
+- Completed the current-base SP-02a code/API census and authored
+  `2026-07-28-sp02a-course-presentation-contract.md` for independent review.
+- Kept the user-authored 2026-07-23 source documents untouched in the protected
+  original worktree. The SP-02a plan is self-contained and records how it resolves
+  their six contract contradictions.
+- Ran independent plan-engineering review on draft `dc8814f`. It rejected dispatch at
+  97% confidence with 3 High, 10 Medium, and 2 Low findings.
+- Incorporated every recommended correction, including dependency-free packaged
+  validator proof, explicit prepared/active transaction types, exact staged runtime
+  schemas/tree, deterministic canonical bytes, exact-handle asset hashing, GLB
+  parsing, bootstrap ordering, safe dependency order, one rollback gate, concurrent
+  cache acquisition, and Windows path/header hardening.
+- Ran pass-2 review of exact candidate `6c3494d0b0193a54052ab03183e95f6a50fc3c51`.
+  It closed every prior High and rejected at 96% for one Medium and two Low findings:
+  same-identity supersession could abort its shared fetch; source-less v1 build/read
+  wording and retained private active-state ownership were ambiguous.
+- Corrected all three findings by assigning abort ownership to the source-keyed
+  acquisition coordinator, adding exact same-/different-ID abort-capable race tests,
+  limiting source-less v1 support to already-built manifests, and defining private
+  `ActiveCourseState` ownership.
+- Accepted exact SP-02a plan candidate
+  `f8693c3c2995a674d8f5827682d38a820deb227d` in pass 3 at 98% confidence with
+  zero Critical, High, Medium, or Low findings and dispatch YES.
 
 ## Left
 
-1. Add and capture the smallest deterministic Chambers adjacent-pose stability suite.
-2. Record its clean manifest, exact Git SHA, hardware identity, and shimmer verdict.
-3. Rerun focused tests, full tests, and `git diff --check`.
-4. Independently re-review the corrected SP-01 candidate and integrate its PR only
-   after all Medium-or-higher findings are cleared.
-5. Start the reviewed SP-02a contract lane when capacity permits.
+1. Merge the accepted plan and record the exact implementation base.
+2. Assign one isolated SP-02a implementation lane.
+3. Execute Tasks 1–9 in the accepted dependency order; keep SP-02b renderer work
+   blocked.
 
 ## Current facts
 
@@ -75,14 +103,14 @@ Do not run `git reset`, `git clean`, `git pull`, or broad file-copy operations i
 The accepted transition is:
 
 ```text
-SP-01 ACTIVE (evidence correction)
-    -> corrected candidate re-review and verification
+SP-01 DONE
+    -> SP-02a plan authoring and independent review
 ```
 
-No SP-01 candidate has been accepted into the current program base yet.
+SP-01 is present on `origin/main`; SP-02a has no accepted candidate yet.
 
 ## Your turn
 
-No user decision is required for the current in-scope technical recovery. The PIC can
-continue through plan review and implementation. The next user-reserved decision is a
-material scope change, a deliberate never-regress exception, or final visual acceptance.
+No user decision is required to draft and review SP-02a. The next user-reserved
+decision is a material scope change, a deliberate never-regress exception, or final
+visual acceptance.
