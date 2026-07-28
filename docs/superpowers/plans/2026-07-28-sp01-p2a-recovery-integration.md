@@ -1,6 +1,6 @@
 # SP-01 — P2a Recovery, Verification, and Integration Plan
 
-**Status:** READY
+**Status:** ACTIVE
 **Parent specification:** [`../specs/2026-07-23-pro-visuals-program-design.md`](../specs/2026-07-23-pro-visuals-program-design.md)
 **Master plan:** [`2026-07-23-pro-visuals-master-plan.md`](2026-07-23-pro-visuals-master-plan.md)
 **Program test strategy:** [`2026-07-23-pro-visuals-test-plan.md`](2026-07-23-pro-visuals-test-plan.md)
@@ -595,7 +595,7 @@ Complete only after integration:
 
 | Field | Evidence |
 |---|---|
-| Implementation owner/worktree | TBD |
+| Implementation owner/worktree | `/root/sp01_implementation`; `C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp01-p2a-recovery` |
 | Base commit | `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5` |
 | Candidate commit | TBD |
 | Pull request / merge commit | TBD |

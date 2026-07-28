@@ -23,15 +23,17 @@
 - Ran a recovery audit and two-pass independent plan gate. The first pass rejected six
   Medium gaps; all were corrected; the second pass accepted at 97% confidence with no
   remaining blockers.
+- Dispatched `/root/sp01_implementation` in
+  `C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp01-p2a-recovery` on
+  `codex/sp01-p2a-recovery`; focused baseline tests pass 61/61.
 
 ## Left
 
-1. Dispatch SP-01 to its own implementation branch/worktree.
-2. Correct the Chambers proof camera and capture the clean before evidence.
-3. Recover and correct the P2a shader work without regressing current `main`.
-4. Run focused shader tests, full tests, and canonical three-course captures.
-5. Independently review SP-01, resolve all blocking findings, and integrate its PR.
-6. Start the reviewed SP-02a contract lane in parallel when capacity permits.
+1. Correct the Chambers proof camera and capture the clean before evidence.
+2. Recover and correct the P2a shader work without regressing current `main`.
+3. Run focused shader tests, full tests, and canonical three-course captures.
+4. Independently review SP-01, resolve all blocking findings, and integrate its PR.
+5. Start the reviewed SP-02a contract lane in parallel when capacity permits.
 
 ## Current facts
 
@@ -60,8 +62,7 @@ Do not run `git reset`, `git clean`, `git pull`, or broad file-copy operations i
 The accepted transition is:
 
 ```text
-SP-01 READY
-    -> isolated implementation lane
+SP-01 ACTIVE
     -> candidate review and verification
 ```
 

@@ -8,8 +8,8 @@
 ## 1. Executive state
 
 - SP-00 is retrospectively accepted and integrated through PR #40.
-- SP-01 has a reviewed current-base plan and is ready for an isolated implementation
-  owner.
+- SP-01 has a reviewed current-base plan and is active in an isolated implementation
+  lane.
 - A detailed 2026-07-07 P2a plan and implementation branch exist, but they predate the
   current base. Their implementation is evidence, not yet an accepted SP-01 candidate.
 - SP-02a is eligible for a parallel planning lane after SP-01 recovery is dispatched.
@@ -21,7 +21,7 @@
 | Unit | Status | Owner/lane | Depends on | Candidate / integrated evidence | Next gate |
 |---|---|---|---|---|---|
 | SP-00 Visual benchmark | DONE | Historical `codex/sp00-visual-benchmark` | — | Candidate `7d89b6ac24eb965039d5bdae6a30c943718ea81e`; PR #40; merge `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`; CI green; `npm test` 375/375 | Harness is mandatory evidence path for every later visual unit |
-| SP-01 P2a recovery | READY | No implementation owner yet | SP-00 | Reviewed plan `2026-07-28-sp01-p2a-recovery-integration.md`; recovery audit 92%; plan gate accepted at 97% with zero blockers | Assign `codex/sp01-p2a-recovery` isolated lane |
+| SP-01 P2a recovery | ACTIVE | `/root/sp01_implementation`; `codex/sp01-p2a-recovery` | SP-00 | Reviewed plan `2026-07-28-sp01-p2a-recovery-integration.md`; recovery audit 92%; plan gate accepted at 97% with zero blockers; focused baseline tests 61/61 | Correct proof camera, commit, then produce before capture/perf evidence |
 | SP-02a CoursePresentation contract | UNCLAIMED | — | SP-00 | Master-plan scope only | Author and review sub-plan; may run alongside SP-01 |
 | SP-02b Activation transaction | BLOCKED | — | SP-01, SP-02a | — | Both predecessor units integrated |
 | SP-03 World context | BLOCKED | — | SP-02b | — | Reviewed sub-plan after SP-02b |
@@ -106,6 +106,6 @@ Until those are resolved, the historical branch remains **REPORTED**, not accept
 
 ## 7. Current bottleneck
 
-SP-01 needs an isolated implementation owner to execute the accepted sequence. Its
-first evidence gate is the corrected authored-green camera commit plus clean before
-capture and before-performance run.
+SP-01 is executing in an isolated lane. Its current bottleneck is the first evidence
+gate: corrected authored-green camera commit plus clean before capture and
+before-performance run.
