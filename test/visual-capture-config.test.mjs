@@ -21,6 +21,7 @@ import {
   assertCourseIdentity,
   buildCourseInputManifest,
   buildSharedRootManifest,
+  canonicalizePath,
   checkCourseCache,
   parseCliArgs,
   resolveSuite,
@@ -825,6 +826,8 @@ test('comparison publishes by staging rename and cleans only its owned staging o
   const output = path.join(temp, 'final-comparison');
   writeComparisonRun(before);
   writeComparisonRun(after);
+  const canonicalOutput = canonicalizePath(output);
+  const canonicalTemp = canonicalizePath(temp);
   let observedStaging;
   assert.throws(
     () => runComparison(
@@ -834,9 +837,9 @@ test('comparison publishes by staging rename and cleans only its owned staging o
         stagingNonce: () => 'fixed-nonce',
         beforePublish: ({ stagingDir, finalDir }) => {
           observedStaging = stagingDir;
-          assert.equal(finalDir, output);
+          assert.equal(finalDir, canonicalOutput);
           assert.match(path.basename(stagingDir), /^final-comparison[.]staging-\d+-fixed-nonce$/);
-          assert.equal(path.dirname(stagingDir), temp);
+          assert.equal(path.dirname(stagingDir), canonicalTemp);
           assert.equal(fs.existsSync(path.join(stagingDir, 'comparison.json')), true);
           assert.equal(fs.existsSync(path.join(stagingDir, 'report.md')), true);
           assert.equal(fs.existsSync(path.join(stagingDir, 'diffs', 'course--frame.png')), true);
@@ -858,7 +861,7 @@ test('comparison publishes by staging rename and cleans only its owned staging o
     { mode: 'compare', before, after, output, threshold: 2 },
     { stdout: SILENT_STDOUT, stagingNonce: () => 'retry-nonce' },
   );
-  assert.equal(retried.output, output);
+  assert.equal(retried.output, canonicalOutput);
   assert.equal(fs.existsSync(path.join(output, 'comparison.json')), true);
   assert.equal(
     fs.readdirSync(temp).some((name) => name.startsWith('final-comparison.staging-')),

@@ -15,7 +15,7 @@ import {
 import { vegetationTextureCommands } from '../public/render/vegetation.js';
 
 const require = createRequire(import.meta.url);
-const { resolveTask0Output } = require('../tools/visual-capture/output-path.cjs');
+const { canonicalizeWithMissing, resolveTask0Output } = require('../tools/visual-capture/output-path.cjs');
 
 test('HD acknowledgement evidence records request IDs but only acknowledges successful IDs', () => {
   assert.deepEqual(buildHdAckEvidence(['bundle-b', 'bundle-a'], { ok: false, code: 'REJECTED' }), {
@@ -261,7 +261,7 @@ test('Task-0 output containment accepts descendants and rejects root/traversal/s
   fs.mkdirSync(root, { recursive: true });
   assert.equal(
     resolveTask0Output(root, path.join(root, 'probe-a')),
-    path.join(root, 'probe-a'),
+    canonicalizeWithMissing(path.join(root, 'probe-a')),
   );
   assert.throws(() => resolveTask0Output(root, root), /OUTPUT_PATH_ROOT/);
   assert.throws(() => resolveTask0Output(root, path.join(root, '..', 'escaped')), /OUTPUT_PATH_ESCAPE/);
@@ -276,4 +276,18 @@ test('Task-0 output containment accepts descendants and rejects root/traversal/s
     if (error.code !== 'EPERM') throw error;
     t.diagnostic('symlink escape assertion skipped: junction creation requires Windows developer privileges');
   }
+});
+
+test('Task-0 output returns canonical identity when an existing parent has an alias spelling', () => {
+  const aliasRoot = path.resolve('C:\\Users\\RUNNER~1\\capture-root');
+  const canonicalRoot = path.resolve('C:\\Users\\runneradmin\\capture-root');
+  const requested = path.join(aliasRoot, 'probe-a');
+  const result = resolveTask0Output(aliasRoot, requested, {
+    existsSync: (candidate) => candidate === aliasRoot,
+    realpathSync: (candidate) => {
+      assert.equal(candidate, aliasRoot);
+      return canonicalRoot;
+    },
+  });
+  assert.equal(result, path.join(canonicalRoot, 'probe-a'));
 });
