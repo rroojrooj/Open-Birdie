@@ -10,11 +10,11 @@ worktree without modifying it
 **Planning/review base:** `origin/main` at
 `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`  
 **Implementation base:** `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`
-(PR #44 merge; accepted plan candidate ancestry verified)  
+(PR #44 merge; accepted plan candidate ancestry verified)
 **Target branch:** `codex/sp02a-course-presentation-contract`  
 **Owner/module:** `/root/sp01_implementation` in isolated worktree
 `C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp02a-course-presentation-contract`;
-server-side course package contract and local curated-asset gateway  
+server-side course package contract and local curated-asset gateway
 **Estimate:** 5–8 focused engineering days plus packaged-root and hardware smoke  
 **Dependencies:** SP-00 and SP-01 accepted; SP-02b remains blocked until SP-02a is
 accepted and integrated
