@@ -152,6 +152,29 @@ test('exact GET, HEAD, and verified conditional 304 publish immutable nosniff he
   assert.equal(conditional.headers['x-content-type-options'], 'nosniff');
 });
 
+test('Windows extended canonical paths retain containment and opened-file verification', {
+  skip: process.platform !== 'win32',
+}, async (t) => {
+  const item = fixture(t);
+  const real = fs.promises;
+  const fsPromises = {
+    lstat: (...args) => real.lstat(...args),
+    async realpath(...args) {
+      const canonical = await real.realpath(...args);
+      return canonical.startsWith('\\\\?\\') ? canonical : `\\\\?\\${canonical}`;
+    },
+    open: (...args) => real.open(...args),
+  };
+  const port = await startServer(t, item, { fsPromises });
+  const response = await request(port, assetPath(item));
+  assert.equal(
+    response.status,
+    200,
+    item.internalErrors.map((error) => error.message).join('\n'),
+  );
+  assert.ok(response.body.equals(item.bytes));
+});
+
 test('stale revision, unknown key, encoded traversal, malformed and reserved keys are typed and redacted', async (t) => {
   const item = fixture(t);
   const port = await startServer(t, item);
