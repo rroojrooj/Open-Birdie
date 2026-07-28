@@ -64,11 +64,16 @@
 - Accepted exact SP-02a plan candidate
   `f8693c3c2995a674d8f5827682d38a820deb227d` in pass 3 at 98% confidence with
   zero Critical, High, Medium, or Low findings and dispatch YES.
+- Merged the accepted plan through PR #44 as
+  `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`; Windows CI passed, accepted
+  candidate ancestry was verified, and the clean post-merge suite passed 382/382.
+- Pinned that merge as the exact SP-02a implementation base and assigned
+  `/root/sp01_implementation` on `codex/sp02a-course-presentation-contract`.
 
 ## Left
 
-1. Merge the accepted plan and record the exact implementation base.
-2. Assign one isolated SP-02a implementation lane.
+1. Create the isolated SP-02a worktree at exact base `2dd82c7`.
+2. Dispatch the assigned implementation owner.
 3. Execute Tasks 1–9 in the accepted dependency order; keep SP-02b renderer work
    blocked.
 
@@ -107,7 +112,9 @@ SP-01 DONE
     -> SP-02a plan authoring and independent review
 ```
 
-SP-01 is present on `origin/main`; SP-02a has no accepted candidate yet.
+SP-01 and the accepted SP-02a implementation plan are present on `origin/main`.
+SP-02a implementation starts from exact base
+`2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`.
 
 ## Your turn
 
