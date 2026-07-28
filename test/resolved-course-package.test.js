@@ -475,3 +475,18 @@ test('unsupported terrain features reject only curated presentation and still pr
   assert.deepEqual(candidate.publicAssetManifest, {});
   assert.deepEqual(candidate.terrainPatches, []);
 });
+
+test('typed HD v2 identity rejection is preserved in package diagnostics', async () => {
+  const candidate = await prepare({
+    resolveHd: () => ({
+      status: 'rejected',
+      code: 'HD_SOURCE_ID_REQUIRED',
+      message: 'private path C:\\Users\\alice\\bundle',
+    }),
+  });
+
+  assert.equal(candidate.hdDescriptors.length, 0);
+  assert.equal(candidate.diagnostics.length, 1);
+  assert.equal(candidate.diagnostics[0].code, 'HD_SOURCE_ID_REQUIRED');
+  assert.doesNotMatch(JSON.stringify(candidate.diagnostics), /alice|[A-Za-z]:\\/u);
+});

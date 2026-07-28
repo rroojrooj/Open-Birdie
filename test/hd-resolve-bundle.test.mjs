@@ -157,6 +157,19 @@ test('unsupported fingerprint version never activates and returns typed rejectio
   assert.equal(resolved.code, 'HD_FINGERPRINT_VERSION_UNSUPPORTED');
 });
 
+test('v2 manifest missing stable identity remains a typed runtime rejection', async () => {
+  const dataDir = tmp('hd-data-');
+  const { bundleId } = await publishFixture(dataDir);
+  const manifestPath = path.join(dataDir, 'hd-courses', 'bandon', 'bundles', bundleId, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  delete manifest.course.courseId;
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const resolved = resolveHdBundles(course, { dataDir });
+  assert.equal(resolved.status, 'rejected');
+  assert.equal(resolved.code, 'HD_SOURCE_ID_REQUIRED');
+});
+
 test('resolveHdBundles is absent when no hd-courses dir', () => {
   assert.equal(resolveHdBundles(course, { dataDir: tmp('hd-empty-') }).status, 'absent');
 });
