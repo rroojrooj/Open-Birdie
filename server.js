@@ -206,10 +206,18 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/load-course') {
         const result = await activationManager.activate(body);
         if (result.status === 'superseded') {
-          return json(res, { ok: false, diagnostic: result.diagnostic }, 409);
+          return json(res, {
+            ok: false,
+            error: result.diagnostic.message,
+            diagnostic: result.diagnostic,
+          }, 409);
         }
         if (result.status === 'failed') {
-          return json(res, { ok: false, diagnostic: result.diagnostic }, 500);
+          return json(res, {
+            ok: false,
+            error: result.diagnostic.message,
+            diagnostic: result.diagnostic,
+          }, 500);
         }
         // geometry is heavy (elevation grid) — clients refetch it themselves
         return json(res, {
@@ -318,16 +326,14 @@ const server = http.createServer(async (req, res) => {
     fs.createReadStream(full).pipe(res);
   } catch (err) {
     console.error(`[HTTP] ${p}:`, err.message);
-    json(res, {
-      ok: false,
-      diagnostic: createCourseDiagnostic({
+    const diagnostic = createCourseDiagnostic({
         code: 'HTTP_REQUEST_FAILED',
         severity: 'error',
         stage: 'http',
         message: 'The request could not be completed.',
         recovery: 'Retry the request.',
-      }),
-    }, 500);
+      });
+    json(res, { ok: false, error: diagnostic.message, diagnostic }, 500);
   }
 });
 

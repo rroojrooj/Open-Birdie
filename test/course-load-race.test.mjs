@@ -85,33 +85,44 @@ test('server integration keeps cached B active when older network A fails late',
   };
 
   const server = require('../server.js');
-  await server.ready;
+  const ready = await server.ready;
+  const activateUrl = `http://127.0.0.1:${ready.httpPort}/api/load-course`;
+  const postActivation = (body) => nativeFetch(activateUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
   try {
-    const activateA = server.activationManager.activate({
+    const activateA = postActivation({
       name: 'Slow A',
       osmType: 'way',
       osmId: 1,
       bbox: [46.9, 47.1, -122.1, -121.9],
     });
     await fetchStarted;
-    const activateB = server.activationManager.activate({
+    const responseB = await postActivation({
       name: 'Cached B',
       osmType: 'way',
       osmId: 2,
     });
-    const resultB = await activateB;
+    const resultB = await responseB.json();
     await new Promise((resolve) => setImmediate(resolve));
     if (!fetchAborted) releaseFetch();
-    const resultA = await activateA;
+    const responseA = await activateA;
+    const resultA = await responseA.json();
 
     assert.equal(fetchAborted, true, 'newer different-ID activation aborts the native fetch');
-    assert.equal(resultB.status, 'committed');
+    assert.equal(responseB.status, 200);
+    assert.equal(resultB.ok, true);
     assert.equal(resultB.courseRevision, 1);
-    assert.equal(resultA.status, 'superseded');
+    assert.equal(responseA.status, 409);
+    assert.equal(resultA.ok, false);
+    assert.equal(resultA.diagnostic.code, 'ACTIVATION_SUPERSEDED');
+    assert.equal(resultA.error, resultA.diagnostic.message);
     assert.equal(server.activationManager.current().courseId, 'osm:way:2');
 
     const geometry = await nativeFetch(
-      `http://127.0.0.1:${(await server.ready).httpPort}/api/course-geometry`,
+      `http://127.0.0.1:${ready.httpPort}/api/course-geometry`,
     ).then((response) => response.json());
     assert.equal(geometry.courseId, 'osm:way:2');
     assert.equal(geometry.courseRevision, 1);
@@ -124,7 +135,7 @@ test('server integration keeps cached B active when older network A fails late',
     assert.equal(server.activationManager.current().courseId, 'osm:way:3');
 
     const rejectedResponse = await nativeFetch(
-      `http://127.0.0.1:${(await server.ready).httpPort}/api/load-course`,
+      activateUrl,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,6 +148,7 @@ test('server integration keeps cached B active when older network A fails late',
     const rejected = await rejectedResponse.json();
     assert.equal(rejectedResponse.status, 500);
     assert.equal(rejected.diagnostic.code, 'ACTIVATION_PREPARE_FAILED');
+    assert.equal(rejected.error, rejected.diagnostic.message);
     assert.doesNotMatch(JSON.stringify(rejected), /alice|hunter2|secret|stack|[A-Za-z]:\\/iu);
     assert.equal(server.activationManager.current().courseId, 'osm:way:3');
   } finally {
