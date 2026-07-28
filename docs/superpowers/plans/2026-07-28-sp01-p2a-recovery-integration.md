@@ -640,7 +640,9 @@ Current-program review:
 | Legacy recovery audit | GO with correction, no wholesale merge | 92% | Invalid green camera, absent raw bunker channel, silent smoothing failure, SP-00 readiness preservation |
 | Independent plan gate, pass 1 | REJECT | 93% | Six Medium: perf comparison, exact camera, test carve-out, additive RGB semantics, recovery order, runtime fallback test |
 | Independent plan gate, pass 2 | ACCEPT | 97% | All six corrected; zero unresolved Critical/High/Medium findings |
+| Independent candidate review, pass 1 (`b4ab4a237777d217efeaeae874343e5a7f238c29`) | REJECT | 97% | One Medium evidence gap: fixed frames did not satisfy the required hardware adjacent-pose/orbit shimmer check; one non-blocking Low shared-texture disposal observation |
 
-Dispatch verdict: **READY / YES**. Implementation must follow the exact staged sequence
-in Section 2 and return for independent candidate review; plan acceptance is not code
-acceptance.
+Dispatch verdict: **ACTIVE / EVIDENCE CORRECTION**. Implementation followed the staged
+sequence and passed its code/static/performance checks, but the first candidate remains
+unaccepted until clean adjacent-pose evidence is recorded and the new exact SHA passes
+independent re-review.

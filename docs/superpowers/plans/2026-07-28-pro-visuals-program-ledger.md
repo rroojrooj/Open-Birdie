@@ -3,13 +3,13 @@
 **Program status:** ACTIVE
 **Last updated:** 2026-07-28
 **Integration branch:** `codex/pro-visuals-program-pic`
-**Current accepted base:** `origin/main` at `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`
+**Current accepted base:** `origin/main` at `57e7bffd539e4f5724bb62735003f28a45bd86d0`
 
 ## 1. Executive state
 
 - SP-00 is retrospectively accepted and integrated through PR #40.
-- SP-01 has a reviewed current-base plan and is active in an isolated implementation
-  lane.
+- SP-01 has a reviewed current-base plan and is active in an isolated correction
+  lane after its first candidate review found one Medium evidence gap.
 - A detailed 2026-07-07 P2a plan and implementation branch exist, but they predate the
   current base. Their implementation is evidence, not yet an accepted SP-01 candidate.
 - SP-02a is eligible for a parallel planning lane after SP-01 recovery is dispatched.
@@ -21,7 +21,7 @@
 | Unit | Status | Owner/lane | Depends on | Candidate / integrated evidence | Next gate |
 |---|---|---|---|---|---|
 | SP-00 Visual benchmark | DONE | Historical `codex/sp00-visual-benchmark` | — | Candidate `7d89b6ac24eb965039d5bdae6a30c943718ea81e`; PR #40; merge `88c67d6e1eda2adcc52b8a84643c1b7f15d19ce5`; CI green; `npm test` 375/375 | Harness is mandatory evidence path for every later visual unit |
-| SP-01 P2a recovery | ACTIVE | `/root/sp01_implementation`; `codex/sp01-p2a-recovery` | SP-00 | Reviewed plan `2026-07-28-sp01-p2a-recovery-integration.md`; recovery audit 92%; plan gate accepted at 97% with zero blockers; focused baseline tests 61/61 | Correct proof camera, commit, then produce before capture/perf evidence |
+| SP-01 P2a recovery | ACTIVE | `/root/sp01_implementation`; `codex/sp01-p2a-recovery` | SP-00 | First candidate `b4ab4a237777d217efeaeae874343e5a7f238c29`; focused 67/67 and full 381/381; RTX 3060 baseline/compare/perf clean; candidate review REJECT at 97% for missing adjacent-pose/motion stability evidence; one non-blocking Low duplicate-dispose observation | Capture and document clean adjacent-pose evidence, then independently re-review the new exact SHA |
 | SP-02a CoursePresentation contract | UNCLAIMED | — | SP-00 | Master-plan scope only | Author and review sub-plan; may run alongside SP-01 |
 | SP-02b Activation transaction | BLOCKED | — | SP-01, SP-02a | — | Both predecessor units integrated |
 | SP-03 World context | BLOCKED | — | SP-02b | — | Reviewed sub-plan after SP-02b |
@@ -103,9 +103,11 @@ Until those are resolved, the historical branch remains **REPORTED**, not accept
 | 2026-07-28 | Route the HD macro seam to SP-04 | It is a far/HD-patch relief and light-response issue, not SP-01 edge readability |
 | 2026-07-28 | Cap concurrent implementation lanes at two | Preserves one PIC and one independent-review capacity |
 | 2026-07-28 | Accept the corrected SP-01 recovery plan | Independent re-review cleared all six Medium findings at 97% confidence |
+| 2026-07-28 | Reject the first SP-01 candidate pending evidence correction | Static frames do not satisfy the accepted plan's explicit hardware movement-stability gate |
 
 ## 7. Current bottleneck
 
-SP-01 is executing in an isolated lane. Its current bottleneck is the first evidence
-gate: corrected authored-green camera commit plus clean before capture and
-before-performance run.
+SP-01 is executing a narrow evidence correction in its isolated lane. Its current
+bottleneck is a clean RTX 3060 adjacent-pose/orbit record proving that the corrected
+authored-green edge remains stable under camera movement. No code defect or
+performance regression is currently blocking the unit.
