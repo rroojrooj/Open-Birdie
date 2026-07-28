@@ -471,5 +471,15 @@ test('duplicate top-level and nested source identities must agree before acquisi
     }),
     (error) => error.code === 'COURSE_IDENTITY_INVALID',
   );
+  assert.throws(
+    () => coordinator.acquire(
+      {
+        name: 'Contradictory Supplied Source',
+        source: { osmType: 'way', osmId: 23 },
+      },
+      { source: { osmType: 'relation', osmId: 23 } },
+    ),
+    (error) => error.code === 'COURSE_IDENTITY_INVALID',
+  );
   assert.equal(calls, 0);
 });

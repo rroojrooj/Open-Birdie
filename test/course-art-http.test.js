@@ -345,7 +345,7 @@ test('request reads stay declaration-bounded and active metadata retains no asse
   const response = await request(port, assetPath(item));
   assert.equal(response.status, 200);
   assert.ok(response.body.equals(item.bytes));
-  assert.ok(requestedLengths.length >= 1);
+  assert.deepEqual(requestedLengths, [item.privateEntry.bytes]);
   const containsBuffer = (value, seen = new Set()) => {
     if (!value || typeof value !== 'object' || seen.has(value)) return false;
     if (Buffer.isBuffer(value)) return true;
