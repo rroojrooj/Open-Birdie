@@ -80,10 +80,12 @@ function fixture(t, {
 }
 
 async function startServer(t, item, overrides = {}) {
+  item.internalErrors = [];
   const server = http.createServer((req, res) => serveCourseArtRequest(req, res, {
     artRoot: item.root,
     getActivePackage: item.state.getActivePackage,
     lookupPrivateAsset: item.state.lookupPrivateAsset,
+    onInternalError: (error) => item.internalErrors.push(error),
     ...overrides,
   }));
   await new Promise((resolve, reject) => {
@@ -126,7 +128,7 @@ test('exact GET, HEAD, and verified conditional 304 publish immutable nosniff he
   const expectedEtag = `"sha256-${sha256(item.bytes)}"`;
 
   const get = await request(port, assetPath(item));
-  assert.equal(get.status, 200);
+  assert.equal(get.status, 200, item.internalErrors.map((error) => error.message).join('\n'));
   assert.ok(get.body.equals(item.bytes));
   assert.equal(get.headers['content-type'], 'image/png');
   assert.equal(get.headers['content-length'], String(item.bytes.length));

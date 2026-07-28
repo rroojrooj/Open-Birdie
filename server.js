@@ -188,6 +188,9 @@ const server = http.createServer(async (req, res) => {
         lookupPrivateAsset: (contentRevision, assetKey) => (
           activationManager.lookupPrivateAsset(contentRevision, assetKey)
         ),
+        onInternalError: (error) => {
+          console.error(`[course-art] request rejected internally: ${error?.message || 'unknown error'}`);
+        },
       });
     }
     if (p === '/events') {
