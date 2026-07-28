@@ -2,7 +2,7 @@
 
 ## ACTIVE ROADMAP: Pro Visuals Program (2026-07-23)
 
-### SP-02a CoursePresentation contract — review accepted, ready for integration (2026-07-28)
+### SP-02a CoursePresentation contract — DONE (2026-07-28)
 
 Branch `codex/sp02a-course-presentation-contract` now has a renderer-free SP-02a
 pass-3 candidate at code evidence commit `521552466ece23cee6134285fce1ef4d344b3932`
@@ -31,7 +31,13 @@ from display names.
 - Independent pass-3 review accepted exact code `521552466ece23cee6134285fce1ef4d344b3932`
   with reviewed documentation candidate `9ed6cbf7de50e992c16e3009a556f318b899abe5`
   at 98% confidence: **ACCEPT / merge YES**, 0 Critical, 0 High, 0 Medium, and
-  0 Low findings. SP-02a is `REVIEW_ACCEPTED / READY_FOR_INTEGRATION`, not Done.
+  0 Low findings.
+- PR #46 final head `59e3f9876199755f2c8539cc0f88258199fa112d`
+  fixed Windows canonical-path and generated-validator LF portability defects, then
+  passed independent correction review at 99% with 0C/0H/0M/0L.
+- PR #46 merged as `6364f397ef14cdf3ca0348cba182552101fb8d98`.
+  Windows CI is green, ancestry is verified, and the exact integrated tree passes
+  **493/493** plus `npm run check:course-art`.
 - Required focused matrix: **129/129**. Full `npm test`: **492/492**.
   `npm run check:course-art`, `npm run pack`, and unpacked packaged smoke all pass;
   the packaged root contains one valid pack and all 913 application-asar entries have
@@ -58,9 +64,10 @@ from display names.
   `0 files / 0 bytes`. Five alternating post-warmup activations retained none of the
   four obsolete public packages, kept timers at zero and server handles flat, and
   showed `+16,712` bytes of GC heap noise.
-- Next gate: open the PR, require Windows CI, merge, prove candidate ancestry or
-  integrated-tree equivalence, and run the clean 492-test post-merge suite. SP-02b
-  remains blocked until SP-02a is integrated.
+- Next gate: author and independently review the detailed SP-02b renderer-consumption
+  plan. SP-02b must consume normalized package fields and revisioned assets, own
+  browser abort/stale disposal and shared GPU handles, and retain the renderer name
+  map until St Andrews and Bandon fallback behavior is reviewed.
 
 ### SP-01 P2a surface recovery — implementation/evidence complete (2026-07-28)
 
