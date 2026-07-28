@@ -64,17 +64,23 @@ test('server integration keeps cached B active when older network A fails late',
     text: async () => 'injected old-request failure',
   };
   let fetchReleased = false;
+  let fetchAborted = false;
   let releaseFetch;
   let markFetchStarted;
   const fetchStarted = new Promise((resolve) => { markFetchStarted = resolve; });
-  globalThis.fetch = () => {
+  globalThis.fetch = (_url, { signal } = {}) => {
     if (fetchReleased) return Promise.resolve(failedResponse);
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       markFetchStarted();
       releaseFetch = () => {
         fetchReleased = true;
         resolve(failedResponse);
       };
+      signal?.addEventListener('abort', () => {
+        fetchAborted = true;
+        fetchReleased = true;
+        reject(signal.reason);
+      }, { once: true });
     });
   };
 
@@ -88,11 +94,17 @@ test('server integration keeps cached B active when older network A fails late',
       bbox: [46.9, 47.1, -122.1, -121.9],
     });
     await fetchStarted;
-    const activateB = server.activationManager.activate({ cached: 'osm-way-2.json' });
+    const activateB = server.activationManager.activate({
+      name: 'Cached B',
+      osmType: 'way',
+      osmId: 2,
+    });
     const resultB = await activateB;
-    releaseFetch();
+    await new Promise((resolve) => setImmediate(resolve));
+    if (!fetchAborted) releaseFetch();
     const resultA = await activateA;
 
+    assert.equal(fetchAborted, true, 'newer different-ID activation aborts the native fetch');
     assert.equal(resultB.status, 'committed');
     assert.equal(resultB.courseRevision, 1);
     assert.equal(resultA.status, 'superseded');

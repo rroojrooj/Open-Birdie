@@ -205,3 +205,54 @@ test('same stable identity shares one acquisition while different identities sta
   pending.get('osm:relation:2').resolve({ id: 'c' });
   assert.deepEqual(await Promise.all([b, c]), [{ id: 'b' }, { id: 'c' }]);
 });
+
+test('nested canonical source owns the acquisition request', async () => {
+  let observed;
+  const coordinator = createCourseAcquisitionCoordinator((request, options) => {
+    observed = { request, options };
+    return { courseId: options.source.courseId };
+  });
+
+  const result = await coordinator.acquire({
+    name: 'Nested Source',
+    bbox: [46.9, 47.1, -122.1, -121.9],
+    source: { osmType: 'relation', osmId: '22' },
+  });
+
+  assert.deepEqual(result, { courseId: 'osm:relation:22' });
+  assert.deepEqual(observed.request.source, {
+    courseId: 'osm:relation:22',
+    osmType: 'relation',
+    osmId: 22,
+  });
+  assert.equal(observed.request.osmType, 'relation');
+  assert.equal(observed.request.osmId, 22);
+  assert.equal(observed.options.source, observed.request.source);
+});
+
+test('duplicate top-level and nested source identities must agree before acquisition', () => {
+  let calls = 0;
+  const coordinator = createCourseAcquisitionCoordinator(() => {
+    calls += 1;
+    return {};
+  });
+
+  assert.throws(
+    () => coordinator.acquire({
+      name: 'Contradictory Source',
+      osmType: 'way',
+      osmId: 23,
+      source: { osmType: 'relation', osmId: 23 },
+    }),
+    (error) => error.code === 'COURSE_IDENTITY_INVALID',
+  );
+  assert.throws(
+    () => coordinator.acquire({
+      name: 'Partial Duplicate',
+      osmType: 'way',
+      source: { osmType: 'way', osmId: 23 },
+    }),
+    (error) => error.code === 'COURSE_IDENTITY_INVALID',
+  );
+  assert.equal(calls, 0);
+});
