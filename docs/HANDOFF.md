@@ -1,5 +1,19 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
+> **UPDATE 2026-07-28 — SP-01 P2a SURFACE RECOVERY CANDIDATE COMPLETE.**
+> Branch `codex/sp01-p2a-recovery`, code evidence commit
+> `d2305fa524e3ce2d9dc8b87d46611418adb5ca45`. The recovery restores crisp authored
+> green/fairway/bunker ownership with an explicit raw `R=mown, G=green, B=bunker` mask,
+> bounded green collar, corrected OSM-over-class-map precedence, and hardened class-map
+> smoothing with an observable raw fallback. `npm test` passes **381/381**. Clean
+> synthetic and three-course evidence lives under `.shots/visual/sp01/{smoke,after,compare}`;
+> same-host RTX 3060 median GPU time moved only `15.400 -> 15.438 ms` (+0.038 ms;
+> budget +3 ms), with textures `57 -> 57`. Named visual review passes Chambers,
+> Sawgrass, and St Andrews. The residual broad Chambers `high-survey` HD
+> patch/far-photo relief seam remains and is explicitly handed to **SP-04**—do not
+> tune it in SP-01. Independent PIC review/merge and ledger acceptance are still
+> pending; SP-02 renderer wiring remains blocked on accepted SP-01.
+
 > **ACTIVE PROGRAM 2026-07-23 → [Pro Visuals design specification](superpowers/specs/2026-07-23-pro-visuals-program-design.md)
 > + [master implementation plan](superpowers/plans/2026-07-23-pro-visuals-master-plan.md)
 > + [test strategy](superpowers/plans/2026-07-23-pro-visuals-test-plan.md).**
