@@ -46,12 +46,18 @@
 - Kept the user-authored 2026-07-23 source documents untouched in the protected
   original worktree. The SP-02a plan is self-contained and records how it resolves
   their six contract contradictions.
+- Ran independent plan-engineering review on draft `dc8814f`. It rejected dispatch at
+  97% confidence with 3 High, 10 Medium, and 2 Low findings.
+- Incorporated every recommended correction, including dependency-free packaged
+  validator proof, explicit prepared/active transaction types, exact staged runtime
+  schemas/tree, deterministic canonical bytes, exact-handle asset hashing, GLB
+  parsing, bootstrap ordering, safe dependency order, one rollback gate, concurrent
+  cache acquisition, and Windows path/header hardening.
 
 ## Left
 
-1. Independently review the SP-02a plan against current code and the protected source
-   documents.
-2. Correct every Critical, High, and Medium plan finding.
+1. Run independent pass-2 review of the corrected SP-02a plan.
+2. Correct any remaining Critical, High, or Medium finding.
 3. Merge the accepted plan and record the exact implementation base.
 4. Assign one isolated SP-02a implementation lane; keep SP-02b renderer work blocked.
 

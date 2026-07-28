@@ -158,10 +158,11 @@ Existing tests:
 - St Andrews Old Course `0.7`;
 - Bandon Dunes `0.8`.
 
-SP-02a creates identity-bound curated source profiles for non-default manual values
-needed to preserve default pack-enabled visuals later. It does not yet remove the
-renderer map. SP-02b consumes the normalized contract, proves byte-equivalent default
-behavior, and then deletes the name lookup.
+SP-02a commits the exact Chambers identity/profile required to prove the contract. It
+does not yet remove the renderer map. Before SP-02b deletes that map, SP-02b must
+discover, independently verify, and commit identity-bound St Andrews and Bandon
+profiles (or a reviewed generic derivation) so their current non-default values do not
+silently disappear. Sawgrass remains the zero/default control.
 
 Ajv is already a development dependency. No course-art schema, generated standalone
 validator, pack index, presentation resolver, asset manifest, or content revision
@@ -438,14 +439,26 @@ V2 canonical fields:
 Build/runtime manifest rule:
 
 - absent `course.fingerprintVersion` means v1;
-- new discover/build output writes `fingerprintVersion: 2`;
+- new discover/build output writes both `fingerprintVersion: 2` and the exact
+  `courseId`;
+- the v2 compiler requires a valid `course.source.courseId` and rejects source-less
+  input with `HD_SOURCE_ID_REQUIRED`;
+- the v2 compiler rejects disagreement between requested/manifest identity and cached
+  `course.source.courseId` with `HD_SOURCE_ID_MISMATCH`;
+- source-less legacy caches may continue to build or resolve v1 only;
+- runtime v2 resolution requires the active base course identity to equal the
+  descriptor identity before comparing fingerprint bytes;
 - runtime selects the matching computation;
 - unsupported versions produce a typed rejected descriptor and procedural fallback;
 - committed v1 manifests remain byte-compatible and are not rewritten.
 
 ### 5.5 Source-pack and runtime-pack contract
 
-Authoring root:
+Source authoring and runtime consumption are deliberately different contracts.
+Development and packaged execution both consume the same staged runtime shape; the
+server never interprets raw authoring components.
+
+Authoring source:
 
 ```text
 courses/curated/
@@ -459,11 +472,31 @@ courses/curated/
     assets/
 ```
 
-`index.json` maps stable identity to a pack directory and includes legacy match
-metadata so a corrupt selected `profile.json` can still produce one actionable
-diagnostic instead of disappearing.
+Staged runtime root:
 
-`profile.json` is the canonical root:
+```text
+build/course-art/
+  index.json
+  packs/
+    chambers-bay/
+      manifest.json
+      assets/
+        green-normal.<sha-prefix>.ktx2
+        clubhouse.<sha-prefix>.glb
+```
+
+Packaged runtime root has the identical relative tree at
+`process.resourcesPath/course-art`. `BIRDIE_ART_DIR` always means the root containing
+runtime `index.json`; in development it defaults to `build/course-art`, never
+`courses/curated`.
+
+Source `index.json` is closed schema v1. It maps stable identity to a source pack
+directory and repeats only selection metadata—pack ID, `courseId`, and legacy
+aliases/origin—so a corrupt selected `profile.json` still produces one actionable
+diagnostic. The stage compiler cross-checks the index and profile; any disagreement or
+duplicate/overlapping selector fails the whole staging command.
+
+Source `profile.json` is the canonical authoring root:
 
 ```json
 {
@@ -490,11 +523,18 @@ diagnostic instead of disappearing.
     "terrainFeatures": "terrain-features.json"
   },
   "gameplay": {},
-  "assets": {}
+  "assets": {
+    "clubhouse": {
+      "path": "assets/clubhouse.glb",
+      "mime": "model/gltf-binary",
+      "required": false
+    }
+  }
 }
 ```
 
-Component rules:
+The source schema owns separate entry points for `index.json`, `profile.json`, and
+each component `$defs`. Component rules:
 
 - `references.json` is authoring-only provenance and is excluded from runtime staging
   and `contentRevision`;
@@ -502,11 +542,82 @@ Component rules:
   declarations are validated and normalized;
 - missing optional component files normalize to empty;
 - an explicitly referenced corrupt component rejects the selected pack;
-- the runtime stage contains only normalized `manifest.json` plus validated runtime
-  assets;
 - raw references and authoring intermediates never enter the installer.
 
-Schema is strict and closed in every environment. Central limits live in
+Runtime `index.json` has its own closed schema:
+
+```json
+{
+  "version": 1,
+  "packs": [
+    {
+      "packId": "chambers-bay",
+      "courseId": "osm:way:26787026",
+      "legacyMatch": {
+        "names": ["Chambers Bay"],
+        "origin": {
+          "lat": 47.2057007,
+          "lon": -122.5750529,
+          "toleranceM": 250
+        }
+      },
+      "manifest": "packs/chambers-bay/manifest.json"
+    }
+  ]
+}
+```
+
+Runtime `manifest.json` also has a separate closed schema. It contains:
+
+- runtime contract version and opaque `packId`;
+- stable selection identity copied from the validated source;
+- already-normalized presentation;
+- already-validated gameplay overlay and empty capability/patch records;
+- normalized optional feature records `{ id, required, assetKeys, payload }`;
+- only present runtime assets:
+  `{ key, file, mime, bytes, sha256, required }`;
+- no source filename other than safe runtime-relative `manifest`/asset file entries;
+- no references, authoring components, or absolute paths.
+
+The runtime loader validates runtime index and manifest with runtime entry-point
+validators; it never calls the source-pack loader. Corrupt staged index means curated
+mode is unavailable and emits one root diagnostic. A corrupt selected runtime manifest
+falls back only that course to automatic.
+
+`lib/course-art-assets.js` owns both explicitly named sides without conflating them:
+
+```js
+stageSourceCourseArt({ sourceRoot, outputRoot }) -> stagedSummary
+
+loadRuntimeCourseArt({
+  runtimeRoot,
+  courseId,
+  legacyIdentity,
+  disabled
+}) -> {
+  status: "disabled" | "absent" | "rejected" | "valid",
+  runtimePack,
+  diagnostics
+}
+```
+
+Only the staging function imports source validators. The server imports only the
+runtime loader and bundled runtime validator entry points.
+
+Optional assets have one unambiguous policy:
+
+- any structural, security, path, type, magic, dimension, or limit error rejects the
+  selected source pack regardless of `required`;
+- a missing `required:true` asset rejects the selected source pack;
+- a missing `required:false` asset removes the asset and prunes every optional feature
+  that references it before normalization and hashing;
+- a required feature may reference required assets only; schema/cross-field validation
+  rejects any required-feature/optional-asset combination;
+- a shared missing optional asset prunes all referencing optional features;
+- `contentRevision` is computed from the post-prune runtime manifest.
+
+Both source and runtime schemas are strict and closed in every environment. Central
+limits live in
 `lib/course-art-limits.js` and are imported by runtime checks and generator tests:
 
 | Limit | v1 value |
@@ -536,9 +647,37 @@ paths, alternate data streams, traversal, junction escapes, and unknown extensio
 rejected. Extension, declared MIME, magic bytes, dimensions where applicable, file
 size, and SHA-256 must agree.
 
-Ajv remains development-only. The committed standalone CJS validator is the only
-runtime validator. `npm test` regenerates into memory or a temporary directory and
-fails if bytes differ from `lib/generated/course-art-pack-validator.js`.
+GLB validation parses the header and every chunk:
+
+- exact magic/version/declared length;
+- one valid JSON chunk and bounded embedded BIN chunks;
+- no `uri` on buffers or images, including data/file/http values;
+- images use embedded `bufferView` bytes only;
+- referenced buffer views stay within chunk bounds;
+- embedded image magic and dimensions obey the same texture limits;
+- total embedded bytes obey the pack budget.
+
+Windows path/key hardening additionally rejects reserved device names, drive/UNC/ADS
+syntax, trailing dot/space, and case-fold collisions.
+
+Ajv and esbuild remain development-only. `generate-validator.mjs`:
+
+1. asks Ajv for standalone source entry points for source index/profile/components and
+   runtime index/manifest;
+2. bundles that source with esbuild into one dependency-free CJS artifact;
+3. fails if the final artifact has a bare `require()` or dynamic import;
+4. writes `lib/generated/course-art-pack-validator.js` deterministically.
+
+The packaged app imports only the bundled artifact. Verification:
+
+- regeneration in a temporary directory must be byte-identical;
+- copy the artifact and fixtures into an isolated directory with no `node_modules` and
+  execute it under Node;
+- build the unpacked Windows application and execute a packaged
+  `BIRDIE_COURSE_ART_SMOKE=1` path that imports the validator and validates the staged
+  runtime index/manifest before quitting;
+- inspect the unpacked resources to prove Ajv, esbuild, source references, and
+  authoring files are absent.
 
 ### 5.6 Presentation adapters
 
@@ -548,7 +687,7 @@ New module: `lib/course-presentation.js`.
 resolveCoursePresentation({
   course,
   courseId,
-  curatedPack,
+  stagedRuntimePack,
   packsEnabled,
   environment
 }) -> {
@@ -579,7 +718,7 @@ Automatic adapter:
 Curated adapter:
 
 - is selected only by verified stable ID or valid legacy alias plus origin;
-- validates the whole selected source pack before merge;
+- consumes only a validated staged runtime manifest;
 - overlays only schema-owned fields;
 - clamps no invalid values silently; invalid input rejects the pack;
 - missing pack returns automatic with no diagnostic;
@@ -588,6 +727,12 @@ Curated adapter:
 - non-empty terrain-feature declarations produce
   `ART_CAPABILITY_UNSUPPORTED` and reject the selected pack until SP-05;
 - packs-disabled mode skips pack and legacy compatibility lookup completely.
+
+One composition gate owns rollback: `BIRDIE_DISABLE_CURATED=1`, default unset/off.
+When set, runtime-pack discovery and the course-art gateway are both disabled and the
+package resolves automatic presentation. Identity/cache and HD v2 foundations have no
+feature switch; their rollback is a focused commit revert while v1 read compatibility
+remains.
 
 Legacy compatibility:
 
@@ -650,16 +795,19 @@ Required initial codes:
 New module: `lib/resolved-course-package.js`.
 
 ```js
-prepareResolvedCoursePackage({
+prepareCourseCandidate({
   baseCourse,
   requestedIdentity,
   packsEnabled,
   dataDir,
   artDir,
   resolveHd,
-  loadPack,
-  loadLegacyOverride
-}) -> Promise<{
+  loadRuntimePack,
+  loadLegacyOverride,
+  prepareGame
+}) -> Promise<PreparedCourseCandidate>
+
+PreparedCourseCandidate = {
   courseId,
   contentRevision,
   baseCourse,
@@ -669,8 +817,14 @@ prepareResolvedCoursePackage({
   hdDescriptors,
   publicAssetManifest,
   privateAssetManifest,
-  diagnostics
-}>
+  diagnostics,
+  preparedGameState
+}
+
+ResolvedCoursePackage = {
+  ...publicCandidateData,
+  courseRevision
+}
 ```
 
 Preparation order:
@@ -679,18 +833,35 @@ Preparation order:
 clone acquired cache object as untouched base ownership
     -> normalize/verify stable identity
     -> resolve HD v1/v2 against untouched base
-    -> locate and validate complete optional source pack
+    -> locate and validate complete optional staged runtime pack
     -> normalize automatic/curated presentation
     -> clone base as gameplayCourse
     -> validate/apply curated or compatibility gameplay overlays to clone
     -> declare empty terrain-feature patch list/capabilities
     -> validate/hash runtime assets into private/public manifests
     -> compute contentRevision
-    -> prepare Game state without assignment
-    -> return frozen package metadata
+    -> call injected prepareGame(gameplayCourse, options) without assignment
+    -> return PreparedCourseCandidate with no activation/course revision
 ```
 
-`contentRevision` is SHA-256 over canonical:
+`PreparedCourseCandidate` is private to the activation manager and is never broadcast.
+It contains all fallible work, including prepared Game state, but no
+`activationGeneration` or `courseRevision`.
+
+New module `lib/canonical-json.js` defines the exact bytes used for
+`contentRevision`:
+
+- recursively normalize strings to Unicode NFC;
+- reject all non-finite numbers and normalize negative zero to zero;
+- serialize numbers using ECMAScript `JSON.stringify` shortest round-trip form;
+- sort object keys by Unicode code-unit order, never locale;
+- sort map-like asset/feature records by validated key before serialization;
+- preserve schema-declared semantic array order, including terrain patch and gameplay
+  override precedence;
+- encode UTF-8 with no BOM, whitespace, or trailing newline;
+- exclude all absolute/runtime root strings before canonicalization.
+
+`contentRevision` is SHA-256 over those canonical bytes for:
 
 - contract version;
 - `courseId`;
@@ -711,11 +882,15 @@ It excludes:
 
 Changing presentation, gameplay overlay, or same-key asset bytes changes
 `contentRevision`. Presentation-only changes do not alter the HD base fingerprint.
+Object insertion order, source/runtime path spelling, line endings, locale, and
+development versus packaged root do not change it.
 
-The top-level package and normalized metadata are frozen. Large course/elevation arrays
-are not recursively frozen because that would add an O(n) activation cost; immutability
-is enforced by exclusive ownership, defensive cloning, and tests that hash the base
-before/after every fallible preparation stage.
+Candidate normalized metadata is frozen after preparation. Large course/elevation
+arrays are not recursively frozen because that would add an O(n) activation cost;
+immutability is enforced by exclusive ownership, defensive cloning, and tests that
+hash the base before/after every fallible stage. The commit-time active
+`ResolvedCoursePackage` is created only after the final stale-generation check and
+includes the allocated `courseRevision`.
 
 ### 5.9 Game and activation transaction
 
@@ -736,8 +911,8 @@ New module: `lib/course-activation.js`.
 ```js
 createCourseActivationManager({
   acquireCourse,
-  preparePackage,
-  commitPackage,
+  prepareCandidate,
+  commitPreparedActivation,
   onCommitted
 }) -> {
   activate(request) -> Promise<
@@ -755,23 +930,48 @@ State machine:
 request arrives
     -> increment activationGeneration
     -> abort prior acquisition where supported
-    -> acquire base course
+    -> acquire/coalesce source-keyed base course
     -> if generation stale: return superseded, no mutation
-    -> prepare complete package + Game state
+    -> prepare PreparedCourseCandidate + Game state
     -> if generation stale: return superseded, no mutation
-    -> increment next committed courseRevision
-    -> commit Game prepared state
-    -> replace active package/HD/revision
-    -> replace readiness timer
-    -> broadcast package course event and state once
+    -> allocate next committed courseRevision
+    -> create/freeze ResolvedCoursePackage public record
+    -> synchronously call non-throwing commitPreparedActivation once:
+         commit Game prepared state
+         replace active package/HD/revision
+         replace readiness timer
+    -> run broadcast/onCommitted observers behind exception isolation
 ```
 
 `activationGeneration` and `courseRevision` are separate. Failed or superseded
 attempts do not change current package or revision.
 
-Startup autoload and `POST /api/load-course` use the same manager. A superseded POST
-returns a typed 409 without broadcasting. An unexpected failure returns a redacted
-typed error and leaves the prior course playable.
+`commitPreparedActivation()` accepts exactly the candidate, resolved public record,
+and prepared timer specification. It performs assignment only, cannot invoke user
+callbacks, and is covered by a test that forces every preparation dependency to throw.
+Observer/broadcast failure after commit is logged as a typed diagnostic; it cannot
+roll back or mix Game/package/HD/timer state and does not trigger a second commit.
+
+`bootstrap()` defines startup ordering:
+
+1. honor `BIRDIE_NO_AUTOLOAD`;
+2. otherwise await autoload through the same manager before `server.listen()`;
+3. successful autoload commits before the port is reachable;
+4. typed autoload failure logs one redacted diagnostic and the server still listens
+   with no active course;
+5. POST activation cannot race bootstrap because the listener is not open yet.
+
+A superseded POST returns typed 409 without broadcasting. An unexpected failure
+returns a redacted typed error and leaves the prior course playable.
+
+Course acquisition also coordinates disk effects:
+
+- one in-flight acquisition promise per stable `courseId`;
+- concurrent requests for the same identity coalesce;
+- different identities use unique `.tmp.<pid>.<nonce>` paths;
+- activation generation governs active commit, while the acquisition coordinator
+  governs cache publication;
+- publication rechecks whether a valid source-keyed cache already won before rename.
 
 ### 5.10 Public package and active asset gateway
 
@@ -805,9 +1005,13 @@ GET|HEAD /api/course-art/:contentRevision/:assetKey
     -> exact active contentRevision
     -> valid opaque key
     -> exact private-manifest entry
-    -> final realpath containment
-    -> recheck size and supported MIME/magic
+    -> walk/reject reparse-point ancestors and resolve canonical staged path
+    -> open the canonical file once
+    -> compare opened handle file identity/size to activated private manifest
+    -> hash and validate MIME/magic from that exact opened handle
+    -> compare SHA-256 to active manifest
     -> ETag/conditional response
+    -> stream from the already-verified handle
 ```
 
 Response:
@@ -816,21 +1020,47 @@ Response:
 - `Content-Length`;
 - `ETag: "sha256-<hash>"`;
 - `Cache-Control: private, max-age=31536000, immutable`;
+- `X-Content-Type-Options: nosniff`;
 - `If-None-Match` returns 304;
 - HEAD returns identical headers and no body.
 
-Wrong/stale revision, unknown key, encoded traversal, and inactive content return a
-generic typed 404. Malformed key returns generic 400. No error body contains a path.
+HEAD and conditional 304 still open/hash/verify current bytes before returning; a
+same-size same-magic replacement can never reuse the old revision/ETag. The read stream
+uses the verified file handle with explicit error and exactly-once close handling.
+Unlink, rename, junction, and symlink swaps are rejected by file-identity/hash mismatch.
 
-Development root defaults to `courses/curated`. Runtime staging writes
-`build/course-art`. Packaged `main.js` sets:
+Wrong/stale revision, unknown key, encoded traversal, and inactive content return a
+generic typed 404. Malformed/reserved/case-colliding key returns generic 400. No error
+body contains a path.
+
+Development and packaged execution both consume runtime staging. Development root
+defaults to `build/course-art`. Packaged `main.js` sets:
 
 ```js
 process.env.BIRDIE_ART_DIR = path.join(process.resourcesPath, "course-art")
 ```
 
 Electron Builder copies only `build/course-art` through `extraResources`; raw
-references, tools, and authoring files are excluded.
+references, tools, and authoring files are excluded. Staging is an atomic sibling
+directory build plus rename, and `/build/course-art/` is ignored.
+
+Exact scripts:
+
+```json
+{
+  "prepare:course-art": "node tools/course-art/prepare-runtime.mjs",
+  "check:course-art": "node tools/course-art/prepare-runtime.mjs --check",
+  "start": "npm run prepare:course-art && electron .",
+  "start:server": "npm run prepare:course-art && node server.js",
+  "pack": "npm run prepare:course-art && electron-builder --dir",
+  "dist": "npm run prepare:course-art && electron-builder --win"
+}
+```
+
+The preparation command must be deterministic, may replace only its owned
+`build/course-art` target, and leaves a clean checkout clean because that target is
+ignored. CI runs `check:course-art`, isolated validator execution, unpacked package
+inspection, and the packaged smoke mode.
 
 ### 5.11 Dependency and ownership diagram
 
@@ -933,6 +1163,8 @@ Delete fixtures/tests only; no production behavior has changed.
 - Key JSON, aerial, and class-map artifacts by stable source.
 - Verify source on cache hit.
 - Implement non-destructive atomic legacy migration.
+- Coalesce concurrent acquisition by stable source and use unique owned temporary
+  paths for independent identities.
 - Deduplicate cache listing and keep existing SP-00 legacy fixture filenames readable.
 
 **Tests**
@@ -945,6 +1177,8 @@ Delete fixtures/tests only; no production behavior has changed.
 - missing origin does not migrate;
 - migration copies referenced artifacts and writes JSON last;
 - injected copy/write failure leaves legacy set and no published keyed JSON;
+- overlapping same-identity acquisition publishes one coherent cache/artifact set;
+- overlapping different identities cannot share a temporary path;
 - cache hit source mismatch is typed;
 - no absolute paths in list output.
 
@@ -954,8 +1188,9 @@ Delete fixtures/tests only; no production behavior has changed.
 
 **Rollback**
 
-New lookup can be disabled behind an internal compatibility switch for one release;
-do not delete source-keyed or legacy files.
+Identity/cache publication is foundation behavior and has no runtime switch. Roll back
+only by reverting this focused commit; source-keyed and legacy files remain readable
+and are never deleted.
 
 ### Task 3 — HD fingerprint v2 with v1 compatibility
 
@@ -990,6 +1225,8 @@ do not delete source-keyed or legacy files.
 - v2 ignores course and hole display-name changes;
 - v2 changes for source, geometry, routing, or coarse elevation;
 - v2 ignores presentation/aerial/class-map/building/generated-patch changes;
+- v2 build rejects source-less legacy input with migration-required diagnostic;
+- v2 build/runtime reject requested, cached, and manifest identity mismatch;
 - runtime/compiler parity;
 - old committed manifests resolve;
 - unsupported version never activates bundle.
@@ -1000,38 +1237,42 @@ do not delete source-keyed or legacy files.
 
 **Rollback**
 
-Compiler can temporarily emit v1 while runtime keeps dual-read support. Never remove
-v1 read compatibility in this program.
+HD v2 foundation has no runtime switch. Revert this focused commit to restore the
+current v1-only behavior; never delete or silently rewrite existing v1 manifests.
 
 ### Task 4 — Strict schema, generated validator, and runtime staging
 
 **Files**
 
 - `lib/course-art-limits.js` (new)
-- `lib/schemas/course-art-pack.schema.json` (new)
+- `lib/schemas/course-art-source.schema.json` (new)
+- `lib/schemas/course-art-runtime.schema.json` (new)
 - `lib/generated/course-art-pack-validator.js` (new)
 - `lib/course-art-assets.js` (new)
 - `tools/course-art/generate-validator.mjs` (new)
 - `tools/course-art/prepare-runtime.mjs` (new)
+- `tools/course-art/packaged-smoke.cjs` (new)
 - `courses/curated/index.json` (new)
 - `courses/curated/README.md` (new)
 - `courses/curated/chambers-bay/profile.json` (new)
 - `courses/curated/chambers-bay/references.json` (new)
-- optional identity-bound St Andrews/Bandon compatibility profiles after Task 0
-  confirms their exact source identities
+- `.gitignore`
 - `package.json`
+- `package-lock.json`
 - `test/course-art-pack-schema.test.js` (new)
 - `test/course-art-staging.test.mjs` (new)
 
 **Behavior**
 
-- Define strict root/component entry points and all limits.
-- Generate standalone CJS validation.
+- Define separate strict source and runtime index/manifest/component entry points.
+- Generate and esbuild-bundle dependency-free CJS validation.
 - Fail stale generated output.
 - Validate index/profile/component consistency and duplicate identity/alias conflicts.
-- Validate realpath, magic, dimensions, MIME, counts, and byte budgets.
-- Stage runtime-only normalized manifest/assets deterministically.
+- Validate realpath, GLB chunks/URIs, magic, dimensions, MIME, counts, and byte budgets.
+- Prune missing optional assets/features under the exact policy in §5.5.
+- Stage the exact runtime tree deterministically and atomically.
 - Exclude references and authoring intermediates.
+- Ignore `/build/course-art/`.
 
 **Tests**
 
@@ -1040,11 +1281,18 @@ v1 read compatibility in this program.
 - duplicate IDs and overlapping aliases;
 - NaN/Infinity, coordinate/count/dimension/byte limits;
 - traversal, absolute/UNC/device/ADS paths;
+- Windows reserved names, trailing dot/space, and case-fold collision;
 - symlink/junction escape where environment permits;
 - extension/MIME/magic disagreement;
+- malformed GLB chunk, external/data URI, out-of-range bufferView, and embedded
+  oversized image;
+- optional shared asset pruning and required-asset rejection;
 - stale validator;
+- bundled artifact has no bare runtime import and executes without `node_modules`;
 - two staging runs produce byte-identical manifests;
-- authoring references absent from runtime stage.
+- source and runtime schemas cannot be interchanged;
+- authoring references absent from runtime stage;
+- unpacked packaged smoke imports validator and runtime manifest successfully.
 
 **Commit**
 
@@ -1052,7 +1300,8 @@ v1 read compatibility in this program.
 
 **Rollback**
 
-Remove staged output and pack lookup. No renderer consumer exists yet.
+Set `BIRDIE_DISABLE_CURATED=1`; automatic package behavior remains. Source validation
+and staging can be reverted without affecting identity/HD foundations.
 
 ### Task 5 — Automatic/curated presentation and legacy isolation
 
@@ -1095,13 +1344,15 @@ Remove staged output and pack lookup. No renderer consumer exists yet.
 
 **Rollback**
 
-Force `packsEnabled:false`; automatic normalized package remains valid.
+Set `BIRDIE_DISABLE_CURATED=1`; automatic normalized package remains valid and the
+gateway stays disabled.
 
 ### Task 6 — Prepare package and harden Game commit
 
 **Files**
 
 - `lib/resolved-course-package.js` (new)
+- `lib/canonical-json.js` (new)
 - `lib/game.js`
 - `test/resolved-course-package.test.js` (new)
 - `test/course-activation.test.js` (new)
@@ -1113,9 +1364,11 @@ Force `packsEnabled:false`; automatic normalized package remains valid.
 
 - Clone and preserve untouched base.
 - Resolve HD before any gameplay overlay.
-- Build presentation, gameplay course, empty patches/capabilities, manifests,
-  diagnostics, and content revision.
-- Precompute complete Game state before assignment.
+- Build `PreparedCourseCandidate`: presentation, gameplay course, empty
+  patches/capabilities, manifests, diagnostics, deterministic content revision, and
+  prepared Game state, but no course revision.
+- Canonicalize exact UTF-8 bytes per §5.8.
+- Precompute complete Game state through an injected `prepareGame` before assignment.
 - Keep `Game.setCourse()` as compatible wrapper.
 
 **Tests**
@@ -1126,7 +1379,12 @@ Force `packsEnabled:false`; automatic normalized package remains valid.
 - presentation-only change updates content revision, not HD fingerprint;
 - gameplay and same-key asset-byte changes update content revision;
 - authoring reference changes do not update content revision;
+- object insertion permutations and source/runtime roots do not update content
+  revision;
+- semantic array order and normalized value changes do update it;
+- negative zero, Unicode NFC, finite-number rejection, and UTF-8 bytes are pinned;
 - prepare failure leaves every current Game field unchanged;
+- candidate has no course revision and includes prepared Game state;
 - commit is assignment-only and invoked once;
 - invalid terrain-feature request rejects curated pack, not base activation.
 
@@ -1156,9 +1414,13 @@ lands.
 - Allocate generation before acquisition.
 - Abort superseded fetch where supported.
 - Gate after acquisition and preparation.
-- Commit package/Game/HD/revision/timer once.
+- Allocate revision and create `ResolvedCoursePackage` only after the final stale gate.
+- Commit package/Game/HD/revision/timer once through a synchronous non-throwing
+  operation.
 - Route startup autoload and POST through manager.
+- Await autoload success/failure before listening.
 - Broadcast revisions/content only after commit.
+- Isolate observer/broadcast exceptions after commit.
 - Preserve readiness nonce and HD fallback.
 - Return typed/redacted failed/superseded responses.
 
@@ -1167,11 +1429,17 @@ lands.
 - slow A/fast B;
 - A failure then B success;
 - B success then late A success;
+- concurrent same-identity acquisition coalesces and publishes one cache set;
 - preparation failure with prior active course;
-- `game.setCourse` equivalent commit exactly once;
+- Game preparation failure before commit;
+- resolved public revision matches active Game/HD/timer revision;
+- commit exactly once with no mixed state;
+- observer exception after commit cannot roll back or recommit;
 - prior timer remains on failure and is replaced on success;
 - stale readiness ack remains rejected;
-- startup autoload uses same package builder;
+- startup autoload success commits before listen;
+- startup autoload failure still listens unloaded with one diagnostic;
+- POST cannot race pre-listen bootstrap;
 - public responses contain no root path or raw stack.
 
 **Commit**
@@ -1199,9 +1467,11 @@ not restore partial state mutation piecemeal.
 
 - Serve exact active revision/key through GET/HEAD.
 - Add immutable ETag/304.
-- Recheck containment/type/size at request.
+- Open once, compare file identity, hash/validate exact handle, and stream that handle.
+- Recheck containment/type/size/hash at request, including HEAD/304.
 - Set `BIRDIE_ART_DIR` for packaged mode.
-- Stage/copy runtime-only root through `extraResources`.
+- Wire deterministic preparation into start/server/pack/dist commands.
+- Stage/copy the exact runtime tree through `extraResources`.
 - Keep source references and local paths out of package and HTTP.
 
 **Tests**
@@ -1209,13 +1479,19 @@ not restore partial state mutation piecemeal.
 - exact GET/HEAD;
 - conditional 304;
 - stale revision and unknown key;
-- encoded traversal and malformed key;
-- realpath escape;
-- disallowed/oversized/replaced bytes;
+- encoded traversal, Windows reserved names, case-fold collision, and malformed key;
+- realpath/junction/symlink escape and swap;
+- disallowed/oversized/wrong-hash bytes;
+- same-size/same-magic replacement;
+- unlink/rename between activation and request;
+- stream failure closes handle exactly once;
 - route swap after activation;
+- `X-Content-Type-Options: nosniff`;
 - error body redaction;
 - development and packaged fixture roots hash identically;
-- package config includes runtime stage and excludes authoring references.
+- package config includes runtime stage and excludes authoring references/Ajv/esbuild;
+- clean checkout packaging regenerates ignored staging without dirtying Git;
+- packaged smoke validates runtime index/manifest.
 
 **Commit**
 
@@ -1223,8 +1499,8 @@ not restore partial state mutation piecemeal.
 
 **Rollback**
 
-Disable active asset route and omit `extraResources`; package activation remains
-automatic-only and coherent.
+Set `BIRDIE_DISABLE_CURATED=1`; gateway and curated selection are disabled together.
+Packaging hooks remain safe and deterministic.
 
 ### Task 9 — Verification, regression evidence, and handoff
 
@@ -1273,26 +1549,30 @@ base course
 pack lookup
   +-- disabled/absent ----------> automatic, silent
   +-- selected invalid ---------> automatic + one diagnostic
-  +-- selected valid -----------> curated normalized
+  +-- selected valid -----------> staged runtime pack
+  |     +-- required asset miss -> reject pack
+  |     +-- optional asset miss -> prune referencing optional features
+  |     `-- complete -----------> curated normalized
   +-- terrain feature requested -> capability reject + automatic
      -> test/course-art-pack-schema.test.js
      -> test/course-presentation.test.js
 
 prepare package
-  +-- success ------------------> immutable-by-ownership candidate
+  +-- success ------------------> PreparedCourseCandidate (no courseRevision)
   +-- failure ------------------> no current-state mutation
      -> test/resolved-course-package.test.js
      -> test/game.test.js
 
 activation generation
-  +-- current success ----------> one commit + one broadcast
+  +-- current success ----------> ResolvedCoursePackage + one commit
   +-- superseded ---------------> typed 409, no mutation
   +-- current failure ----------> previous course remains
+  +-- observer failure ---------> committed state retained + typed diagnostic
      -> test/course-activation.test.js
      -> test/course-load-race.test.mjs
 
 asset request
-  +-- active revision + key ----> GET/HEAD/ETag/304
+  +-- active revision + key ----> open/hash exact handle -> GET/HEAD/ETag/304
   +-- stale/unknown/path escape -> generic redacted reject
      -> test/course-art-http.test.js
      -> test/course-art-packaging.test.mjs
@@ -1313,7 +1593,10 @@ node --test test/hd-fingerprint.test.mjs test/hd-bundle.test.js test/hd-compiler
 node --test test/course-art-pack-schema.test.js test/course-art-staging.test.mjs test/course-presentation.test.js
 node --test test/resolved-course-package.test.js test/course-activation.test.js test/course-load-race.test.mjs
 node --test test/course-art-http.test.js test/course-art-packaging.test.mjs
+npm run check:course-art
 npm test
+npm run pack
+node tools/course-art/packaged-smoke.cjs "<unpacked application path>"
 npm run visual:smoke -- --suite baseline --data-dir "<canonical data root>" --require-clean --output-dir ".shots/visual/sp02a/smoke"
 npm run visual:capture -- --suite baseline --data-dir "<canonical data root>" --require-clean --output-dir ".shots/visual/sp02a/after"
 npm run visual:compare -- --before "<clean SP-02a base capture>" --after "<candidate capture>" --output-dir ".shots/visual/sp02a/compare"
@@ -1326,7 +1609,8 @@ npm run visual:compare -- --before "<clean SP-02a base capture>" --after "<candi
 | Pure identity/schema/presentation/package | Node 22+ CI |
 | Race and HTTP contract | Node 22+ CI with temp roots |
 | Realpath/junction escape | CI pure case; named Windows host for actual junction |
-| Packaged-root fixture | Node CI; built Windows app is SP-07b final proof |
+| Source/runtime/isolated validator | Node 22+ CI with no production `node_modules` dependency |
+| Unpacked packaged app/validator/root | Windows CI or named Windows host; mandatory SP-02a proof |
 | Synthetic render smoke | hardware if available; typed capability skip otherwise |
 | Full visual regression | named RTX 3060 / WebGL 2 host |
 
@@ -1342,19 +1626,28 @@ contract assertion. No untested catch-and-fallback path is accepted.
 | Legacy name matches but origin does not | Refuse migration; retain legacy bytes | Typed recovery | migration |
 | Migration interrupted | No published keyed JSON; legacy untouched | Retryable | injected write |
 | Keyed cache embeds wrong source | Refuse/quarantine; never use | Typed error | cache hit |
+| Concurrent same-identity fetches | Coalesce one acquisition/publication | Invisible | cache race |
 | HD v1 manifest | Resolve with exact old bytes | Silent compatibility | HD |
+| V2 source absent/mismatched | Refuse v2 build/activation; request migration | Typed error | HD identity |
 | Unsupported fingerprint version | Reject descriptor; procedural fallback | Typed warning | HD |
 | Duplicate pack course ID/alias overlap | Reject index deterministically | Build/runtime diagnostic | schema |
 | Pack absent | Automatic presentation | Silent | presentation |
 | Selected pack corrupt/unsupported | Automatic plus one diagnostic | Concise recoverable | presentation |
 | Unknown field in production | Reject selected pack | Same as development | schema |
 | Unsupported terrain feature | Reject curated pack, keep automatic course | Typed capability | package |
-| Optional asset missing after valid pack | Drop referencing optional feature; keep course | One warning | assets |
+| Optional asset missing during staging | Prune every optional referencing feature before revision; keep pack | One warning | staging/assets |
+| Required feature references optional asset | Reject source pack as cross-field invalid | Build diagnostic | schema |
 | Required asset missing/changed | Reject curated pack or request; never serve stale bytes | Typed | assets/HTTP |
-| Junction/symlink escapes root | Reject before read | Generic external error | path |
+| Generated validator imports Ajv/esbuild at runtime | Build/test/package gate fails | Developer-facing | isolated/package smoke |
+| Source/runtime staged shape mismatch | Reject stage/runtime pack | Typed | staging/runtime schema |
+| Malformed or external-reference GLB | Reject source pack | Build diagnostic | GLB parser |
+| Junction/symlink escapes or swaps root | Reject before response | Generic external error | path/file identity |
+| Same-size asset bytes replaced | Hash mismatch; never serve old ETag/revision | Generic external error | exact handle |
 | Slow A finishes after B | A superseded, B stays active | Old request gets typed 409 | race |
 | Package preparation throws | Prior package/game/HD/revision/timer stay intact | Recoverable error | activation |
 | `Game` preparation throws | No active Game field changes | Typed core failure | game |
+| Observer throws after commit | Keep coherent committed state; diagnose once | Typed warning/error | activation observer |
+| Startup autoload fails | Listen unloaded after one typed diagnostic | Recoverable | bootstrap |
 | Stale asset URL after switch | Generic 404 | Browser refetches current | HTTP |
 | Raw filesystem exception | Redact public record; keep private stack | No path leak | diagnostics |
 | Runtime staging differs by machine | Build/test fails | Developer-facing | staging |
@@ -1374,14 +1667,24 @@ must account for it.
 - Every focused command passes.
 - Full `npm test` passes with zero failures/skips newly introduced by SP-02a.
 - Generated validator byte-current check passes.
+- Generated validator has no runtime import, runs without `node_modules`, and passes
+  the unpacked packaged smoke.
+- Source and runtime pack trees both match their exact closed schemas.
 - `git diff --check` passes.
 - No `courseDryFor`, `COURSE_DRY`, renderer scene, shader, or UI file changes.
 - No automatic adapter course-name or stable-ID special case.
 - No public manifest/diagnostic contains an absolute path.
 - V1 HD golden hashes and committed manifests remain compatible.
 - Source-key collision/migration tests pass.
+- Same-identity concurrent acquisition test passes.
+- V2 source-less/mismatched identity tests pass while v1 compatibility remains green.
+- Canonical content bytes are invariant across insertion order, line ending, root
+  path, locale, and development/package staging.
 - A/B race and prepare-failure atomicity tests pass.
-- GET/HEAD/ETag/304/security tests pass.
+- Prepared candidate versus active resolved package/revision tests pass.
+- Startup bootstrap success/failure/listen ordering tests pass.
+- GET/HEAD/ETag/304/exact-handle hash/stream/security tests pass.
+- GLB embedded-only validation tests pass.
 - Development and packaged fixture roots produce the same content hashes.
 - Synthetic renderer smoke has no unexpected console/fatal event.
 - Hardware baseline is pixel-equivalent to the clean SP-02a base or every change is
@@ -1409,8 +1712,10 @@ profile.
   without a machine path.
 - Previous course remains playable after injected base/package failure.
 - Chambers automatic path contains no manual dryness or legacy sidecar.
-- Default pack-enabled profiles preserve current manual character data for later
-  SP-02b consumption.
+- The exact Chambers profile preserves its current `0.85` manual character value for
+  later SP-02b consumption.
+- SP-02b handoff explicitly blocks deletion of the name map until St Andrews and
+  Bandon identities/profiles or reviewed generic derivations are committed.
 - No visual improvement claim is made; fixed frames remain unchanged.
 
 ### Independent gate
@@ -1451,24 +1756,30 @@ Complete only after integration:
 
 ## 11. Parallelization and commit order
 
-After Task 0 freezes interfaces:
+After Task 1 freezes interfaces, the safe order is:
 
 ```text
-Task 2 identity/cache ----+
-                          +--> Task 5 adapters --> Task 6 package --> Task 7 activation
-Task 3 HD v2 -------------+
-                          |
-Task 4 schema/assets -----+-------------------------> Task 8 gateway/package
-                                                     |
-                                                     v
-                                               Task 9 evidence
+Task 1 -> Task 2 identity/cache
+              |
+              +----> Task 3 HD v2
+              |
+              +----> Task 4 source/runtime schema + staging
+
+Task 2 + Task 4 -> Task 5 adapters
+Task 3 + Task 5 -> Task 6 prepared candidate/Game state
+Task 6 -> Task 7 latest-only active package
+Task 7 -> Task 8 HTTP/package integration
+Task 8 -> Task 9 evidence
 ```
 
 One implementation owner should integrate this unit because `lib/course.js`,
 `server.js`, package metadata, and tests cross the same transaction boundary. If the
 lane delegates internally:
 
-- identity/HD and schema/assets may be developed in isolated child branches;
+- Task 3 and the pure schema/compiler portion of Task 4 may proceed after Task 2's
+  identity contract is committed;
+- a pure `course-art-http.js` helper may start after Task 4, but its server/active
+  package integration waits for Task 7;
 - only the assigned SP-02a owner edits the integration branch;
 - `server.js`, `lib/game.js`, `package.json`, and program docs have one owner;
 - integration remains in the exact task order above.
@@ -1480,7 +1791,9 @@ No SP-02b renderer work begins until SP-02a is accepted and integrated.
 | Review | Result | Confidence | Findings |
 |---|---|---:|---|
 | Current-base census | COMPLETE | — | Stable identity absent; all cache artifacts name-keyed; HD v1 includes display name; activation mutates before commit; `Game.setCourse` can partially assign; no pack/schema/gateway/package root; six source-document contradictions resolved in Section 5.1 |
-| Independent plan gate, pass 1 | PENDING | — | — |
+| Independent plan gate, pass 1 (`dc8814fa754f401bd6164611de960e043064ab79`) | REJECT | 97% | 3 High: package-unsafe generated validator, inconsistent candidate/active/Game transaction types, missing exact staged runtime contract. 10 Medium: optional-asset atomicity, v2 source mismatch, canonical bytes, exact served-byte verification, stage/package hooks, unsafe dependency graph, GLB validation, startup semantics, optional manual profiles, unowned rollback switches. 2 Low: concurrent same-identity disk writes and Windows/header hardening. All recommended corrections are incorporated in the next revision. |
+| Independent plan gate, pass 2 | PENDING | — | — |
 
-Dispatch verdict: **NOT READY** until the independent plan gate clears all
-Critical/High/Medium findings and the PIC records the exact implementation base.
+Dispatch verdict: **NOT READY / CORRECTION COMPLETE, RE-REVIEW REQUIRED**. No
+implementation lane may start until pass 2 confirms every Critical/High/Medium finding
+is closed and the PIC records the exact implementation base.
