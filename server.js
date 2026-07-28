@@ -11,7 +11,7 @@ const { OpenConnectServer } = require('./lib/openconnect');
 const { searchCourses, loadCourse, listCached, loadCached } = require('./lib/course');
 const { createCourseActivationManager } = require('./lib/course-activation');
 const { serveCourseArtRequest } = require('./lib/course-art-http');
-const { createCourseDiagnostic } = require('./lib/course-diagnostics');
+const { createCourseDiagnostic, sanitizePublicText } = require('./lib/course-diagnostics');
 const { normalizeCourseSource } = require('./lib/course-identity');
 const { prepareCourseCandidate } = require('./lib/resolved-course-package');
 const { Game, CLUB_FULL } = require('./lib/game');
@@ -91,20 +91,13 @@ function updatePlayerInfo() {
   oc.setPlayer({ DistanceToTarget: Math.round(game.distToPinYd) });
 }
 
-function sourceFromCourseId(courseId) {
-  const match = /^osm:(node|way|relation):([1-9][0-9]*)$/.exec(courseId || '');
-  if (!match) return null;
-  return normalizeCourseSource({ osmType: match[1], osmId: match[2], courseId });
-}
-
 function deriveActivationSource(request) {
   if (request?.source || (request?.osmType && request?.osmId != null)) {
     return normalizeCourseSource(request.source || request);
   }
   if (request?.cached) {
-    const record = listCached().find((entry) => entry.file === path.basename(request.cached));
-    const source = sourceFromCourseId(record?.courseId);
-    if (source) return source;
+    const cachedCourse = loadCached(request.cached);
+    if (cachedCourse?.source) return normalizeCourseSource(cachedCourse.source);
   }
   return normalizeCourseSource(null);
 }
@@ -148,6 +141,20 @@ const activationManager = createCourseActivationManager({
     prepareGame: (gameplayCourse, options) => game.prepareCourse(gameplayCourse, options),
   }),
   commitPreparedActivation,
+  onPrepareFailed(error, { courseId }) {
+    const cause = createCourseDiagnostic({
+      code: error?.code || error?.name || 'ACTIVATION_PREPARE_FAILED',
+      severity: 'error',
+      stage: 'activation-private',
+      courseId,
+      message: sanitizePublicText(
+        error?.message,
+        'Course activation preparation failed.',
+      ),
+      recovery: 'Inspect the private activation log and retry the course.',
+    });
+    console.error(`[course] activation prepare failed: ${JSON.stringify(cause)}`);
+  },
   onCommitted({ resolvedPackage, candidate }) {
     if (activeHd.length) {
       console.log(`[hd] ${activeHd.length} bundle(s) active: hole(s) ${activeHd.map((d) => d.hole).join(', ')}`);

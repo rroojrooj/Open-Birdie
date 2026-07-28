@@ -46,6 +46,10 @@ test('server integration keeps cached B active when older network A fails late',
     path.join(dataDir, 'courses', 'osm-way-2.json'),
     JSON.stringify(course(2)),
   );
+  fs.writeFileSync(
+    path.join(dataDir, 'courses', 'legacy-v3.json'),
+    JSON.stringify(course(3, { version: 3 })),
+  );
   process.env.BIRDIE_PORT = '0';
   process.env.BIRDIE_OC_PORT = '0';
   process.env.BIRDIE_NO_AUTOLOAD = '1';
@@ -102,6 +106,11 @@ test('server integration keeps cached B active when older network A fails late',
     assert.equal(geometry.name, 'Course 2');
     assert.doesNotMatch(JSON.stringify(geometry), /ob-server-race-|[A-Za-z]:\\/u);
 
+    const legacyResult = await server.activationManager.activate({ cached: 'legacy-v3.json' });
+    assert.equal(legacyResult.status, 'committed');
+    assert.equal(legacyResult.package.courseId, 'osm:way:3');
+    assert.equal(server.activationManager.current().courseId, 'osm:way:3');
+
     const rejectedResponse = await nativeFetch(
       `http://127.0.0.1:${(await server.ready).httpPort}/api/load-course`,
       {
@@ -117,7 +126,7 @@ test('server integration keeps cached B active when older network A fails late',
     assert.equal(rejectedResponse.status, 500);
     assert.equal(rejected.diagnostic.code, 'ACTIVATION_PREPARE_FAILED');
     assert.doesNotMatch(JSON.stringify(rejected), /alice|hunter2|secret|stack|[A-Za-z]:\\/iu);
-    assert.equal(server.activationManager.current().courseId, 'osm:way:2');
+    assert.equal(server.activationManager.current().courseId, 'osm:way:3');
   } finally {
     server.close();
     globalThis.fetch = nativeFetch;

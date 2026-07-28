@@ -44,6 +44,7 @@ function harness({
   prepareCandidate,
   commitPreparedActivation,
   onCommitted,
+  onPrepareFailed,
 } = {}) {
   const commits = [];
   const manager = createCourseActivationManager({
@@ -53,6 +54,7 @@ function harness({
       commits.push(payload);
     }),
     onCommitted,
+    onPrepareFailed,
   });
   return { manager, commits };
 }
@@ -205,9 +207,13 @@ test('commit receives one coherent candidate/public revision and private lookup 
 
 test('identity derivation failure is typed, redacted, and performs no acquisition or commit', async () => {
   let acquisitions = 0;
+  const internalFailures = [];
   const { manager, commits } = harness({
     acquireCourse() {
       acquisitions += 1;
+    },
+    onPrepareFailed(error, context) {
+      internalFailures.push({ error, context });
     },
   });
   const result = await manager.activate({ name: 'No source' });
@@ -216,6 +222,12 @@ test('identity derivation failure is typed, redacted, and performs no acquisitio
   assert.equal(acquisitions, 0);
   assert.equal(commits.length, 0);
   assert.equal(manager.current(), null);
+  assert.equal(internalFailures.length, 1);
+  assert.match(internalFailures[0].error.message, /OpenStreetMap source type/u);
+  assert.deepEqual(internalFailures[0].context, {
+    generation: 1,
+    courseId: null,
+  });
 });
 
 test('failed request preserves the coherent Game/HD/timer snapshot and next success replaces it once', async () => {
