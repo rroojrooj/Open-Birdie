@@ -15,6 +15,7 @@ const {
 const {
   prepareCourseCandidate,
 } = require('../lib/resolved-course-package');
+const { loadRuntimeCourseArt } = require('../lib/course-art-assets');
 
 const SOURCE = Object.freeze({
   courseId: 'osm:way:26787026',
@@ -126,6 +127,20 @@ function pngPackAt(artDir, rgba = [40, 100, 40, 255]) {
     enumerable: false,
   });
   return { assetPath, bytes, pack, sha256 };
+}
+
+function publishRuntimePack(artDir, pack) {
+  const manifestPath = path.join(artDir, 'packs', pack.packId, 'manifest.json');
+  fs.writeFileSync(manifestPath, JSON.stringify(pack, null, 2));
+  fs.writeFileSync(path.join(artDir, 'index.json'), JSON.stringify({
+    version: 1,
+    packs: [{
+      packId: pack.packId,
+      courseId: pack.courseId,
+      legacyMatch: pack.legacyMatch,
+      manifest: `packs/${pack.packId}/manifest.json`,
+    }],
+  }, null, 2));
 }
 
 async function prepare({
@@ -250,6 +265,37 @@ test('candidate validates asset bytes and separates path-free public records fro
     prepare({ packResult: validResult(pack), artDir }),
     (error) => error.code === 'ART_ASSET_INVALID',
   );
+});
+
+test('runtime asset bytes are read and hashed once, then owned by the prepared package', async () => {
+  const artDir = tempRoot();
+  const { assetPath, bytes, pack, sha256 } = pngPackAt(artDir);
+  publishRuntimePack(artDir, pack);
+  const originalReadFileSync = fs.readFileSync;
+  let assetReads = 0;
+  fs.readFileSync = function countedRead(filePath, ...args) {
+    if (path.resolve(filePath) === path.resolve(assetPath)) assetReads += 1;
+    return originalReadFileSync.call(this, filePath, ...args);
+  };
+  let candidate;
+  try {
+    candidate = await prepareCourseCandidate({
+      baseCourse: baseCourse(),
+      requestedIdentity: SOURCE,
+      dataDir: tempRoot(),
+      artDir,
+      resolveHd: () => ({ status: 'absent' }),
+      loadRuntimePack: loadRuntimeCourseArt,
+      loadLegacyOverride: () => null,
+      prepareGame: () => ({}),
+    });
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  assert.equal(candidate.presentation.tier, 'curated');
+  assert.equal(assetReads, 1);
+  assert.equal(candidate.privateAssetManifest.turf.sha256, sha256);
+  assert.ok(candidate.privateAssetManifest.turf.verifiedBytes.equals(bytes));
 });
 
 test('content revision ignores root/name/object/feature order but tracks semantic presentation, gameplay, and assets', async () => {

@@ -7,7 +7,6 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { PassThrough } = require('node:stream');
 const { PNG } = require('pngjs');
 
 const { serveCourseArtRequest } = require('../lib/course-art-http');
@@ -56,6 +55,9 @@ function fixture(t, {
     bytes: declaredBytes,
     sha256: declaredHash,
     fileIdentity: identity(file),
+    verifiedBytes: Buffer.from(bytes),
+    verifiedMime: 'image/png',
+    verifiedSha256: sha256(bytes),
   });
   const publicEntry = Object.freeze({
     url: `/api/course-art/${REVISION}/${key}`,
@@ -190,7 +192,7 @@ test('case-fold-colliding active keys fail closed with a generic 400', async (t)
   );
 });
 
-test('HEAD and If-None-Match revalidate same-size same-magic replacement bytes', async (t) => {
+test('active snapshot owns HEAD, conditional, and GET after same-inode disk mutation', async (t) => {
   const item = fixture(t);
   const port = await startServer(t, item);
   const original = await request(port, assetPath(item));
@@ -201,12 +203,50 @@ test('HEAD and If-None-Match revalidate same-size same-magic replacement bytes',
   assert.ok(replacement.subarray(0, 24).equals(item.bytes.subarray(0, 24)));
 
   const head = await request(port, assetPath(item), { method: 'HEAD' });
-  assert.equal(head.status, 404);
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.etag, original.headers.etag);
   const conditional = await request(port, assetPath(item), {
     headers: { 'If-None-Match': original.headers.etag },
   });
-  assert.equal(conditional.status, 404);
-  assert.equal(conditional.headers['cache-control'], 'no-store');
+  assert.equal(conditional.status, 304);
+  const get = await request(port, assetPath(item));
+  assert.equal(get.status, 200);
+  assert.equal(get.headers.etag, original.headers.etag);
+  assert.ok(get.body.equals(item.bytes));
+});
+
+test('GET serves the verified bytes when the same inode mutates after validation', async (t) => {
+  const item = fixture(t);
+  const replacement = pngBytes([180, 30, 90, 255]);
+  assert.equal(replacement.length, item.bytes.length);
+  const originalIdentity = identity(item.file);
+  const real = fs.promises;
+  let statCalls = 0;
+  const fsPromises = {
+    lstat: (...args) => real.lstat(...args),
+    realpath: (...args) => real.realpath(...args),
+    async open(...args) {
+      const handle = await real.open(...args);
+      return {
+        async stat(...statArgs) {
+          const stat = await handle.stat(...statArgs);
+          statCalls += 1;
+          if (statCalls === 2) fs.writeFileSync(item.file, replacement);
+          return stat;
+        },
+        readFile: (...readArgs) => handle.readFile(...readArgs),
+        createReadStream: (...streamArgs) => handle.createReadStream(...streamArgs),
+        close: () => handle.close(),
+      };
+    },
+  };
+  const port = await startServer(t, item, { fsPromises });
+  const response = await request(port, assetPath(item));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.etag, `"sha256-${sha256(item.bytes)}"`);
+  assert.ok(response.body.equals(item.bytes), 'body must match the bytes that own the ETag');
+  assert.ok(fs.readFileSync(item.file).equals(replacement), 'mutation window was exercised');
+  assert.deepEqual(identity(item.file), originalIdentity, 'mutation kept the same file identity');
 });
 
 test('unlink, rename, disallowed MIME, oversized declaration, and wrong hash fail closed', async (t) => {
@@ -281,7 +321,7 @@ test('an activation route swap during verification cannot serve the prior asset'
   assert.equal(response.headers['cache-control'], 'no-store');
 });
 
-test('stream failure closes the one verified file handle exactly once', async (t) => {
+test('response failure closes the verified file handle exactly once', async (t) => {
   const item = fixture(t);
   const real = fs.promises;
   let opens = 0;
@@ -294,10 +334,6 @@ test('stream failure closes the one verified file handle exactly once', async (t
       const handle = await real.open(...args);
       return {
         stat: (...statArgs) => handle.stat(...statArgs),
-        readFile: (...readArgs) => handle.readFile(...readArgs),
-        createReadStream() {
-          return new PassThrough();
-        },
         async close() {
           closes += 1;
           return handle.close();
@@ -314,6 +350,7 @@ test('stream failure closes the one verified file handle exactly once', async (t
     },
     end() {
       this.headersSent = true;
+      throw new Error('injected response failure');
     },
     destroy() {
       this.destroyed = true;
@@ -328,10 +365,6 @@ test('stream failure closes the one verified file handle exactly once', async (t
     getActivePackage: item.state.getActivePackage,
     lookupPrivateAsset: item.state.lookupPrivateAsset,
     fsPromises,
-    async pipelineImpl() {
-      response.headersSent = true;
-      throw new Error('injected stream failure');
-    },
   });
   assert.equal(opens, 1);
   assert.equal(closes, 1);
