@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "courseId": "osm:way:26787026",
+  "displayName": "Chambers Bay",
+  "legacyMatch": {
+    "names": [
+      "Chambers Bay"
+    ],
+    "origin": {
+      "lat": 47.2057007,
+      "lon": -122.5750529,
+      "toleranceM": 250
+    }
+  },
+  "tier": "curated",
+  "character": {
+    "biome": "pnw-links",
+    "dryness": 0.85
+  },
+  "world": {},
+  "atmosphere": {},
+  "materials": {},
+  "components": {
+    "references": "references.json"
+  },
+  "gameplay": {},
+  "assets": {
+    "clubhouse": {
+      "path": "assets/clubhouse.glb",
+      "mime": "model/gltf-binary",
+      "required": false
+    }
+  }
+}

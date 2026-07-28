@@ -1,0 +1,308 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://open-birdie/course-art/source-v1.schema.json",
+  "title": "Open Birdie course art authoring source v1",
+  "$defs": {
+    "courseId": {
+      "type": "string",
+      "pattern": "^osm:(node|way|relation):[1-9][0-9]*$"
+    },
+    "packId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "assetKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9._-]*$"
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lat", "lon", "toleranceM"],
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "toleranceM": { "type": "number", "minimum": 0, "maximum": 10000 }
+      }
+    },
+    "legacyMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["names", "origin"],
+      "properties": {
+        "names": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+        },
+        "origin": { "$ref": "#/$defs/origin" }
+      }
+    },
+    "vec2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number", "minimum": -20000, "maximum": 20000 }
+    },
+    "vec3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number", "minimum": -20000, "maximum": 20000 }
+    },
+    "featurePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "position": { "$ref": "#/$defs/vec3" },
+        "rotationDeg": { "$ref": "#/$defs/vec3" },
+        "scale": {
+          "oneOf": [
+            { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+            {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 }
+            }
+          ]
+        },
+        "density": { "type": "number", "minimum": 0, "maximum": 100 },
+        "radiusM": { "type": "number", "minimum": 0, "maximum": 20000 },
+        "heightM": { "type": "number", "minimum": 0, "maximum": 2000 },
+        "area": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/vec2" }
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "required", "assetKeys", "payload"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9._-]*$"
+        },
+        "required": { "type": "boolean" },
+        "assetKeys": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/assetKey" }
+        },
+        "payload": { "$ref": "#/$defs/featurePayload" }
+      }
+    },
+    "character": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["biome", "dryness"],
+      "properties": {
+        "biome": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "dryness": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "emptyObject": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "poly"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["green", "fairway", "tee", "bunker", "water", "rough"] },
+        "poly": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/vec2" }
+        }
+      }
+    },
+    "gameplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pins": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^(?:[1-9]|1[0-8])$": { "$ref": "#/$defs/vec2" }
+          }
+        },
+        "surfaces": {
+          "type": "array",
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/surface" }
+        }
+      }
+    },
+    "assetDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "mime", "required"],
+      "properties": {
+        "path": { "$ref": "#/$defs/safeRelativePath" },
+        "mime": {
+          "type": "string",
+          "enum": ["image/png", "image/jpeg", "image/webp", "image/ktx2", "model/gltf-binary"]
+        },
+        "required": { "type": "boolean" },
+        "expectedWidth": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "expectedHeight": { "type": "integer", "minimum": 1, "maximum": 8192 }
+      }
+    },
+    "index": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "packs"],
+      "properties": {
+        "version": { "const": 1 },
+        "packs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["packId", "courseId", "legacyMatch", "source"],
+            "properties": {
+              "packId": { "$ref": "#/$defs/packId" },
+              "courseId": { "$ref": "#/$defs/courseId" },
+              "legacyMatch": { "$ref": "#/$defs/legacyMatch" },
+              "source": { "$ref": "#/$defs/safeRelativePath" }
+            }
+          }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version", "courseId", "displayName", "legacyMatch", "tier",
+        "character", "world", "atmosphere", "materials", "components",
+        "gameplay", "assets"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "courseId": { "$ref": "#/$defs/courseId" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "legacyMatch": { "$ref": "#/$defs/legacyMatch" },
+        "tier": { "const": "curated" },
+        "character": { "$ref": "#/$defs/character" },
+        "world": { "$ref": "#/$defs/emptyObject" },
+        "atmosphere": { "$ref": "#/$defs/emptyObject" },
+        "materials": { "$ref": "#/$defs/emptyObject" },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "references": { "$ref": "#/$defs/safeRelativePath" },
+            "landmarks": { "$ref": "#/$defs/safeRelativePath" },
+            "vegetation": { "$ref": "#/$defs/safeRelativePath" },
+            "terrainFeatures": { "$ref": "#/$defs/safeRelativePath" }
+          }
+        },
+        "gameplay": { "$ref": "#/$defs/gameplay" },
+        "assets": {
+          "type": "object",
+          "maxProperties": 256,
+          "propertyNames": { "$ref": "#/$defs/assetKey" },
+          "additionalProperties": { "$ref": "#/$defs/assetDeclaration" }
+        },
+        "inlineFeatures": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/feature" }
+        }
+      }
+    },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "references"],
+      "properties": {
+        "version": { "const": 1 },
+        "references": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "url", "license"],
+            "properties": {
+              "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "url": { "type": "string", "pattern": "^https://" },
+              "license": { "type": "string", "minLength": 1, "maxLength": 160 },
+              "notes": { "type": "string", "maxLength": 2000 }
+            }
+          }
+        }
+      }
+    },
+    "landmarks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "features"],
+      "properties": {
+        "version": { "const": 1 },
+        "features": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/feature" }
+        }
+      }
+    },
+    "vegetation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "rules"],
+      "properties": {
+        "version": { "const": 1 },
+        "rules": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/feature" }
+        }
+      }
+    },
+    "terrainFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "features"],
+      "properties": {
+        "version": { "const": 1 },
+        "features": {
+          "type": "array",
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/feature" }
+        }
+      }
+    }
+  }
+}

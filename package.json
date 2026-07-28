@@ -17,6 +17,11 @@
     "build:hd-hole": "node tools/hd-course/cli.mjs build",
     "validate:hd-bundle": "node tools/validate-hd-bundle.js",
     "smoke:hd-providers": "node tools/smoke-hd-providers.mjs",
+    "generate:course-art-validator": "node tools/course-art/generate-validator.mjs",
+    "prepare:course-art": "node tools/course-art/prepare-runtime.mjs",
+    "smoke:course-art": "node tools/course-art/packaged-smoke.cjs build/course-art",
+    "prepack": "npm run prepare:course-art",
+    "predist": "npm run prepare:course-art",
     "visual:capture": "node tools/visual-capture/cli.mjs capture",
     "visual:smoke": "node tools/visual-capture/cli.mjs smoke",
     "visual:compare": "node tools/visual-capture/cli.mjs compare",
@@ -39,8 +44,10 @@
       "main.js",
       "server.js",
       "lib/**/*",
+      "!lib/schemas/course-art-*.schema.json",
       "public/**/*",
       "tools/uneekor-watch.js",
+      "tools/course-art/packaged-smoke.cjs",
       "!**/*.md",
       "!data",
       "!docs",
@@ -50,6 +57,15 @@
     "asar": true,
     "asarUnpack": [
       "tools/uneekor-watch.js"
+    ],
+    "extraResources": [
+      {
+        "from": "build/course-art",
+        "to": "course-art",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "target": "nsis",
@@ -71,6 +87,7 @@
   },
   "devDependencies": {
     "ajv": "^8.20.0",
+    "esbuild": "^0.28.1",
     "electron": "^42.4.0",
     "electron-builder": "^26.15.3",
     "geotiff": "^3.0.5",

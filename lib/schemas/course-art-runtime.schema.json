@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://open-birdie/course-art/runtime-v1.schema.json",
+  "title": "Open Birdie staged course art runtime v1",
+  "$defs": {
+    "courseId": {
+      "type": "string",
+      "pattern": "^osm:(node|way|relation):[1-9][0-9]*$"
+    },
+    "packId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "assetKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9._-]*$"
+    },
+    "safeRuntimePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[a-zA-Z0-9._/-]+$"
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lat", "lon", "toleranceM"],
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "toleranceM": { "type": "number", "minimum": 0, "maximum": 10000 }
+      }
+    },
+    "legacyMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["names", "origin"],
+      "properties": {
+        "names": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+        },
+        "origin": { "$ref": "#/$defs/origin" }
+      }
+    },
+    "vec2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number", "minimum": -20000, "maximum": 20000 }
+    },
+    "featurePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "position": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "number", "minimum": -20000, "maximum": 20000 }
+        },
+        "rotationDeg": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "number", "minimum": -20000, "maximum": 20000 }
+        },
+        "scale": {
+          "oneOf": [
+            { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+            {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 }
+            }
+          ]
+        },
+        "density": { "type": "number", "minimum": 0, "maximum": 100 },
+        "radiusM": { "type": "number", "minimum": 0, "maximum": 20000 },
+        "heightM": { "type": "number", "minimum": 0, "maximum": 2000 },
+        "area": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/vec2" }
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "required", "assetKeys", "payload"],
+      "properties": {
+        "id": { "$ref": "#/$defs/assetKey" },
+        "required": { "type": "boolean" },
+        "assetKeys": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/assetKey" }
+        },
+        "payload": { "$ref": "#/$defs/featurePayload" }
+      }
+    },
+    "character": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["biome", "dryness"],
+      "properties": {
+        "biome": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9-]*$" },
+        "dryness": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "emptyObject": { "type": "object", "additionalProperties": false },
+    "gameplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pins": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^(?:[1-9]|1[0-8])$": { "$ref": "#/$defs/vec2" }
+          }
+        },
+        "surfaces": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "poly"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["green", "fairway", "tee", "bunker", "water", "rough"] },
+              "poly": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 4096,
+                "items": { "$ref": "#/$defs/vec2" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "index": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "packs"],
+      "properties": {
+        "version": { "const": 1 },
+        "packs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["packId", "courseId", "legacyMatch", "manifest"],
+            "properties": {
+              "packId": { "$ref": "#/$defs/packId" },
+              "courseId": { "$ref": "#/$defs/courseId" },
+              "legacyMatch": { "$ref": "#/$defs/legacyMatch" },
+              "manifest": { "$ref": "#/$defs/safeRuntimePath" }
+            }
+          }
+        }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version", "packId", "courseId", "displayName", "legacyMatch",
+        "presentation", "gameplay", "terrainPatches", "capabilities",
+        "features", "assets", "contentRevision"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "packId": { "$ref": "#/$defs/packId" },
+        "courseId": { "$ref": "#/$defs/courseId" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "legacyMatch": { "$ref": "#/$defs/legacyMatch" },
+        "presentation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tier", "character", "world", "surfaces", "materials",
+            "vegetation", "landmarks", "atmosphere", "assetKeys", "qualityHints"
+          ],
+          "properties": {
+            "tier": { "const": "curated" },
+            "character": { "$ref": "#/$defs/character" },
+            "world": { "$ref": "#/$defs/emptyObject" },
+            "surfaces": { "$ref": "#/$defs/emptyObject" },
+            "materials": { "$ref": "#/$defs/emptyObject" },
+            "vegetation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rules"],
+              "properties": {
+                "rules": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/feature" } }
+              }
+            },
+            "landmarks": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["features"],
+              "properties": {
+                "features": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/feature" } }
+              }
+            },
+            "atmosphere": { "$ref": "#/$defs/emptyObject" },
+            "assetKeys": {
+              "type": "array",
+              "maxItems": 256,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/assetKey" }
+            },
+            "qualityHints": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source"],
+              "properties": { "source": { "const": "curated" } }
+            }
+          }
+        },
+        "gameplay": { "$ref": "#/$defs/gameplay" },
+        "terrainPatches": { "type": "array", "maxItems": 0 },
+        "capabilities": { "$ref": "#/$defs/emptyObject" },
+        "features": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/feature" }
+        },
+        "assets": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "file", "mime", "bytes", "sha256", "required"],
+            "properties": {
+              "key": { "$ref": "#/$defs/assetKey" },
+              "file": { "$ref": "#/$defs/safeRuntimePath" },
+              "mime": {
+                "type": "string",
+                "enum": ["image/png", "image/jpeg", "image/webp", "image/ktx2", "model/gltf-binary"]
+              },
+              "bytes": { "type": "integer", "minimum": 1, "maximum": 134217728 },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "required": { "type": "boolean" },
+              "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
+              "height": { "type": "integer", "minimum": 1, "maximum": 8192 }
+            }
+          }
+        },
+        "contentRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}
