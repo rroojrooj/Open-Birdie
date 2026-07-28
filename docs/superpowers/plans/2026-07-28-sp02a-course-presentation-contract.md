@@ -1,6 +1,6 @@
 # SP-02a — CoursePresentation Contract, Identity, Activation, and Asset Delivery
 
-**Status:** PLAN_REVIEW  
+**Status:** READY_FOR_INTEGRATION  
 **Program charter:** [`2026-07-28-pro-visuals-program-charter.md`](2026-07-28-pro-visuals-program-charter.md)  
 **Program ledger:** [`2026-07-28-pro-visuals-program-ledger.md`](2026-07-28-pro-visuals-program-ledger.md)  
 **Source design:** user-authored `2026-07-23-pro-visuals-program-design.md`,
@@ -1821,8 +1821,9 @@ No SP-02b renderer work begins until SP-02a is accepted and integrated.
 | Current-base census | COMPLETE | — | Stable identity absent; all cache artifacts name-keyed; HD v1 includes display name; activation mutates before commit; `Game.setCourse` can partially assign; no pack/schema/gateway/package root; six source-document contradictions resolved in Section 5.1 |
 | Independent plan gate, pass 1 (`dc8814fa754f401bd6164611de960e043064ab79`) | REJECT | 97% | 3 High: package-unsafe generated validator, inconsistent candidate/active/Game transaction types, missing exact staged runtime contract. 10 Medium: optional-asset atomicity, v2 source mismatch, canonical bytes, exact served-byte verification, stage/package hooks, unsafe dependency graph, GLB validation, startup semantics, optional manual profiles, unowned rollback switches. 2 Low: concurrent same-identity disk writes and Windows/header hardening. All recommended corrections are incorporated in the next revision. |
 | Independent plan gate, pass 2 (`6c3494d0b0193a54052ab03183e95f6a50fc3c51`) | REJECT | 96% | 0 Critical, 0 High, 1 Medium, 2 Low. Medium: activation-level abort conflicted with same-identity shared acquisition. Low: source-less v1 build/read wording and private active-state ownership were not pinned. This revision assigns abort ownership to the source-keyed coordinator, adds exact same-/different-ID abort tests, limits source-less v1 compatibility to already-built runtime manifests, and defines the private `ActiveCourseState`. |
-| Independent plan gate, pass 3 | PENDING | — | — |
+| Independent plan gate, pass 3 (`f8693c3c2995a674d8f5827682d38a820deb227d`) | ACCEPT | 98% | 0 Critical, 0 High, 0 Medium, 0 Low. Coordinator-owned abort lifecycle, same-/different-ID supersession tests, read-only source-less v1 compatibility, and private `ActiveCourseState` ownership are explicit. Whole-plan architecture, tests, failure modes, packaging, performance evidence, dependency order, and deferred renderer scope were rechecked. |
 
-Dispatch verdict: **NOT READY / CORRECTION COMPLETE, RE-REVIEW REQUIRED**. No
-implementation lane may start until pass 3 confirms every Critical/High/Medium finding
-is closed and the PIC records the exact implementation base.
+Dispatch verdict: **READY / DISPATCH YES AFTER PLAN INTEGRATION**. The plan has no
+unresolved Critical, High, Medium, or Low finding. The PIC must merge this accepted
+plan and record that exact merge SHA as the implementation base before the isolated
+implementation lane starts.

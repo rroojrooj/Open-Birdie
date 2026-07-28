@@ -61,13 +61,16 @@
   acquisition coordinator, adding exact same-/different-ID abort-capable race tests,
   limiting source-less v1 support to already-built manifests, and defining private
   `ActiveCourseState` ownership.
+- Accepted exact SP-02a plan candidate
+  `f8693c3c2995a674d8f5827682d38a820deb227d` in pass 3 at 98% confidence with
+  zero Critical, High, Medium, or Low findings and dispatch YES.
 
 ## Left
 
-1. Run independent pass-3 review of the corrected SP-02a plan.
-2. Correct any remaining Critical, High, or Medium finding.
-3. Merge the accepted plan and record the exact implementation base.
-4. Assign one isolated SP-02a implementation lane; keep SP-02b renderer work blocked.
+1. Merge the accepted plan and record the exact implementation base.
+2. Assign one isolated SP-02a implementation lane.
+3. Execute Tasks 1–9 in the accepted dependency order; keep SP-02b renderer work
+   blocked.
 
 ## Current facts
 
