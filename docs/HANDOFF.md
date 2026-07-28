@@ -5,14 +5,23 @@
 > `d2305fa524e3ce2d9dc8b87d46611418adb5ca45`. The recovery restores crisp authored
 > green/fairway/bunker ownership with an explicit raw `R=mown, G=green, B=bunker` mask,
 > bounded green collar, corrected OSM-over-class-map precedence, and hardened class-map
-> smoothing with an observable raw fallback. `npm test` passes **381/381**. Clean
+> smoothing with an observable raw fallback. `npm test` passes **382/382**. Clean
 > synthetic and three-course evidence lives under `.shots/visual/sp01/{smoke,after,compare}`;
 > same-host RTX 3060 median GPU time moved only `15.400 -> 15.438 ms` (+0.038 ms;
 > budget +3 ms), with textures `57 -> 57`. Named visual review passes Chambers,
-> Sawgrass, and St Andrews. The residual broad Chambers `high-survey` HD
+> Sawgrass, and St Andrews. The clean adjacent-pose motion proof is
+> `.shots/visual/sp01/motion/sp01-motion-2026-07-28T094519-169Z/manifest.json`
+> (Git `a261b564946e000f1688e3e7138f470441f89138`, suite SHA-256
+> `4d403e0591b4e573aa7ad27892bf68857626ba9206e4e87df99f17ac715c21eb`,
+> RTX 3060): five 0.5-degree Chambers green orbit steps retain a continuous,
+> stable-width inner edge/collar with no visible pop, halo flash, or `fwidth` shimmer.
+> The residual broad Chambers `high-survey` HD
 > patch/far-photo relief seam remains and is explicitly handed to **SP-04**—do not
-> tune it in SP-01. Independent PIC review/merge and ledger acceptance are still
-> pending; SP-02 renderer wiring remains blocked on accepted SP-01.
+> tune it in SP-01. Reviewer Low: the pre-existing shared-resource cleanup can revisit
+> an idempotently disposed Three texture; defer ownership normalization to renderer
+> lifecycle cleanup, with no SP-01 scope expansion. Independent PIC review/merge and
+> ledger acceptance are still pending; SP-02 renderer wiring remains blocked on
+> accepted SP-01.
 
 > **ACTIVE PROGRAM 2026-07-23 → [Pro Visuals design specification](superpowers/specs/2026-07-23-pro-visuals-program-design.md)
 > + [master implementation plan](superpowers/plans/2026-07-23-pro-visuals-master-plan.md)

@@ -14,12 +14,21 @@ green proof camera are covered by tests.
 
 - Code evidence commit: `d2305fa524e3ce2d9dc8b87d46611418adb5ca45`
   (the documentation commit is a code-identical descendant).
-- Automated gate: `npm test` passed **381/381**. Focused camera, mask, shader, and
+- Automated gate: `npm test` passed **382/382**. Focused camera, mask, shader, and
   smoothing suites also passed.
 - Clean hardware evidence: synthetic smoke
   `.shots/visual/sp01/smoke/synthetic-smoke-2026-07-28T090945-084Z`; three-course
   candidate `.shots/visual/sp01/after/baseline-2026-07-28T091021-742Z`; comparison
   `.shots/visual/sp01/compare`.
+- Adjacent-pose stability gate: committed suite `sp01-motion` pins five Chambers green
+  poses from yaw `-1` through `+1` in exact `0.5` degree steps around the corrected
+  camera. Its clean RTX 3060 artifact is
+  `.shots/visual/sp01/motion/sp01-motion-2026-07-28T094519-169Z`, with manifest
+  `manifest.json`, Git SHA `a261b564946e000f1688e3e7138f470441f89138`, and suite
+  SHA-256 `4d403e0591b4e573aa7ad27892bf68857626ba9206e4e87df99f17ac715c21eb`.
+  Visual verdict: **PASS** — the authored inner edge and collar remain continuous with
+  stable width/softness across every adjacent pose; no popping, broken coverage, halo
+  flash, or visible `fwidth` shimmer.
 - Visual gate: corrected Chambers green has a crisp authored inner edge and bounded
   collar; authored bunker/fairway boundaries recover without the class-map double edge;
   Sawgrass stays lush and its small authored H17 bunker remains; St Andrews changes
@@ -31,6 +40,10 @@ green proof camera are covered by tests.
 - The Chambers `high-survey` frame still exposes the broad HD patch/far-photo relief
   seam. That is recorded as **SP-04 input**; SP-01 deliberately does not tune HD
   terrain, normals, LOD, or far-photo behavior.
+- Deferred reviewer Low: shared texture cleanup can reach an already-disposed Three
+  texture through the pre-existing resource ownership pattern. Three texture disposal
+  is idempotent and SP-01 adds no observed leak or failure, so lifecycle normalization
+  is logged for a later renderer-resource cleanup rather than expanded into this branch.
 
 PIC independent review, merge, and program-ledger acceptance remain pending. SP-02
 renderer wiring continues to wait for that acceptance.
