@@ -1,6 +1,6 @@
 # SP-02a — CoursePresentation Contract, Identity, Activation, and Asset Delivery
 
-**Status:** READY_FOR_INTEGRATION
+**Status:** REVIEW_ACCEPTED
 **Program charter:** [`2026-07-28-pro-visuals-program-charter.md`](2026-07-28-pro-visuals-program-charter.md)  
 **Program ledger:** [`2026-07-28-pro-visuals-program-ledger.md`](2026-07-28-pro-visuals-program-ledger.md)  
 **Source design:** user-authored `2026-07-23-pro-visuals-program-design.md`,
@@ -9,11 +9,12 @@
 worktree without modifying it  
 **Planning/review base:** `origin/main` at
 `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76`  
-**Implementation base:** the current `origin/main` containing this accepted plan;
-the PIC records the exact SHA before dispatch  
+**Implementation base:** `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`
+(PR #44 merge; accepted plan candidate ancestry verified)
 **Target branch:** `codex/sp02a-course-presentation-contract`  
-**Owner/module:** unassigned implementation lane; server-side course package
-contract and local curated-asset gateway  
+**Owner/module:** `/root/sp01_implementation` in isolated worktree
+`C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp02a-course-presentation-contract`;
+server-side course package contract and local curated-asset gateway
 **Estimate:** 5–8 focused engineering days plus packaged-root and hardware smoke  
 **Dependencies:** SP-00 and SP-01 accepted; SP-02b remains blocked until SP-02a is
 accepted and integrated
@@ -1828,7 +1829,8 @@ No SP-02b renderer work begins until SP-02a is accepted and integrated.
 
 Implementation review verdict: **REVIEW_ACCEPTED / READY_FOR_INTEGRATION; not DONE**.
 
-Dispatch verdict: **READY / DISPATCH YES AFTER PLAN INTEGRATION**. The plan has no
-unresolved Critical, High, Medium, or Low finding. The PIC must merge this accepted
-plan and record that exact merge SHA as the implementation base before the isolated
-implementation lane starts.
+Integration verdict: **READY / MERGE YES**. Exact code
+`521552466ece23cee6134285fce1ef4d344b3932` and reviewed documentation
+`9ed6cbf7de50e992c16e3009a556f318b899abe5` have no unresolved Critical, High,
+Medium, or Low finding. Windows CI, candidate ancestry, merge, and post-merge
+verification remain before Done.

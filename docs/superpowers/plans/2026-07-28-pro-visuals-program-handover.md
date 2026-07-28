@@ -64,6 +64,15 @@
 - Accepted exact SP-02a plan candidate
   `f8693c3c2995a674d8f5827682d38a820deb227d` in pass 3 at 98% confidence with
   zero Critical, High, Medium, or Low findings and dispatch YES.
+- Merged the accepted plan through PR #44 as
+  `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`; Windows CI passed, accepted
+  candidate ancestry was verified, and the clean post-merge suite passed 382/382.
+- Pinned that merge as the exact SP-02a implementation base and assigned
+  `/root/sp01_implementation` on `codex/sp02a-course-presentation-contract`.
+- Created the isolated implementation worktree at exact base `2dd82c7`, ran
+  `npm ci`, and verified the lane baseline with `npm test`: 382 passed, 0 failed.
+- Dispatched `/root/sp01_implementation` to execute accepted Tasks 1–9. SP-02b
+  renderer wiring remains blocked.
 - Implemented Tasks 1–9 on `codex/sp02a-course-presentation-contract` from exact base
   `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. Code evidence candidate:
   `61d9ab78edd1f56e361b7884d203d832483a6c65`.
@@ -75,7 +84,8 @@
   complete valid result with no page/fatal errors, then failed to emit process
   `close` before `CHILD_TIMEOUT`; no orphan remained. Earlier top-level smoke at
   `b30d3a3` and the later final-candidate three-course capture are green. Independent
-  review assigns severity; SP-02a does not absorb unrelated harness lifecycle work.
+  review classified this as a non-finding; SP-02a does not absorb unrelated harness
+  lifecycle work.
 - Independently reviewed exact first code candidate `61d9ab7` / documentation
   descendant `c7520a3` at 97% and rejected it with 0 Critical, 3 High, 6 Medium,
   and 0 Low findings.
@@ -146,13 +156,14 @@ The accepted transition is:
 
 ```text
 SP-01 DONE + SP-02a PLAN ACCEPTED
-    -> SP-02a candidate independent review
+    -> SP-02a CANDIDATE ACCEPTED
     -> PR / Windows CI / merge / post-merge verification
     -> SP-02b may be planned and dispatched
 ```
 
-SP-01 is present on `origin/main`; SP-02a has a corrected candidate awaiting
-independent re-review and integration.
+SP-01 and the accepted SP-02a implementation plan are present on `origin/main`.
+SP-02a started from exact base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`
+and now has an independently accepted candidate awaiting PR integration.
 
 ## Your turn
 

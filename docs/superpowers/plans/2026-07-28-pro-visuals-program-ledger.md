@@ -111,6 +111,7 @@ Until those are resolved, the historical branch remains **REPORTED**, not accept
 | 2026-07-28 | Reject the first SP-02a plan draft | Package-unsafe validator, inconsistent transaction types, and undefined runtime staging were High blockers; ten Medium and two Low contract gaps also required correction |
 | 2026-07-28 | Reject the second SP-02a plan revision | Same-identity supersession could abort its own shared fetch; source-less v1 compatibility and private active-state ownership also required exact wording |
 | 2026-07-28 | Accept the third SP-02a plan revision | Exact candidate `f8693c3` passed independent review at 98% with zero findings and dispatch YES |
+| 2026-07-28 | Integrate the accepted SP-02a plan | PR #44 merged as `2dd82c7`; candidate ancestry, Windows CI, and clean post-merge 382/382 suite verified |
 | 2026-07-28 | Complete the SP-02a implementation candidate | Code candidate `61d9ab7` passes 116 focused and 478 full tests, deterministic/package gates, and a 24-frame exact-input renderer-neutral comparison; independent review owns severity of the recorded synthetic process-close timeout |
 | 2026-07-28 | Reject the first SP-02a code candidate | Exact code `61d9ab7` / documentation `c7520a3` was rejected at 97% with 0 Critical, 3 High, 6 Medium, and 0 Low findings |
 | 2026-07-28 | Complete the corrected SP-02a code candidate | Exact code `5d13c1c` closes all nine findings through six focused correction commits; 124 focused and 487 full tests, deterministic staging, package, and unpacked smoke gates pass |
