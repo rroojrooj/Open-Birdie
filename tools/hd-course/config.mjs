@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import { HdCompileError } from './errors.mjs';
-import { canonicalCourseFingerprint } from './course-source.mjs';
+import { courseFingerprintV2 } from './course-source.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA = JSON.parse(fs.readFileSync(path.join(HERE, 'schemas', 'build-manifest.schema.json'), 'utf8'));
@@ -42,7 +42,10 @@ export function loadManifest(filePath) {
 }
 
 export function isBuildable(manifest) {
-  return manifest.discovered?.state === 'resolved' && manifest.course?.fingerprint !== 'pending';
+  return manifest.discovered?.state === 'resolved' &&
+    manifest.course?.fingerprintVersion === 2 &&
+    typeof manifest.course?.courseId === 'string' &&
+    manifest.course?.fingerprint !== 'pending';
 }
 
 export function assertBuildable(manifest) {
@@ -52,12 +55,22 @@ export function assertBuildable(manifest) {
   if (manifest.course?.fingerprint === 'pending') {
     throw new HdCompileError('config', 'HD_MANIFEST_PENDING', { reason: 'fingerprint-unpinned' });
   }
+  if (manifest.course?.fingerprintVersion !== 2 || typeof manifest.course?.courseId !== 'string') {
+    throw new HdCompileError('config', 'HD_MANIFEST_MIGRATION_REQUIRED', {
+      fingerprintVersion: manifest.course?.fingerprintVersion ?? null,
+    });
+  }
   return manifest;
 }
 
 // Cross-check a buildable manifest against the actual cached course (build time).
 export function assertCourseMatches(manifest, course) {
-  const actual = canonicalCourseFingerprint(course);
+  let actual;
+  try {
+    actual = courseFingerprintV2(course, manifest.course.courseId);
+  } catch (cause) {
+    throw new HdCompileError('resolve-course', cause.code || 'HD_SOURCE_ID_REQUIRED', {}, cause);
+  }
   if (actual !== manifest.course.fingerprint) {
     throw new HdCompileError('config', 'HD_FINGERPRINT_MISMATCH', {
       expected: manifest.course.fingerprint, actual,

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeBundle } from '../tools/hd-course/encode.mjs';
 import { publishBundle } from '../tools/hd-course/publisher.mjs';
-import { canonicalCourseFingerprint } from '../tools/hd-course/course-source.mjs';
+import { courseFingerprintV1, courseFingerprintV2 } from '../tools/hd-course/course-source.mjs';
 import hdBundle from '../lib/hd-bundle.js';
 
 const { resolveHdBundle, resolveHdBundles, validateBundleDirectory } = hdBundle;
@@ -17,7 +17,13 @@ const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 // Compile + publish a real bundle for `course` into <dataDir>/hd-courses/<name>.
 // `hole` sets the manifest hole; `seed` nudges the terrain so re-publishing the
 // same hole yields a distinct bundleId (a real rebuild does the same).
-async function publishFixture(dataDir, { name = 'bandon', hole = 1, seed = 0 } = {}) {
+async function publishFixture(dataDir, {
+  name = 'bandon',
+  hole = 1,
+  seed = 0,
+  fingerprintVersion = 2,
+  courseId = course.source.courseId,
+} = {}) {
   const staging = tmp('hd-stage-');
   const snapped = { minX: 0, minY: 0, maxX: 30, maxY: 30, cellM: 3, nx: 11, ny: 11 };
   const terrainHeights = new Float32Array(11 * 11);
@@ -25,11 +31,21 @@ async function publishFixture(dataDir, { name = 'bandon', hole = 1, seed = 0 } =
   const surfacesRgba = Buffer.alloc(11 * 11 * 4);
   const coverageRgba = Buffer.alloc(11 * 11 * 4);
   for (let i = 0; i < 11 * 11; i += 1) { coverageRgba[i * 4] = 255; coverageRgba[i * 4 + 3] = 255; }
+  const [, osmType, osmId] = courseId.split(':');
+  const fingerprintCourse = courseId === course.source.courseId
+    ? course
+    : { ...course, source: { courseId, osmType, osmId: Number(osmId) } };
   await writeBundle({
     stagingDir: staging, course: course.name, hole, snapped, baseM: course.elevation.baseM,
     terrainHeights, rgb: Buffer.alloc(8 * 8 * 3, 90), imgW: 8, imgH: 8,
     surfacesRgba, coverageRgba, maskW: 11, maskH: 11,
-    fingerprint: canonicalCourseFingerprint(course), compilerVersion: '0.1.0', provenance: { source: 't' },
+    fingerprint: fingerprintVersion === 2
+      ? courseFingerprintV2(fingerprintCourse, courseId)
+      : courseFingerprintV1(course),
+    fingerprintVersion,
+    ...(fingerprintVersion === 2 ? { courseId } : {}),
+    compilerVersion: '0.1.0',
+    provenance: { source: 't' },
   });
   const courseDir = path.join(dataDir, 'hd-courses', name);
   const published = await publishBundle({ stagedDir: staging, courseDir, validate: validateBundleDirectory });
@@ -97,8 +113,48 @@ test('resolveHdBundles dedups multiple bundles of the same hole (active wins)', 
 test('resolveHdBundles excludes bundles whose course fingerprint differs', async () => {
   const dataDir = tmp('hd-data-');
   await publishFixture(dataDir, { name: 'chambers', hole: 8 });
-  const otherCourse = { ...course, name: `${course.name}-different` };
+  const otherCourse = {
+    ...course,
+    origin: { ...course.origin, lat: course.origin.lat + 0.01 },
+  };
   assert.equal(resolveHdBundles(otherCourse, { dataDir }).status, 'absent');
+});
+
+test('v2 resolution rejects descriptor and active-course identity mismatch', async () => {
+  const dataDir = tmp('hd-data-');
+  await publishFixture(dataDir, { courseId: 'osm:way:91002' });
+  const resolved = resolveHdBundles(course, { dataDir });
+  assert.equal(resolved.status, 'rejected');
+  assert.equal(resolved.code, 'HD_SOURCE_ID_MISMATCH');
+});
+
+test('legacy absent-version and explicit-v1 bundles resolve source-less without rewrite', async () => {
+  for (const explicit of [false, true]) {
+    const dataDir = tmp('hd-data-');
+    const { bundleId } = await publishFixture(dataDir, { fingerprintVersion: 1 });
+    const manifestPath = path.join(dataDir, 'hd-courses', 'bandon', 'bundles', bundleId, 'manifest.json');
+    if (!explicit) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      delete manifest.course.fingerprintVersion;
+      fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    }
+    const before = fs.readFileSync(manifestPath);
+    const sourceLess = { ...course }; delete sourceLess.source;
+    assert.equal(resolveHdBundles(sourceLess, { dataDir }).status, 'valid');
+    assert.ok(fs.readFileSync(manifestPath).equals(before), 'legacy manifest was not rewritten');
+  }
+});
+
+test('unsupported fingerprint version never activates and returns typed rejection', async () => {
+  const dataDir = tmp('hd-data-');
+  const { bundleId } = await publishFixture(dataDir);
+  const manifestPath = path.join(dataDir, 'hd-courses', 'bandon', 'bundles', bundleId, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  manifest.course.fingerprintVersion = 99;
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const resolved = resolveHdBundles(course, { dataDir });
+  assert.equal(resolved.status, 'rejected');
+  assert.equal(resolved.code, 'HD_FINGERPRINT_VERSION_UNSUPPORTED');
 });
 
 test('resolveHdBundles is absent when no hd-courses dir', () => {

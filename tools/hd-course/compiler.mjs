@@ -6,7 +6,7 @@
 // validator BEFORE the atomic publisher swaps it in, so a failure at any stage
 // leaves the previous active bundle untouched.
 
-import { canonicalCourseFingerprint } from './course-source.mjs';
+import { courseFingerprintV2 } from './course-source.mjs';
 import { computeHoleBounds, snapHdBounds } from './bounds.mjs';
 import { localToWgs84 } from './coordinates.mjs';
 import { resampleTerrain } from './terrain.mjs';
@@ -57,10 +57,20 @@ export async function compileHole({
     return out;
   };
 
-  const fingerprint = canonicalCourseFingerprint(course);
+  let fingerprint;
 
   await run('resolve-course', () => {
     if (course.version !== 3 && course.version !== 4) throw new HdCompileError('resolve-course', 'HD_COURSE_VERSION', { version: course.version });
+    try {
+      fingerprint = courseFingerprintV2(course, manifest.course.courseId);
+    } catch (cause) {
+      throw new HdCompileError('resolve-course', cause.code || 'HD_SOURCE_ID_REQUIRED', {}, cause);
+    }
+    if (manifest.course.fingerprintVersion !== 2) {
+      throw new HdCompileError('resolve-course', 'HD_FINGERPRINT_VERSION_UNSUPPORTED', {
+        version: manifest.course.fingerprintVersion ?? null,
+      });
+    }
     if (manifest.course.fingerprint !== 'pending' && manifest.course.fingerprint !== fingerprint) {
       throw new HdCompileError('resolve-course', 'HD_FINGERPRINT_MISMATCH', { expected: manifest.course.fingerprint, actual: fingerprint });
     }
@@ -95,7 +105,11 @@ export async function compileHole({
     stagingDir, course: course.name, hole: manifest.hole, snapped: bounds, baseM: terr.baseM,
     terrainHeights: rast.heights, rgb: rast.rgb, imgW: rast.imgW, imgH: rast.imgH,
     surfacesRgba: masks.surfaces, coverageRgba: masks.coverage, maskW: masks.width, maskH: masks.height,
-    fingerprint, compilerVersion, provenance: buildProvenance(manifest, course, terr),
+    fingerprint,
+    fingerprintVersion: 2,
+    courseId: course.source.courseId,
+    compilerVersion,
+    provenance: buildProvenance(manifest, course, terr),
   }));
 
   const descriptor = await run('validate', () => {

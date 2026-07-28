@@ -3,6 +3,8 @@
   "course": {
     "name": "Synthetic Test Course",
     "cacheVersion": 3,
+    "fingerprintVersion": 2,
+    "courseId": "osm:way:91001",
     "fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   },
   "hole": 1,

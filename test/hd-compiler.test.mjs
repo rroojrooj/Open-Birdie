@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileHole, STAGES } from '../tools/hd-course/compiler.mjs';
-import { canonicalCourseFingerprint } from '../tools/hd-course/course-source.mjs';
+import { courseFingerprintV2 } from '../tools/hd-course/course-source.mjs';
 import { readActive } from '../tools/hd-course/publisher.mjs';
 import { localToWgs84, wgs84ToUtm } from '../tools/hd-course/coordinates.mjs';
 import { main as cliMain } from '../tools/hd-course/cli.mjs';
@@ -17,7 +17,13 @@ const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 function manifest() {
   return {
     schemaVersion: 1,
-    course: { name: course.name, cacheVersion: 3, fingerprint: canonicalCourseFingerprint(course) },
+    course: {
+      name: course.name,
+      cacheVersion: 3,
+      fingerprintVersion: 2,
+      courseId: course.source.courseId,
+      fingerprint: courseFingerprintV2(course, course.source.courseId),
+    },
     hole: 1,
     padding: 30,
     terrain: { targetSpacingM: 3.0, crs: 'EPSG:3857' },
@@ -95,6 +101,27 @@ test('a course fingerprint mismatch is rejected', async () => {
     await assert.rejects(
       () => compileHole({ manifest: bad, course, stagingDir: tmp('hd-st-'), courseDir: tmp('hd-cd-'), ...providers }),
       /HD_FINGERPRINT_MISMATCH/,
+    );
+  });
+});
+
+test('a source-less course cannot be rebuilt as v2', async () => {
+  await withNoNetwork(async () => {
+    const sourceLess = { ...course }; delete sourceLess.source;
+    await assert.rejects(
+      () => compileHole({ manifest: manifest(), course: sourceLess, stagingDir: tmp('hd-st-'), courseDir: tmp('hd-cd-'), ...providers }),
+      (error) => error.code === 'HD_SOURCE_ID_REQUIRED',
+    );
+  });
+});
+
+test('manifest and cached source identity mismatch is rejected', async () => {
+  await withNoNetwork(async () => {
+    const bad = manifest();
+    bad.course.courseId = 'osm:way:91002';
+    await assert.rejects(
+      () => compileHole({ manifest: bad, course, stagingDir: tmp('hd-st-'), courseDir: tmp('hd-cd-'), ...providers }),
+      (error) => error.code === 'HD_SOURCE_ID_MISMATCH',
     );
   });
 });

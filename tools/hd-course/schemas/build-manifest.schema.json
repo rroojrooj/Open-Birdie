@@ -17,11 +17,25 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "cacheVersion": { "type": "integer", "minimum": 1 },
+        "fingerprintVersion": { "type": "integer", "enum": [1, 2] },
+        "courseId": {
+          "type": "string",
+          "pattern": "^osm:(node|way|relation):[1-9][0-9]*$"
+        },
         "fingerprint": {
           "type": "string",
           "anyOf": [{ "pattern": "^[a-f0-9]{64}$" }, { "const": "pending" }]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["fingerprintVersion"],
+            "properties": { "fingerprintVersion": { "const": 2 } }
+          },
+          "then": { "required": ["courseId"] }
+        }
+      ]
     },
     "hole": { "type": "integer", "minimum": 1, "maximum": 18 },
     "padding": { "type": "number", "minimum": 0, "maximum": 1000 },

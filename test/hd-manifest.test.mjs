@@ -12,15 +12,44 @@ const resolved = JSON.parse(
   fs.readFileSync(path.join(HERE, 'fixtures', 'hd-course', 'manifest-resolved.json'), 'utf8'),
 );
 
-test('the committed Bandon manifest loads, validates, and is buildable', () => {
+test('the committed legacy Bandon manifest loads but requires rediscovery before rebuild', () => {
   const m = loadManifest(bandonPath);
   assert.equal(m.hole, 1);
   assert.equal(m.imagery.date, '2022-06-23');
   assert.equal(m.discovered.state, 'resolved');
   assert.match(m.course.fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(m.course.fingerprintVersion, undefined);
   assert.equal(m.discovered.assets.length, 2);
-  assert.equal(isBuildable(m), true);
-  assert.doesNotThrow(() => assertBuildable(m));
+  assert.equal(isBuildable(m), false);
+  assert.throws(
+    () => assertBuildable(m),
+    (error) => error.code === 'HD_MANIFEST_MIGRATION_REQUIRED',
+  );
+});
+
+test('v2 manifest identity fields validate', () => {
+  const v2 = {
+    ...resolved,
+    course: {
+      ...resolved.course,
+      fingerprintVersion: 2,
+      courseId: 'osm:way:91001',
+    },
+  };
+  assert.doesNotThrow(() => parseManifest(v2));
+});
+
+test('invalid or unsupported manifest identity fields are rejected', () => {
+  for (const coursePatch of [
+    { fingerprintVersion: 2, courseId: null },
+    { fingerprintVersion: 2, courseId: 'osm:way:0' },
+    { fingerprintVersion: 99, courseId: 'osm:way:91001' },
+  ]) {
+    assert.throws(
+      () => parseManifest({ ...resolved, course: { ...resolved.course, ...coursePatch } }),
+      /HD_MANIFEST_INVALID/,
+    );
+  }
 });
 
 test('a resolved manifest is buildable', () => {
