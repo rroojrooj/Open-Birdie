@@ -11,6 +11,7 @@ const {
   createCourseAcquisitionCoordinator,
   migrateLegacyCourseCache,
   ownedTempPath,
+  publishSourceKeyedCourseCache,
   readSourceKeyedCache,
 } = require('../lib/course');
 const { normalizeCourseSource } = require('../lib/course-identity');
@@ -175,6 +176,68 @@ test('owned temporary paths are unique per final artifact and operation nonce', 
   assert.notEqual(ownedTempPath(jsonPath, 'a'), ownedTempPath(aerialPath, 'a'));
   assert.notEqual(ownedTempPath(jsonPath, 'a'), ownedTempPath(jsonPath, 'b'));
   assert.equal(path.dirname(ownedTempPath(jsonPath, 'a')), cacheDir);
+});
+
+test('competing same-identity publishers commit one coherent artifact set with JSON last', async () => {
+  const cacheDir = tempCache();
+  const source = normalizeCourseSource({ osmType: 'way', osmId: 92003 });
+  const stem = 'osm-way-92003';
+  const events = [];
+  const fsImpl = instrumentedFs(events);
+  let stagedCount = 0;
+  let releaseStaged;
+  const bothStaged = new Promise((resolve) => { releaseStaged = resolve; });
+  const beforeLock = async () => {
+    stagedCount += 1;
+    if (stagedCount === 2) releaseStaged();
+    await bothStaged;
+  };
+  const candidate = (marker) => ({
+    ...legacyCourse(),
+    name: `Publisher ${marker}`,
+    source,
+    aerial: {
+      file: `${stem}.aerial.jpg`,
+      classFile: `${stem}.classmap.png`,
+      bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+      marker,
+    },
+  });
+  const publish = (marker) => publishSourceKeyedCourseCache({
+    course: candidate(marker),
+    source,
+    cacheDir,
+    fsImpl,
+    nonce: `publisher-${marker}`,
+    beforeLock,
+    artifacts: [
+      { file: `${stem}.aerial.jpg`, bytes: Buffer.from(`${marker}-aerial`) },
+      { file: `${stem}.classmap.png`, bytes: Buffer.from(`${marker}-classmap`) },
+    ],
+  });
+
+  const results = await Promise.all([publish('A'), publish('B')]);
+  assert.deepEqual(
+    results.map((result) => result.status).sort(),
+    ['existing', 'published'],
+  );
+
+  const diskCourse = JSON.parse(
+    fs.readFileSync(path.join(cacheDir, `${stem}.json`), 'utf8'),
+  );
+  const marker = diskCourse.aerial.marker;
+  assert.equal(fs.readFileSync(path.join(cacheDir, diskCourse.aerial.file), 'utf8'), `${marker}-aerial`);
+  assert.equal(fs.readFileSync(path.join(cacheDir, diskCourse.aerial.classFile), 'utf8'), `${marker}-classmap`);
+  const publishedResult = results.find((result) => result.status === 'published');
+  const existingResult = results.find((result) => result.status === 'existing');
+  assert.equal(existingResult.course.name, publishedResult.course.name);
+
+  const renames = events.filter((event) => event.startsWith('rename:'));
+  assert.equal(renames.at(-1), `rename:${stem}.json`);
+  assert.deepEqual(
+    fs.readdirSync(cacheDir).filter((name) => name.includes('.tmp.') || name.endsWith('.publish.lock')),
+    [],
+  );
 });
 
 test('same stable identity shares one acquisition while different identities stay isolated', async () => {
