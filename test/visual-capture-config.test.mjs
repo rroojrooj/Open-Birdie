@@ -335,7 +335,7 @@ test('suite validation rejects duplicate IDs, incomplete poses, target mismatch,
   expectIssue((v) => { v.courses[0].frames.pop(); }, '/courses/0/frames');
 });
 
-test('baseline suite pins three real courses, proof coverage, and Chambers legacy cameras', () => {
+test('baseline suite pins three real courses, proof coverage, and the corrected Chambers green camera', () => {
   const baselinePath = path.resolve('tools', 'visual-capture', 'suites', 'baseline.json');
   const legacyPath = path.resolve('docs', 'fixtures', 'chambers-sweep.json');
   const baseline = validateSuite(JSON.parse(fs.readFileSync(baselinePath, 'utf8')));
@@ -377,7 +377,15 @@ test('baseline suite pins three real courses, proof coverage, and Chambers legac
     ['ov_south', chambers.frames.find((frameValue) => frameValue.role === 'hole-overview')],
     ['ov_high', chambers.frames.find((frameValue) => frameValue.role === 'high-overview')],
   ]);
-  for (const legacyFrame of legacy.frames.filter((frameValue) => frameValue.mode === 'free')) {
+  const correctedGreenPose = chambersByLegacyName.get('green').pose;
+  const legacyGreenPose = legacy.frames.find((frameValue) => frameValue.name === 'green').pose;
+  assert.deepEqual(correctedGreenPose, {
+    tx: 193, ty: -263, dist: 30, pitch: -28, yaw: 0, hOff: 0,
+  });
+  assert.notDeepEqual(correctedGreenPose, legacyGreenPose);
+  for (const legacyFrame of legacy.frames.filter(
+    (frameValue) => frameValue.mode === 'free' && frameValue.name !== 'green',
+  )) {
     assert.deepEqual(chambersByLegacyName.get(legacyFrame.name)?.pose, legacyFrame.pose);
   }
   assert.equal(chambersByLegacyName.get('play')?.role, 'address');
