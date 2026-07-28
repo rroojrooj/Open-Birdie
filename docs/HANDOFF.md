@@ -1,6 +1,6 @@
 # Open-Birdie — Session Handoff: the "make it look like a real place" arc
 
-> **UPDATE 2026-07-28 — SP-02a REVIEW ACCEPTED; READY FOR INTEGRATION, NOT DONE.**
+> **UPDATE 2026-07-28 — SP-02a DONE; SP-02b PLAN IS NEXT.**
 > Branch `codex/sp02a-course-presentation-contract`, code evidence
 > `521552466ece23cee6134285fce1ef4d344b3932`, implementation base
 > `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`. The candidate adds stable OSM
@@ -25,9 +25,11 @@
 > because Electron emitted no `close`; no orphan remained. Earlier top-level smoke at
 > `b30d3a3` is green and the later final-SHA three-course capture is green. Keep this
 > timeout was classified as a non-finding; do not broaden SP-02a into SP-00
-> harness lifecycle work. Next: PR/Windows CI, merge, ancestry or integrated-tree
-> equivalence, and post-merge 492-test rerun. SP-02b stays blocked until
-> integration.
+> harness lifecycle work. PR #46 final head `59e3f98` corrected deterministic LF
+> validator bytes and equivalent Windows canonical path forms, then passed independent
+> correction review at 99% with 0C/0H/0M/0L. PR #46 merged as `6364f397`; Windows CI,
+> ancestry, post-merge **493/493**, and `npm run check:course-art` all pass.
+> Next: author and independently review the detailed SP-02b renderer-consumption plan.
 
 > **UPDATE 2026-07-28 — SP-01 P2a SURFACE RECOVERY CANDIDATE COMPLETE.**
 > Branch `codex/sp01-p2a-recovery`, code evidence commit

@@ -1,6 +1,6 @@
 # SP-02a — CoursePresentation Contract, Identity, Activation, and Asset Delivery
 
-**Status:** REVIEW_ACCEPTED
+**Status:** DONE
 **Program charter:** [`2026-07-28-pro-visuals-program-charter.md`](2026-07-28-pro-visuals-program-charter.md)  
 **Program ledger:** [`2026-07-28-pro-visuals-program-ledger.md`](2026-07-28-pro-visuals-program-ledger.md)  
 **Source design:** user-authored `2026-07-23-pro-visuals-program-design.md`,
@@ -16,8 +16,8 @@ worktree without modifying it
 `C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp02a-course-presentation-contract`;
 server-side course package contract and local curated-asset gateway
 **Estimate:** 5–8 focused engineering days plus packaged-root and hardware smoke  
-**Dependencies:** SP-00 and SP-01 accepted; SP-02b remains blocked until SP-02a is
-accepted and integrated
+**Dependencies:** SP-00 and SP-01 accepted; SP-02b is unblocked for detailed planning
+after SP-02a integration
 
 ## 1. Outcome
 
@@ -1765,10 +1765,10 @@ Complete only after integration:
 | Implementation owner/worktree | `/root/sp01_implementation`; `C:\Users\USER\.config\superpowers\worktrees\Open-Birdie\sp02a-course-presentation-contract`; branch `codex/sp02a-course-presentation-contract` |
 | Planning base | `03a1ff73cd135bac2aa7e9d1d331aa1c2852bd76` |
 | Implementation base | `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef` |
-| Candidate commit | First code candidate `61d9ab78edd1f56e361b7884d203d832483a6c65` and corrected candidate `5d13c1c5ba8de2628dd294f24bcf5a589065407e` were rejected; accepted pass-3 code evidence is `521552466ece23cee6134285fce1ef4d344b3932`; reviewed documentation candidate is `9ed6cbf7de50e992c16e3009a556f318b899abe5` |
-| Pull request / merge commit | Review accepted; PR and merge pending |
+| Candidate commit | First code candidate `61d9ab78edd1f56e361b7884d203d832483a6c65` and corrected candidate `5d13c1c5ba8de2628dd294f24bcf5a589065407e` were rejected; pass-3 code evidence `521552466ece23cee6134285fce1ef4d344b3932` was accepted; final portability-reviewed PR head is `59e3f9876199755f2c8539cc0f88258199fa112d` |
+| Pull request / merge commit | PR #46; merge `6364f397ef14cdf3ca0348cba182552101fb8d98`; final candidate ancestry verified |
 | Focused tests | Five required commands pass 129/129: identity/cache 18, HD 44, schema/staging/presentation 31, package/activation/race 21, asset HTTP/package 15 |
-| Full test count | `npm test`: 492 passed, 0 failed, 0 cancelled, 0 skipped |
+| Full test count | Accepted candidate: 492 passed. Final and post-merge integrated tree: 493 passed, 0 failed, 0 cancelled, 0 skipped |
 | Identity/cache migration evidence | Stable node/way/relation IDs, 250 m legacy verification, atomic non-destructive migration, collision isolation, nested/top-level identity agreement, same-ID acquisition coalescing, real cached different-ID cancellation, exact X→Y→X replacement, asynchronous cancellable cross-process publication locking/late-winner recheck, event-loop progress under a fresh foreign lock, coherent artifact set with JSON last, and exact embedded identity pass. Stable-source legacy v3 activation regression is covered; source-less activation remains rejected. |
 | HD v1/v2 evidence | V1 golden compatibility and source-less read path pass; v2 stable identity/fingerprint, mismatch and missing-ID typed rejection/diagnostics, unknown-version fallback, compiler, and multi-bundle resolution pass. |
 | Validator/staging evidence | `check:course-art` passes one deterministic pack; generated validator is current and dependency-free; source/runtime trees stage byte-identically; optional missing asset is pruned; required/malformed/external-reference assets fail closed. |
@@ -1779,7 +1779,7 @@ Complete only after integration:
 | Hardware / renderer | Windows 11 Pro, RTX 3060, driver `32.0.15.9186`, Electron 42.4.0, Chrome 148, WebGL 2 / ANGLE D3D11. Per-course textures/geometries/programs/calls/triangles match exactly; no renderer files changed. |
 | Package preparation latency | 100 measured fixture iterations after warmup: automatic/no-asset median/p95 `0.109/0.186 ms`; curated `1.709/2.140 ms`; both have no diagnostics |
 | Asset/resource delta | Staged runtime asset count/bytes `0/0`; no GPU resource introduced. Five alternating post-warmup activations: obsolete packages alive `0/4`, current alive, timeouts `0 -> 0`, TCP servers `2 -> 2`, GC heap `+16,712` bytes measurement noise. |
-| Independent review | Pass 1 exact code `61d9ab7` / docs `c7520a3`: REJECT 97%, 0C/3H/6M/0L. Pass 2 exact code `5d13c1c` / docs `d8040a5`: REJECT 98%, 0C/1H/3M/1L. Pass 3 exact code `5215524` / docs `9ed6cbf`: ACCEPT 98%, merge YES, 0C/0H/0M/0L. Status is REVIEW_ACCEPTED / READY_FOR_INTEGRATION, not Done. |
+| Independent review | Pass 1 exact code `61d9ab7` / docs `c7520a3`: REJECT 97%, 0C/3H/6M/0L. Pass 2 exact code `5d13c1c` / docs `d8040a5`: REJECT 98%, 0C/1H/3M/1L. Pass 3 exact code `5215524` / docs `9ed6cbf`: ACCEPT 98%, merge YES, 0C/0H/0M/0L. Final CI-correction delta through `59e3f98`: ACCEPT 99%, merge YES, 0C/0H/0M/0L. |
 | Deviations | Plan examples used unsupported `--output-dir`; executed supported `--output`. Canonical user data was not mutated: captures used an isolated byte copy with verified stable sources. One clean-base capture first hit a post-result Electron close timeout, then clean probe/full rerun passed. Two first-candidate synthetic retries also wrote complete valid results with no page/fatal errors but top-level `CHILD_TIMEOUT` because Electron emitted no `close`; no orphan remained. Earlier top-level smoke at `b30d3a3` and the three-course capture are green. Pass-3 review classified the synthetic timeout as a non-finding. The correction delta changes no renderer, curated course profile, or capture fixture path, so the 24-frame result remains renderer-neutral regression evidence rather than a visual claim; no unrelated harness lifecycle expansion was made. |
 | SP-02b handoff | Consume normalized package fields and revisioned assets; own browser generation/abort/stale disposal and shared GPU handles. Do not delete the renderer name map until St Andrews and Bandon have reviewed stable identities/profiles or reviewed generic derivation. |
 
@@ -1826,11 +1826,12 @@ No SP-02b renderer work begins until SP-02a is accepted and integrated.
 | Independent candidate review, pass 1 (`61d9ab78edd1f56e361b7884d203d832483a6c65`; docs `c7520a3f569dceb19235f583fb331b44f86598be`) | REJECT | 97% | 0 Critical, 3 High, 6 Medium, 0 Low. High: response bytes could diverge from the verified ETag through a second read; normalized nested identity did not own acquisition; slug-only legacy gameplay could cross same-name stable IDs. Medium: missing client `error`, wrong legacy courses root, no cross-process publication winner, dropped typed v2 missing-ID rejection, unused production cancellation, and double asset read/hash ownership. Corrected by `e95ad4a`, `be8546a`, `91b9de0`, `02eb751`, `e2e9a78`, and `5d13c1c`. |
 | Independent candidate review, pass 2 (`5d13c1c5ba8de2628dd294f24bcf5a589065407e`; docs `d8040a559db35da10d6f2e880b1a5d6fbcd2cccd`) | REJECT | 98% | 0 Critical, 1 High, 3 Medium, 1 Low. High: activation-owned asset buffers violated accepted exact-request semantics. Medium: real cached UI loads bypassed coordinator cancellation, X→Y→X could reuse an aborted X promise, and legacy migration used an event-loop-blocking `Atomics.wait` lock. Low: staged temporaries were not cleaned on every late-winner/abort/error path. Corrected by `82e715d` and final contract pin `5215524`. |
 | Independent candidate review, pass 3 (`521552466ece23cee6134285fce1ef4d344b3932`; docs `9ed6cbf7de50e992c16e3009a556f318b899abe5`) | ACCEPT / merge YES | 98% | 0 Critical, 0 High, 0 Medium, 0 Low. Focused 129/129, full 492/492, deterministic check, package, staged and unpacked smoke, 913-entry/zero-forbidden asar scan, clean diff, and 24/24 exact visual comparison pass. The synthetic timeout is a non-finding. |
+| Independent CI-correction review (`59e3f9876199755f2c8539cc0f88258199fa112d`) | ACCEPT / merge YES | 99% | 0 Critical, 0 High, 0 Medium, 0 Low. LF determinism, private error observability, canonical containment, path substitution, opened-handle identity/hash verification, response redaction, 29/29 focused probes, 493/493 full suite, and deterministic course-art check pass. |
 
-Implementation review verdict: **REVIEW_ACCEPTED / READY_FOR_INTEGRATION; not DONE**.
+Implementation review verdict: **ACCEPTED**.
 
-Integration verdict: **READY / MERGE YES**. Exact code
-`521552466ece23cee6134285fce1ef4d344b3932` and reviewed documentation
-`9ed6cbf7de50e992c16e3009a556f318b899abe5` have no unresolved Critical, High,
-Medium, or Low finding. Windows CI, candidate ancestry, merge, and post-merge
-verification remain before Done.
+Integration verdict: **DONE**. Final PR head
+`59e3f9876199755f2c8539cc0f88258199fa112d` is an ancestor of PR #46 merge
+`6364f397ef14cdf3ca0348cba182552101fb8d98`. Windows CI is green; the exact
+integrated tree passes 493/493 plus deterministic course-art staging. There are zero
+unresolved Critical, High, Medium, or Low findings.

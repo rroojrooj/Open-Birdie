@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-28
 **Program status:** ACTIVE
-**Immediate package:** SP-02a — reviewed candidate integration
+**Immediate package:** SP-02b — detailed renderer-consumption plan and engineering review
 
 ## Done
 
@@ -115,14 +115,25 @@
   at 98% confidence with merge YES and 0 Critical, 0 High, 0 Medium, and 0 Low
   findings. The 24/24 visual exact comparison remains valid, the 913-entry asar scan
   has zero forbidden matches, and the synthetic process-close timeout is a
-  non-finding. Status is `REVIEW_ACCEPTED / READY_FOR_INTEGRATION`, not Done.
+  non-finding.
+- Opened PR #46, diagnosed its first Windows failures through private fail-closed
+  observability, pinned deterministic LF validator bytes, and corrected equivalent
+  Windows canonical-path handling without weakening opened-handle identity/hash checks.
+- Independent correction review accepted final PR head
+  `59e3f9876199755f2c8539cc0f88258199fa112d` at 99% confidence with
+  0 Critical, 0 High, 0 Medium, and 0 Low findings.
+- Merged PR #46 as `6364f397ef14cdf3ca0348cba182552101fb8d98`.
+  Windows CI passed, candidate ancestry was verified, and the exact integrated tree
+  passed 493/493 plus `npm run check:course-art`. SP-02a is **DONE**.
 
 ## Left
 
-1. Open the PR, require Windows CI, merge, and prove ancestry or
-   integrated-tree equivalence.
-2. Rerun the 492-test full suite on the integrated base and close the Done Record.
-3. Keep SP-02b renderer work blocked until those gates complete.
+1. Author the current-base SP-02b renderer-consumption detailed plan from merge
+   `6364f397ef14cdf3ca0348cba182552101fb8d98`.
+2. Run the SP-02b plan through independent engineering review until there are zero
+   unresolved Critical, High, or Medium findings.
+3. Merge the accepted plan, pin its exact implementation base, then dispatch the
+   implementation lane. Do not begin renderer edits before that gate.
 
 ## Current facts
 
@@ -155,18 +166,18 @@ Do not run `git reset`, `git clean`, `git pull`, or broad file-copy operations i
 The accepted transition is:
 
 ```text
-SP-01 DONE + SP-02a PLAN ACCEPTED
-    -> SP-02a CANDIDATE ACCEPTED
-    -> PR / Windows CI / merge / post-merge verification
-    -> SP-02b may be planned and dispatched
+SP-01 DONE + SP-02a DONE
+    -> SP-02b detailed plan
+    -> independent plan review
+    -> accepted plan merge + exact-base dispatch
 ```
 
-SP-01 and the accepted SP-02a implementation plan are present on `origin/main`.
-SP-02a started from exact base `2dd82c7e503e3f974a9abebeeba8b9d71ce449ef`
-and now has an independently accepted candidate awaiting PR integration.
+SP-01 and SP-02a are present on `origin/main`. SP-02a started from exact base
+`2dd82c7e503e3f974a9abebeeba8b9d71ce449ef` and is integrated at
+`6364f397ef14cdf3ca0348cba182552101fb8d98`.
 
 ## Your turn
 
-No user decision is required for the independent SP-02a candidate gate or normal
-integration. The next user-reserved decision is a material scope change, a deliberate
-never-regress exception, or final visual acceptance.
+No user decision is required to author and review SP-02b under the accepted charter.
+The next user-reserved decision is a material scope change, a deliberate never-regress
+exception, or final subjective visual acceptance.
