@@ -1,0 +1,72 @@
+{
+  "requestedIdentity": {
+    "displayName": "Chambers Bay",
+    "osmType": "way",
+    "osmId": 26787026,
+    "origin": {
+      "lat": 47.2057007,
+      "lon": -122.5750529
+    }
+  },
+  "preparedCandidate": {
+    "courseId": "osm:way:26787026",
+    "contentRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "presentation": {
+      "courseId": "osm:way:26787026",
+      "tier": "curated",
+      "character": {
+        "biome": "pnw-links",
+        "dryness": 0.85
+      },
+      "world": {},
+      "surfaces": {},
+      "materials": {},
+      "vegetation": {
+        "rules": []
+      },
+      "landmarks": {
+        "features": []
+      },
+      "atmosphere": {},
+      "assetKeys": [],
+      "qualityHints": {
+        "source": "curated"
+      },
+      "diagnostics": []
+    },
+    "terrainPatches": [],
+    "publicAssetManifest": {},
+    "diagnostics": []
+  },
+  "resolvedPackage": {
+    "courseId": "osm:way:26787026",
+    "courseRevision": 5,
+    "contentRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "presentation": {
+      "courseId": "osm:way:26787026",
+      "tier": "curated",
+      "character": {
+        "biome": "pnw-links",
+        "dryness": 0.85
+      },
+      "world": {},
+      "surfaces": {},
+      "materials": {},
+      "vegetation": {
+        "rules": []
+      },
+      "landmarks": {
+        "features": []
+      },
+      "atmosphere": {},
+      "assetKeys": [],
+      "qualityHints": {
+        "source": "curated"
+      },
+      "diagnostics": []
+    },
+    "terrainPatches": [],
+    "assetManifest": {},
+    "diagnostics": []
+  }
+}

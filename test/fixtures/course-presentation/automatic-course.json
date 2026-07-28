@@ -1,0 +1,72 @@
+{
+  "requestedIdentity": {
+    "displayName": "Unknown Links",
+    "osmType": "way",
+    "osmId": 91001,
+    "origin": {
+      "lat": 47.1,
+      "lon": -122.4
+    }
+  },
+  "preparedCandidate": {
+    "courseId": "osm:way:91001",
+    "contentRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "presentation": {
+      "courseId": "osm:way:91001",
+      "tier": "automatic",
+      "character": {
+        "biome": "generic-temperate",
+        "dryness": 0
+      },
+      "world": {},
+      "surfaces": {},
+      "materials": {},
+      "vegetation": {
+        "rules": []
+      },
+      "landmarks": {
+        "features": []
+      },
+      "atmosphere": {},
+      "assetKeys": [],
+      "qualityHints": {
+        "source": "automatic"
+      },
+      "diagnostics": []
+    },
+    "terrainPatches": [],
+    "publicAssetManifest": {},
+    "diagnostics": []
+  },
+  "resolvedPackage": {
+    "courseId": "osm:way:91001",
+    "courseRevision": 4,
+    "contentRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "presentation": {
+      "courseId": "osm:way:91001",
+      "tier": "automatic",
+      "character": {
+        "biome": "generic-temperate",
+        "dryness": 0
+      },
+      "world": {},
+      "surfaces": {},
+      "materials": {},
+      "vegetation": {
+        "rules": []
+      },
+      "landmarks": {
+        "features": []
+      },
+      "atmosphere": {},
+      "assetKeys": [],
+      "qualityHints": {
+        "source": "automatic"
+      },
+      "diagnostics": []
+    },
+    "terrainPatches": [],
+    "assetManifest": {},
+    "diagnostics": []
+  }
+}
